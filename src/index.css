@@ -68,3 +68,8 @@ body {
     grid-template-columns: repeat(1, minmax(0, 1fr)) !important;
   }
 }
+
+/* Prevent text wrapping in all tables across the application */
+table th, table td {
+  white-space: nowrap !important;
+}

@@ -15,11 +15,14 @@ import { verifyJWT } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Helper to resolve Country Manager user ID from request parameter
+const isValidObjectId = (id) => typeof id === 'string' && mongoose.isValidObjectId(id);
+
+// Helper to resolve Country Manager User profile
 async function resolveCMUser(idStr) {
-  if (mongoose.isValidObjectId(idStr)) {
-    const user = await User.findById(idStr);
-    if (user) return user;
+  if (isValidObjectId(idStr)) {
+    const cmRole = await Role.findOne({ name: 'CountryManager' });
+    const user = await User.findOne({ _id: idStr, role: cmRole?._id }).populate('country');
+    return user;
   }
   
   // Mock ID fallback: Rajesh Sharma is the Country Manager seeded with this email
@@ -232,14 +235,14 @@ router.post('/', verifyJWT, async (req, res, next) => {
       bank_ifsc
     });
     
-    if (mongoose.isValidObjectId(assigned_country_id)) {
+    if (isValidObjectId(assigned_country_id)) {
       user.country = assigned_country_id;
     }
     
     await user.save();
     
     // Set as manager of the country
-    if (mongoose.isValidObjectId(assigned_country_id)) {
+    if (isValidObjectId(assigned_country_id)) {
       await Country.findByIdAndUpdate(assigned_country_id, { manager: user._id });
     }
     
@@ -464,7 +467,7 @@ router.put('/:id', verifyJWT, async (req, res, next) => {
     if (req.body.bank_account_number !== undefined) updateData.bank_account_number = req.body.bank_account_number;
     if (req.body.bank_ifsc !== undefined) updateData.bank_ifsc = req.body.bank_ifsc;
     
-    if (mongoose.isValidObjectId(req.body.assigned_country_id)) {
+    if (isValidObjectId(req.body.assigned_country_id)) {
       updateData.country = req.body.assigned_country_id;
       // also update manager on country
       await Country.updateMany({ manager: user._id }, { $unset: { manager: 1 } });
@@ -566,12 +569,12 @@ router.post('/:id/states/assign-manager', verifyJWT, async (req, res, next) => {
   try {
     const { state_id, state_manager_id } = req.body;
     
-    if (!mongoose.isValidObjectId(state_id)) {
+    if (!isValidObjectId(state_id)) {
       return res.status(400).json({ success: false, message: 'Invalid state ID.' });
     }
     
     const updateObj = {};
-    if (mongoose.isValidObjectId(state_manager_id)) {
+    if (isValidObjectId(state_manager_id)) {
       updateObj.manager = state_manager_id;
     } else {
       updateObj.$unset = { manager: 1 };
@@ -1074,7 +1077,7 @@ router.post('/:id/approvals/:queue_id/action', verifyJWT, async (req, res, next)
     
     if (typeof queue_id === 'string' && queue_id.startsWith('R-')) {
       const retailerId = queue_id.substring(2);
-      if (mongoose.isValidObjectId(retailerId)) {
+      if (isValidObjectId(retailerId)) {
         await Retailer.findByIdAndUpdate(retailerId, {
           is_verified: action === 'Approved',
           is_active: action === 'Approved'
@@ -1082,7 +1085,7 @@ router.post('/:id/approvals/:queue_id/action', verifyJWT, async (req, res, next)
       }
     } else if (typeof queue_id === 'string' && queue_id.startsWith('O-')) {
       const orderId = queue_id.substring(2);
-      if (mongoose.isValidObjectId(orderId)) {
+      if (isValidObjectId(orderId)) {
         await Order.findByIdAndUpdate(orderId, {
           status: action === 'Approved' ? 'Approved' : 'Cancelled'
         });
@@ -1182,7 +1185,7 @@ router.post('/:id/commissions/:comm_id/approve', verifyJWT, async (req, res, nex
     const { comm_id } = req.params;
     const { action, remarks } = req.body;
     
-    if (mongoose.isValidObjectId(comm_id)) {
+    if (isValidObjectId(comm_id)) {
       await CommissionRecord.findByIdAndUpdate(comm_id, {
         status: action === 'Approved' ? 'Approved' : 'Cancelled',
         remarks: remarks
@@ -1201,7 +1204,7 @@ router.post('/:id/commissions/:comm_id/mark-paid', verifyJWT, async (req, res, n
     const { comm_id } = req.params;
     const { payment_reference, paid_at } = req.body;
     
-    if (mongoose.isValidObjectId(comm_id)) {
+    if (isValidObjectId(comm_id)) {
       await CommissionRecord.findByIdAndUpdate(comm_id, {
         status: 'Paid',
         payment_reference: payment_reference,
@@ -1339,7 +1342,7 @@ router.get('/:id/notifications', verifyJWT, async (req, res, next) => {
 router.patch('/:id/notifications/:notif_id/read', verifyJWT, async (req, res, next) => {
   try {
     const { notif_id } = req.params;
-    if (mongoose.isValidObjectId(notif_id)) {
+    if (isValidObjectId(notif_id)) {
       await Notification.findByIdAndUpdate(notif_id, { is_read: true });
     }
     res.status(200).json({ updated: true });

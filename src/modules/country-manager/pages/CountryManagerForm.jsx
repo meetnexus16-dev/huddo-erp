@@ -8,6 +8,7 @@ export default function CountryManagerForm({ cmId, onNavigate, showToast }) {
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
   const [reportingToOptions, setReportingToOptions] = useState([]);
+  const [countries, setCountries] = useState([]);
 
   // Form Fields State
   const [formData, setFormData] = useState({
@@ -16,7 +17,7 @@ export default function CountryManagerForm({ cmId, onNavigate, showToast }) {
     mobile_number: '',
     email: '',
     profile_photo_url: '',
-    assigned_country_id: '1',
+    assigned_country_id: '',
     department: 'Sales',
     designation: 'Country Manager',
     reporting_to: 'U1', // Rohan Hudda
@@ -39,6 +40,35 @@ export default function CountryManagerForm({ cmId, onNavigate, showToast }) {
     setReportingToOptions(admins);
   }, []);
 
+  // Load countries from backend
+  useEffect(() => {
+    const fetchCountries = async () => {
+      try {
+        const res = await fetch('/api/countries');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.data) && data.data.length > 0) {
+            setCountries(data.data);
+            if (!isEdit) {
+              setFormData(prev => ({ ...prev, assigned_country_id: data.data[0]._id }));
+            }
+            return;
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching countries:", err);
+      }
+
+      // Fallback
+      const fallbackCountries = GEOGRAPHY.countries.map(c => ({ _id: c.id, name: c.name }));
+      setCountries(fallbackCountries);
+      if (!isEdit && fallbackCountries.length > 0) {
+        setFormData(prev => ({ ...prev, assigned_country_id: fallbackCountries[0]._id }));
+      }
+    };
+    fetchCountries();
+  }, [isEdit]);
+
   // Fetch existing details if editing
   useEffect(() => {
     if (isEdit) {
@@ -55,7 +85,7 @@ export default function CountryManagerForm({ cmId, onNavigate, showToast }) {
               mobile_number: data.mobile_number || '',
               email: data.email || '',
               profile_photo_url: data.profile_photo_url || '',
-              assigned_country_id: String(data.assigned_country_id || '1'),
+              assigned_country_id: String(data.assigned_country_id || ''),
               department: data.department || 'Sales',
               designation: data.designation || 'Country Manager',
               reporting_to: data.reporting_to || 'U1',
@@ -139,7 +169,7 @@ export default function CountryManagerForm({ cmId, onNavigate, showToast }) {
       const payload = {
         ...formData,
         salary_structure: formData.salary_structure ? Number(formData.salary_structure) : null,
-        assigned_country_id: Number(formData.assigned_country_id),
+        assigned_country_id: formData.assigned_country_id,
         // If creating new, link user_id to a new simulated ID
         user_id: formData.user_id || `U_CM_${Date.now()}`
       };
@@ -399,8 +429,8 @@ export default function CountryManagerForm({ cmId, onNavigate, showToast }) {
                 onChange={handleChange}
                 className="w-full text-sm border border-slate-200 focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20 rounded-lg p-2.5 bg-white text-slate-800 focus:outline-none cursor-pointer font-semibold"
               >
-                {GEOGRAPHY.countries.map(c => (
-                  <option key={c.id} value="1">{c.name}</option>
+                {countries.map(c => (
+                  <option key={c._id} value={c._id}>{c.name}</option>
                 ))}
               </select>
               <p className="text-[10px] text-slate-400 font-medium mt-1">This Country Manager will automatically supervise all states and cities allocated under this country.</p>
