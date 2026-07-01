@@ -8,6 +8,7 @@ export default function Hierarchy({ showToast, userRole }) {
   const [states, setStates] = useState([]);
   const [cities, setCities] = useState([]);
   const [employees, setEmployees] = useState([]);
+  const [users, setUsers] = useState([]);
 
   // Modals state
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -98,20 +99,39 @@ export default function Hierarchy({ showToast, userRole }) {
       .then(resData => {
         if (resData.success && Array.isArray(resData.data)) {
           setEmployees(resData.data);
-          const ceo = resData.data.find(emp => 
-            emp.designation?.title === 'CEO' || 
-            emp.user?.role?.name === 'CEO' ||
-            (typeof emp.designation === 'object' && emp.designation?.title === 'CEO')
-          );
-          if (ceo) {
-            setCeoManager(ceo.full_name || ceo.name);
-          } else {
-            setCeoManager("Not Assigned");
-          }
         }
       })
       .catch(err => console.error("Error loading employees:", err));
+
+    fetch('/api/users')
+      .then(res => res.json())
+      .then(resData => {
+        if (resData.success && Array.isArray(resData.data)) {
+          setUsers(resData.data);
+        }
+      })
+      .catch(err => console.error("Error loading users:", err));
   }, []);
+
+  useEffect(() => {
+    const empCeo = employees.find(emp => 
+      emp.designation?.title === 'CEO' || 
+      emp.user?.role?.name === 'CEO' ||
+      (typeof emp.designation === 'object' && emp.designation?.title === 'CEO')
+    );
+    const userCeo = users.find(u => 
+      u.role?.name === 'CEO' || 
+      u.roleName === 'CEO'
+    );
+    
+    if (empCeo) {
+      setCeoManager(empCeo.full_name || empCeo.name);
+    } else if (userCeo) {
+      setCeoManager(userCeo.name);
+    } else {
+      setCeoManager("Not Assigned");
+    }
+  }, [employees, users]);
 
   useEffect(() => {
     // Fetch state revenues
@@ -135,6 +155,73 @@ export default function Hierarchy({ showToast, userRole }) {
     });
   }, [states, cities]);
 
+  const getManagerOptions = (type) => {
+    const normalizedType = (type || '').toLowerCase();
+    
+    // 1. Check users list
+    const filteredUsers = users.filter(u => {
+      const roleName = u.role?.name || u.roleName || '';
+      const designationName = u.designationName || u.designation?.title || '';
+      
+      if (normalizedType === 'country') {
+        return roleName.toLowerCase() === 'countrymanager' || 
+               roleName.toLowerCase() === 'country manager' ||
+               designationName.toLowerCase() === 'country manager';
+      }
+      if (normalizedType === 'state') {
+        return roleName.toLowerCase() === 'statemanager' || 
+               roleName.toLowerCase() === 'state manager' ||
+               designationName.toLowerCase() === 'state manager';
+      }
+      if (normalizedType === 'city') {
+        return roleName.toLowerCase() === 'citymanager' || 
+               roleName.toLowerCase() === 'city manager' ||
+               designationName.toLowerCase() === 'city manager';
+      }
+      if (normalizedType === 'ceo') {
+        return true;
+      }
+      return false;
+    });
+
+    // 2. Check employees list
+    const filteredEmployees = employees.filter(emp => {
+      const roleName = emp.user?.role?.name || emp.user?.roleName || '';
+      const designationName = emp.designation?.title || '';
+      
+      if (normalizedType === 'country') {
+        return designationName.toLowerCase() === 'country manager' || 
+               roleName.toLowerCase() === 'countrymanager' ||
+               roleName.toLowerCase() === 'country manager';
+      }
+      if (normalizedType === 'state') {
+        return designationName.toLowerCase() === 'state manager' || 
+               roleName.toLowerCase() === 'statemanager' ||
+               roleName.toLowerCase() === 'state manager';
+      }
+      if (normalizedType === 'city') {
+        return designationName.toLowerCase() === 'city manager' || 
+               roleName.toLowerCase() === 'citymanager' ||
+               roleName.toLowerCase() === 'city manager';
+      }
+      if (normalizedType === 'ceo') {
+        return true;
+      }
+      return false;
+    });
+
+    const map = new Map();
+    filteredUsers.forEach(u => {
+      map.set(u._id, { _id: u._id, name: u.name });
+    });
+    filteredEmployees.forEach(emp => {
+      const id = emp.user?._id || emp._id;
+      map.set(id, { _id: id, name: emp.full_name || emp.name });
+    });
+
+    return Array.from(map.values());
+  };
+
   const handleAddSubmit = (e) => {
     e.preventDefault();
     if (!formData.name) {
@@ -142,8 +229,9 @@ export default function Hierarchy({ showToast, userRole }) {
       return;
     }
 
-    const selectedManagerObj = employees.find(emp => (emp.full_name || emp.name) === formData.manager) || employees[0];
-    const managerId = selectedManagerObj?._id || null;
+    const selectedUserObj = users.find(u => u.name === formData.manager);
+    const selectedEmpObj = employees.find(emp => (emp.full_name || emp.name) === formData.manager);
+    const managerId = selectedUserObj?._id || selectedEmpObj?.user?._id || selectedEmpObj?.user || null;
 
     if (addType === 'Country') {
       const countryCode = formData.code?.trim() || formData.name.slice(0, 3).toUpperCase();
@@ -220,13 +308,67 @@ export default function Hierarchy({ showToast, userRole }) {
     e.preventDefault();
     if (!assignedManagerName) return;
 
-    const selectedManagerObj = employees.find(emp => (emp.full_name || emp.name) === assignedManagerName);
-    const managerId = selectedManagerObj?._id || null;
+    const selectedUserObj = users.find(u => u.name === assignedManagerName);
+    const selectedEmpObj = employees.find(emp => (emp.full_name || emp.name) === assignedManagerName);
+    const managerId = selectedUserObj?._id || selectedEmpObj?.user?._id || selectedEmpObj?.user || null;
 
     if (assignTarget.type === 'CEO') {
-      setCeoManager(assignedManagerName);
-      setIsAssignOpen(false);
-      showToast(`Assigned ${assignedManagerName} as CEO.`, "success");
+      if (!managerId) {
+        showToast("Could not resolve manager ID.", "error");
+        return;
+      }
+
+      // Find any current CEOs in the users list
+      const currentCeos = users.filter(u => u.role?.name === 'CEO' || u.roleName === 'CEO');
+      
+      // Demote them to TeamMember
+      const demotePromises = currentCeos.map(u => 
+        fetch(`/api/users/${u._id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roleName: 'TeamMember' })
+        }).then(res => res.json())
+      );
+
+      Promise.all(demotePromises)
+        .then(() => {
+          // Promote the new CEO
+          return fetch(`/api/users/${managerId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ roleName: 'CEO' })
+          });
+        })
+        .then(res => res.json())
+        .then(resData => {
+          if (resData.success) {
+            showToast(`Assigned ${assignedManagerName} as CEO.`, "success");
+            setCeoManager(assignedManagerName);
+            setIsAssignOpen(false);
+            
+            // Reload users & employees to reflect changes
+            fetch('/api/users')
+              .then(res => res.json())
+              .then(data => {
+                if (data.success && Array.isArray(data.data)) {
+                  setUsers(data.data);
+                }
+              });
+            fetch('/api/employees')
+              .then(res => res.json())
+              .then(data => {
+                if (data.success && Array.isArray(data.data)) {
+                  setEmployees(data.data);
+                }
+              });
+          } else {
+            showToast(resData.message || "Failed to promote user to CEO.", "error");
+          }
+        })
+        .catch(err => {
+          console.error("Error setting CEO manager:", err);
+          showToast("Failed to assign CEO manager.", "error");
+        });
     } else {
       let endpoint = '';
       if (assignTarget.type === 'Country') endpoint = `/api/countries/${assignTarget.id}`;
@@ -271,8 +413,9 @@ export default function Hierarchy({ showToast, userRole }) {
       return;
     }
 
-    const selectedManagerObj = employees.find(emp => (emp.full_name || emp.name) === editFormData.manager);
-    const managerId = selectedManagerObj?._id || null;
+    const selectedUserObj = users.find(u => u.name === editFormData.manager);
+    const selectedEmpObj = employees.find(emp => (emp.full_name || emp.name) === editFormData.manager);
+    const managerId = selectedUserObj?._id || selectedEmpObj?.user?._id || selectedEmpObj?.user || null;
 
     let endpoint = '';
     if (editTarget.type === 'Country') endpoint = `/api/countries/${editTarget.id}`;
@@ -424,7 +567,7 @@ export default function Hierarchy({ showToast, userRole }) {
         <div className="bg-white border border-slate-200 rounded-xl p-8 shadow-xs flex flex-col items-center">
           <h2 className="text-lg font-bold text-slate-800 font-display mb-6">Interactive Channel Node Mapping</h2>
           
-          <div className="flex flex-col items-center gap-6 w-full max-w-lg">
+          <div className="flex flex-col items-center gap-6 w-full max-w-5xl">
             {/* FOUNDER */}
             <div className="flex flex-col items-center">
               <div className="bg-brand-dark text-white px-6 py-3 rounded-lg border-2 border-brand-orange shadow-md text-center">
@@ -448,90 +591,119 @@ export default function Hierarchy({ showToast, userRole }) {
                   Assign
                 </button>
               </div>
-              <div className="w-0.5 h-6 bg-slate-300"></div>
             </div>
 
-            {/* COUNTRY MANAGER */}
-            <div className="flex flex-col items-center w-full">
-              <div className="bg-slate-900 text-white px-6 py-3 rounded-lg border border-slate-700 shadow-md text-center relative group w-64">
-                <span className="text-[9px] uppercase font-bold text-blue-400">
-                  {countries[0] ? `Country Manager (${countries[0].name})` : "Country Manager (Not Configured)"}
-                </span>
-                <h4 className="font-bold font-display mt-0.5 huddo-v2-country-node-label">{countries[0]?.manager || "Not Assigned"}</h4>
-                <p className="text-[10px] text-slate-400">Coverage: {states.length} Active States</p>
-                <div className="hidden group-hover:flex gap-1 absolute right-2 top-2">
-                  <button 
-                    disabled={!countries[0]}
-                    onClick={() => countries[0] && triggerAssign(countries[0], 'Country')} 
-                    className="text-[9px] bg-brand-orange text-white px-1.5 py-0.5 rounded font-bold hover:bg-brand-orange-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Assign
-                  </button>
-                  <button 
-                    disabled={!countries[0]}
-                    onClick={() => countries[0] && triggerEdit(countries[0], 'Country')} 
-                    className="text-[9px] bg-slate-700 text-white px-1.5 py-0.5 rounded font-bold hover:bg-slate-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Edit
-                  </button>
+            {/* CEO to Countries Connection Line */}
+            {countries.length > 0 && <div className="w-0.5 h-6 bg-slate-300"></div>}
+
+            {/* Countries Grid */}
+            {countries.length === 0 ? (
+              <div className="flex flex-col items-center w-full">
+                <div className="bg-slate-900 text-white px-6 py-3 rounded-lg border border-slate-700 shadow-md text-center relative group w-64">
+                  <span className="text-[9px] uppercase font-bold text-blue-400">
+                    Country Manager (Not Configured)
+                  </span>
+                  <h4 className="font-bold font-display mt-0.5 huddo-v2-country-node-label">Not Assigned</h4>
+                  <p className="text-[10px] text-slate-400">Coverage: 0 Active States</p>
                 </div>
               </div>
-              <div className="w-0.5 h-6 bg-slate-300"></div>
-            </div>
-
-            {/* STATE MANAGERS (Multiple Nodes Grid) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full justify-items-center">
-              {states.slice(0, 2).map((st, i) => (
-                <div key={st.id} className="flex flex-col items-center w-full">
-                  <div className="bg-white border border-slate-200 p-4 rounded-lg shadow-sm w-full text-center relative group">
-                    <span className="text-[9px] uppercase font-bold text-slate-500">State Manager ({st.name})</span>
-                    <h4 className="font-bold text-slate-800 font-display mt-0.5 huddo-v2-state-node-label">{st.manager}</h4>
-                    <p className="text-[10px] text-slate-400">{st.citiesCount} Cities Managed</p>
-                    <div className="hidden group-hover:flex gap-1 absolute right-2 top-2">
-                      <button 
-                        onClick={() => triggerAssign(st, 'State')} 
-                        className="text-[9px] bg-brand-orange text-white px-1.5 py-0.5 rounded font-bold hover:bg-brand-orange-hover transition-colors"
-                      >
-                        Assign
-                      </button>
-                      <button 
-                        onClick={() => triggerEdit(st, 'State')} 
-                        className="text-[9px] bg-slate-700 text-white px-1.5 py-0.5 rounded font-bold hover:bg-slate-600 transition-colors"
-                      >
-                        Edit
-                      </button>
-                    </div>
-                  </div>
-                  <div className="w-0.5 h-6 bg-slate-300"></div>
-
-                  {/* CITY MANAGERS (Level down mapped to state) */}
-                  <div className="space-y-3 w-4/5">
-                    {cities.filter(ct => ct.state === st.name).slice(0, 1).map(ct => (
-                      <div key={ct.id} className="bg-orange-50/50 border border-orange-200 p-3 rounded-lg text-center relative group">
-                        <span className="text-[8px] uppercase font-bold text-brand-orange">City Manager ({ct.name})</span>
-                        <h5 className="font-bold text-slate-800 font-display mt-0.5 huddo-v2-city-node-label">{ct.manager}</h5>
-                        <p className="text-[9px] text-slate-500">{ct.retailersCount || 0} Retailers Mapped</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full justify-items-center">
+                {countries.map(country => {
+                  const countryStates = states.filter(s => s.countryId === country.id || s.country === country.name);
+                  return (
+                    <div key={country.id} className="flex flex-col items-center w-full border border-dashed border-slate-200 rounded-xl p-4 bg-slate-50/50 max-w-xl">
+                      <div className="bg-slate-900 text-white px-6 py-3 rounded-lg border border-slate-700 shadow-md text-center relative group w-64">
+                        <span className="text-[9px] uppercase font-bold text-blue-400">
+                          Country Manager ({country.name})
+                        </span>
+                        <h4 className="font-bold font-display mt-0.5 huddo-v2-country-node-label">{country.manager || "Not Assigned"}</h4>
+                        <p className="text-[10px] text-slate-400">Coverage: {countryStates.length} Active States</p>
                         <div className="hidden group-hover:flex gap-1 absolute right-2 top-2">
                           <button 
-                            onClick={() => triggerAssign(ct, 'City')} 
-                            className="text-[8px] bg-brand-orange text-white px-1.5 py-0.5 rounded font-bold hover:bg-brand-orange-hover transition-colors"
+                            onClick={() => triggerAssign(country, 'Country')} 
+                            className="text-[9px] bg-brand-orange text-white px-1.5 py-0.5 rounded font-bold hover:bg-brand-orange-hover transition-colors"
                           >
                             Assign
                           </button>
                           <button 
-                            onClick={() => triggerEdit(ct, 'City')} 
-                            className="text-[8px] bg-slate-700 text-white px-1.5 py-0.5 rounded font-bold hover:bg-slate-600 transition-colors"
+                            onClick={() => triggerEdit(country, 'Country')} 
+                            className="text-[9px] bg-slate-700 text-white px-1.5 py-0.5 rounded font-bold hover:bg-slate-600 transition-colors"
                           >
                             Edit
                           </button>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-
+                      
+                      {/* States under this Country */}
+                      {countryStates.length > 0 && (
+                        <>
+                          <div className="w-0.5 h-6 bg-slate-300"></div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full justify-items-center">
+                            {countryStates.map(st => {
+                              const stateCities = cities.filter(ct => ct.stateId === st.id || ct.state === st.name);
+                              return (
+                                <div key={st.id} className="flex flex-col items-center w-full">
+                                  <div className="bg-white border border-slate-200 p-4 rounded-lg shadow-sm w-full text-center relative group">
+                                    <span className="text-[9px] uppercase font-bold text-slate-500">State Manager ({st.name})</span>
+                                    <h4 className="font-bold text-slate-800 font-display mt-0.5 huddo-v2-state-node-label">{st.manager}</h4>
+                                    <p className="text-[10px] text-slate-400">{st.citiesCount} Cities Managed</p>
+                                    <div className="hidden group-hover:flex gap-1 absolute right-2 top-2">
+                                      <button 
+                                        onClick={() => triggerAssign(st, 'State')} 
+                                        className="text-[9px] bg-brand-orange text-white px-1.5 py-0.5 rounded font-bold hover:bg-brand-orange-hover transition-colors"
+                                      >
+                                        Assign
+                                      </button>
+                                      <button 
+                                        onClick={() => triggerEdit(st, 'State')} 
+                                        className="text-[9px] bg-slate-700 text-white px-1.5 py-0.5 rounded font-bold hover:bg-slate-600 transition-colors"
+                                      >
+                                        Edit
+                                      </button>
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Cities under this State */}
+                                  {stateCities.length > 0 && (
+                                    <>
+                                      <div className="w-0.5 h-6 bg-slate-300"></div>
+                                      <div className="space-y-3 w-full max-w-[180px]">
+                                        {stateCities.map(ct => (
+                                          <div key={ct.id} className="bg-orange-50/50 border border-orange-200 p-3 rounded-lg text-center relative group">
+                                            <span className="text-[8px] uppercase font-bold text-brand-orange">City Manager ({ct.name})</span>
+                                            <h5 className="font-bold text-slate-800 font-display mt-0.5 huddo-v2-city-node-label">{ct.manager}</h5>
+                                            <p className="text-[9px] text-slate-500">{ct.retailersCount || 0} Retailers</p>
+                                            <div className="hidden group-hover:flex gap-1 absolute right-2 top-2">
+                                              <button 
+                                                onClick={() => triggerAssign(ct, 'City')} 
+                                                className="text-[8px] bg-brand-orange text-white px-1.5 py-0.5 rounded font-bold hover:bg-brand-orange-hover transition-colors"
+                                              >
+                                                Assign
+                                              </button>
+                                              <button 
+                                                onClick={() => triggerEdit(ct, 'City')} 
+                                                className="text-[8px] bg-slate-700 text-white px-1.5 py-0.5 rounded font-bold hover:bg-slate-600 transition-colors"
+                                              >
+                                                Edit
+                                              </button>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       ) : activeTab === 'countries' ? (
@@ -625,8 +797,8 @@ export default function Hierarchy({ showToast, userRole }) {
               className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white"
             >
               <option value="">Select Manager...</option>
-              {employees.map(emp => (
-                <option key={emp._id} value={emp.full_name || emp.name}>{emp.full_name || emp.name}</option>
+              {getManagerOptions(addType).map(opt => (
+                <option key={opt._id} value={opt.name}>{opt.name}</option>
               ))}
             </select>
           </div>
@@ -653,8 +825,8 @@ export default function Hierarchy({ showToast, userRole }) {
               className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white"
             >
               <option value="">Select Manager...</option>
-              {employees.map(emp => (
-                <option key={emp._id} value={emp.full_name || emp.name}>{emp.full_name || emp.name}</option>
+              {getManagerOptions(assignTarget?.type).map(opt => (
+                <option key={opt._id} value={opt.name}>{opt.name}</option>
               ))}
             </select>
           </div>
@@ -698,8 +870,8 @@ export default function Hierarchy({ showToast, userRole }) {
               className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white"
             >
               <option value="">Select Manager...</option>
-              {employees.map(emp => (
-                <option key={emp._id} value={emp.full_name || emp.name}>{emp.full_name || emp.name}</option>
+              {getManagerOptions(editTarget?.type).map(opt => (
+                <option key={opt._id} value={opt.name}>{opt.name}</option>
               ))}
             </select>
           </div>

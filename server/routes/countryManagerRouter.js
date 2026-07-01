@@ -209,7 +209,19 @@ router.post('/', verifyJWT, async (req, res, next) => {
       return res.status(500).json({ success: false, message: 'CountryManager role not found.' });
     }
     
-    const employee_code = `CM-IN-2026-00${Math.floor(10 + Math.random() * 90)}`;
+    // Generate a unique employee code
+    let employee_code = '';
+    let isUnique = false;
+    while (!isUnique) {
+      const rand = Math.floor(100 + Math.random() * 900);
+      employee_code = `CM-IN-2026-00${rand}`;
+      const existingUser = await User.findOne({ 
+        $or: [ { employee_id: employee_code }, { user_code: employee_code } ] 
+      });
+      if (!existingUser) {
+        isUnique = true;
+      }
+    }
     
     // Create new User
     const user = new User({

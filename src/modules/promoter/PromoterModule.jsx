@@ -25,11 +25,11 @@ export default function PromoterModule({ userRole = 'Founder', showToast, onSwit
       setAdminScreen('analytics');
       setSelectedPromoterId(null);
     } else if (target.startsWith('edit-')) {
-      const id = Number(target.split('edit-')[1]);
+      const id = target.split('edit-')[1];
       setSelectedPromoterId(id);
       setAdminScreen('edit');
     } else if (target.startsWith('detail-')) {
-      const id = Number(target.split('detail-')[1]);
+      const id = target.split('detail-')[1];
       setSelectedPromoterId(id);
       setAdminScreen('detail');
     }

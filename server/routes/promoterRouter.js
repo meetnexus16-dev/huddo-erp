@@ -229,7 +229,18 @@ router.post('/register', verifyJWT, async (req, res, next) => {
     }
     
     const year = new Date().getFullYear();
-    const pCode = `PRO-${year}-00${Math.floor(10 + Math.random() * 90)}`;
+    let pCode = '';
+    let isUnique = false;
+    while (!isUnique) {
+      const rand = Math.floor(100 + Math.random() * 900);
+      pCode = `PRO-${year}-00${rand}`;
+      const existingUser = await User.findOne({ 
+        $or: [ { employee_id: pCode }, { user_code: pCode } ] 
+      });
+      if (!existingUser) {
+        isUnique = true;
+      }
+    }
     
     const user = new User({
       name: full_name,

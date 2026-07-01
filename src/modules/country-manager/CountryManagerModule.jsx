@@ -66,10 +66,10 @@ export default function CountryManagerModule({ userRole = 'Founder', showToast, 
       setAdminScreen('add');
       setSelectedCmId(null);
     } else if (target.startsWith('edit-')) {
-      setSelectedCmId(Number(target.split('edit-')[1]));
+      setSelectedCmId(target.split('edit-')[1]);
       setAdminScreen('edit');
     } else if (target.startsWith('detail-')) {
-      setSelectedCmId(Number(target.split('detail-')[1]));
+      setSelectedCmId(target.split('detail-')[1]);
       setAdminScreen('detail');
     }
   };
