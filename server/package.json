@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "seed": "node seeds/databaseSeed.js"
+    "seed": "node seeds/databaseSeed.js",
+    "init-db": "node seeds/initFreshDb.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
