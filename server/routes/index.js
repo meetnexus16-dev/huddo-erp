@@ -3,6 +3,13 @@ import { verifyJWT } from '../middleware/auth.js';
 import { checkPermission } from '../middleware/rbac.js';
 import { genericController } from '../controllers/genericController.js';
 import { getProfile, updateProfile, uploadPhoto, removePhoto } from '../controllers/profileController.js';
+import {
+  getAllProducts,
+  getProductById,
+  createProduct,
+  updateProduct,
+  deleteProduct
+} from '../controllers/productController.js';
 
 // Auth Controller imports
 import {
@@ -296,7 +303,16 @@ router.get('/upload/files/:id', async (req, res, next) => {
 });
 
 // ==========================================
-// 6. DYNAMIC CRUD REGISTRATION FOR ALL MODULES
+// 6. CUSTOM PRODUCT ROUTES (Pre-empting dynamic registration)
+// ==========================================
+router.get('/products', verifyJWT, checkPermission('products', 'view'), getAllProducts);
+router.get('/products/:id', verifyJWT, checkPermission('products', 'view'), getProductById);
+router.post('/products', verifyJWT, checkPermission('products', 'create'), upload.any(), createProduct);
+router.put('/products/:id', verifyJWT, checkPermission('products', 'edit'), upload.any(), updateProduct);
+router.delete('/products/:id', verifyJWT, checkPermission('products', 'delete'), deleteProduct);
+
+// ==========================================
+// 7. DYNAMIC CRUD REGISTRATION FOR ALL MODULES
 // ==========================================
 const modules = [
   { path: 'users', model: User, populate: ['role'] },
@@ -308,7 +324,6 @@ const modules = [
   { path: 'promoters', model: Promoter, populate: ['user', 'territory', 'retailers'] },
   { path: 'retailers', model: Retailer, populate: ['user', 'state', 'city', 'assigned_promoter', 'assigned_city_manager'] },
   { path: 'product-categories', model: ProductCategory },
-  { path: 'products', model: Product, populate: ['category'] },
   { path: 'product-variants', model: ProductVariant, populate: ['product'] },
   { path: 'orders', model: Order, populate: ['retailer', 'items.product_variant', 'created_by'] },
   { path: 'invoices', model: Invoice, populate: ['order', 'retailer'] },

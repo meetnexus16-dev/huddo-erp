@@ -12,7 +12,20 @@ const productSchema = new mongoose.Schema({
     type: String, 
     enum: ['Active', 'Discontinued', 'ComingSoon'], 
     default: 'Active' 
-  }
+  },
+  image: { type: String },
+  sizes: [{ type: String }],
+  colors: [{ type: String }],
+  colour: { type: String },
+  mrp: { type: Number },
+  costPrice: { type: Number },
+  margin: { type: Number },
+  retailerMargin: { type: Number, default: 20 },
+  cityManagerIncentive: { type: Number, default: 2 },
+  stateManagerIncentive: { type: Number, default: 1 },
+  hsn_code: { type: String },
+  franchise_points: { type: Number },
+  colorConfigs: { type: mongoose.Schema.Types.Mixed }
 }, { timestamps: true });
 
 productSchema.plugin(softDeletePlugin);
