@@ -531,16 +531,35 @@ export default function Products({ showToast }) {
     showToast(`Bulk updated all catalogue product prices by ${bulkAdjustment.value}%.`, "success");
   };
 
-  const handleSaveCommissions = (id, retM, cityM, stateM) => {
-    setProducts(products.map(p => 
-      p.id === id ? { 
-        ...p, 
-        retailerMargin: Number(retM), 
-        cityManagerIncentive: Number(cityM), 
-        stateManagerIncentive: Number(stateM) 
-      } : p
-    ));
-    showToast("Product commission structure updated.", "success");
+  const handleSaveCommissions = async (id, retM, cityM, stateM) => {
+    try {
+      const response = await fetch(`/api/products/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          retailerMargin: Number(retM),
+          cityManagerIncentive: Number(cityM),
+          stateManagerIncentive: Number(stateM)
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && data.success) {
+        setProducts(products.map(p => 
+          (p.id === id || p._id === id) ? { 
+            ...p, 
+            retailerMargin: Number(retM), 
+            cityManagerIncentive: Number(cityM), 
+            stateManagerIncentive: Number(stateM) 
+          } : p
+        ));
+        showToast("Product commission structure updated.", "success");
+      } else {
+        showToast(data.message || "Failed to update commission structure.", "error");
+      }
+    } catch (err) {
+      console.error(err);
+      showToast("Failed to update commission structure.", "error");
+    }
   };
 
   const toggleSizeCheckbox = (sz) => {
