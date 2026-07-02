@@ -596,7 +596,7 @@ export default function Products({ showToast }) {
   // List View Columns
   const columns = [
     { header: "Catalog Image", accessor: "image", sortable: false, render: (val, row) => (
-      <img src={val} alt={row.name} className="w-10 h-10 object-cover rounded-lg border border-slate-100" />
+      <img src={getImageUrl(val)} alt={row.name} className="w-10 h-10 object-cover rounded-lg border border-slate-100" />
     )},
     { header: "Product Name", accessor: "name", render: (val) => <span className="font-bold text-slate-800 font-display">{val}</span> },
     { header: "Article No.", accessor: "article_no" },
@@ -944,7 +944,7 @@ export default function Products({ showToast }) {
               className="bg-white border border-slate-200 rounded-xl overflow-hidden hover:border-brand-orange hover:shadow-md transition-all duration-300 flex flex-col justify-between group relative"
             >
               <div className="relative overflow-hidden">
-                <img src={prod.image} alt={prod.name} className="w-full h-44 object-cover border-b border-slate-100" />
+                <img src={getImageUrl(prod.image)} alt={prod.name} className="w-full h-44 object-cover border-b border-slate-100" />
                 <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                   <button 
                     onClick={(e) => { e.stopPropagation(); handleInspect(prod); }}
@@ -1262,7 +1262,7 @@ export default function Products({ showToast }) {
             {/* Header */}
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
               <div className="flex items-center gap-3">
-                <img src={viewingProd.image} alt={viewingProd.name} className="w-12 h-12 object-cover rounded-lg border border-slate-200" />
+                <img src={getImageUrl(viewingProd.image)} alt={viewingProd.name} className="w-12 h-12 object-cover rounded-lg border border-slate-200" />
                 <div>
                   <h3 className="text-sm font-bold text-slate-900 font-display">{viewingProd.name}</h3>
                   <span className="text-[10px] text-slate-400 uppercase font-bold">{viewingProd.category} • MRP: ₹{viewingProd.mrp}</span>
@@ -1353,7 +1353,7 @@ export default function Products({ showToast }) {
                                 <span className="w-3.5 h-3.5 rounded-full border border-slate-200 inline-block" style={{ backgroundColor: v.color }}></span>
                                 <span className="font-mono text-[10px] text-slate-500">{v.sku_variant}</span>
                                 {v.images && v.images.length > 0 && (
-                                  <img src={v.images[0]} alt="variant" className="w-6 h-6 object-cover rounded border border-slate-200 ml-auto" />
+                                  <img src={getImageUrl(v.images[0])} alt="variant" className="w-6 h-6 object-cover rounded border border-slate-200 ml-auto" />
                                 )}
                               </td>
                               <td className="px-4 py-2.5 text-right font-mono font-bold text-slate-650">{v.stock_quantity} pairs</td>

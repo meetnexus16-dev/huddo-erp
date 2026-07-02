@@ -13,6 +13,7 @@ import PettyCash from '../models/PettyCash.js';
 import ReturnLog from '../models/ReturnLog.js';
 import Invoice from '../models/Invoice.js';
 import { triggerNotification } from '../utils/triggerNotification.js';
+import { saveFileToDisk, deleteFileFromDisk } from '../utils/fileUpload.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -336,7 +337,7 @@ export const getPettyCashSummary = async (req, res, next) => {
   }
 };
 
-const handleReceiptUpload = (file) => {
+const handleReceiptUpload = async (file) => {
   if (!file) return null;
 
   // Validate allowed extensions: jpg, jpeg, png, webp, pdf
@@ -352,34 +353,16 @@ const handleReceiptUpload = (file) => {
     throw new Error('File size exceeds the 5 MB limit.');
   }
 
-  // Create uploads directory recursively if not exists
-  const uploadsDir = path.join(__dirname, '..', '..', 'public', 'uploads', 'petty-cash');
-  if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-  }
-
-  // Generate unique filename to avoid conflicts
-  const uniqueName = `receipt_${Date.now()}_${Math.round(Math.random() * 1e9)}${ext}`;
-  const filePath = path.join(uploadsDir, uniqueName);
-
-  // Write file to disk
-  fs.writeFileSync(filePath, file.buffer);
-
-  // Return stored path relative to public folder (e.g. uploads/petty-cash/receipt_123.jpg)
-  return `uploads/petty-cash/${uniqueName}`;
+  return await saveFileToDisk(file, 'petty-cash');
 };
 
 const deleteReceiptFile = (relativeFilePath) => {
   if (!relativeFilePath) return;
-  try {
-    // Resolve absolute path
-    const filePath = path.join(__dirname, '..', '..', 'public', relativeFilePath);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
-  } catch (err) {
-    console.error(`Failed to delete file: ${relativeFilePath}`, err);
+  let pathToDelete = relativeFilePath;
+  if (!pathToDelete.startsWith('/')) {
+    pathToDelete = '/' + pathToDelete;
   }
+  deleteFileFromDisk(pathToDelete);
 };
 
 export const addPettyCash = async (req, res, next) => {
@@ -392,7 +375,7 @@ export const addPettyCash = async (req, res, next) => {
     let receipt_image = null;
     if (req.file) {
       try {
-        receipt_image = handleReceiptUpload(req.file);
+        receipt_image = await handleReceiptUpload(req.file);
       } catch (err) {
         return res.status(400).json({ error: err.message });
       }
@@ -439,7 +422,7 @@ export const updatePettyCash = async (req, res, next) => {
       // User uploaded a replacement file
       try {
         const oldImage = entry.receipt_image;
-        entry.receipt_image = handleReceiptUpload(req.file);
+        entry.receipt_image = await handleReceiptUpload(req.file);
         if (oldImage) {
           deleteReceiptFile(oldImage);
         }

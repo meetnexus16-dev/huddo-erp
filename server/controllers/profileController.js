@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import User from '../models/User.js';
 import Employee from '../models/Employee.js';
+import { saveFileToDisk, deleteFileFromDisk } from '../utils/fileUpload.js';
 
 // Resolve directory name in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -194,33 +195,13 @@ export const uploadPhoto = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Invalid file format. Allowed: JPG, JPEG, PNG, WEBP.' });
     }
 
-    const uploadDir = path.join(__dirname, '..', '..', 'public', 'uploads', 'profile');
-
-    // Ensure directory exists
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-
     // Find and delete old photo from disk first
     const user = await User.findById(req.user._id);
-    if (user && user.profile_photo && user.profile_photo.startsWith('/uploads/profile/')) {
-      const oldPath = path.join(__dirname, '..', '..', 'public', user.profile_photo);
-      try {
-        if (fs.existsSync(oldPath)) {
-          fs.unlinkSync(oldPath);
-        }
-      } catch (err) {
-        console.error("Error deleting old profile photo file:", err);
-      }
+    if (user && user.profile_photo) {
+      deleteFileFromDisk(user.profile_photo);
     }
 
-    const filename = `${req.user._id}-${Date.now()}${ext}`;
-    const filepath = path.join(uploadDir, filename);
-
-    // Save binary data to file
-    fs.writeFileSync(filepath, file.buffer);
-
-    const relativePath = `/uploads/profile/${filename}`;
+    const relativePath = await saveFileToDisk(file, 'profile');
 
     // Update User model
     if (user) {
@@ -254,15 +235,8 @@ export const removePhoto = async (req, res, next) => {
     }
 
     // Delete photo file from disk
-    if (user.profile_photo && user.profile_photo.startsWith('/uploads/profile/')) {
-      const filepath = path.join(__dirname, '..', '..', 'public', user.profile_photo);
-      try {
-        if (fs.existsSync(filepath)) {
-          fs.unlinkSync(filepath);
-        }
-      } catch (err) {
-        console.error("Error deleting profile photo file:", err);
-      }
+    if (user.profile_photo) {
+      deleteFileFromDisk(user.profile_photo);
     }
 
     user.profile_photo = undefined;

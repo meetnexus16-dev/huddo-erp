@@ -126,6 +126,7 @@ import PettyCash from '../models/PettyCash.js';
 import Lead from '../models/Lead.js';
 import ReturnLog from '../models/ReturnLog.js';
 import Upload from '../models/Upload.js';
+import { saveFileToDisk } from '../utils/fileUpload.js';
 import countryManagerRouter from './countryManagerRouter.js';
 import promoterRouter from './promoterRouter.js';
 
@@ -234,22 +235,15 @@ router.post('/upload/single', verifyJWT, upload.single('file'), async (req, res,
       return res.status(400).json({ success: false, message: 'No file uploaded.' });
     }
 
-    const uploadDoc = new Upload({
-      filename: req.file.originalname,
-      mimetype: req.file.mimetype,
-      data: req.file.buffer.toString('base64'),
-      size: req.file.size
-    });
-
-    await uploadDoc.save();
+    const fileUrl = await saveFileToDisk(req.file, 'general');
 
     res.status(200).json({
       success: true,
       message: 'File uploaded successfully.',
       data: {
-        url: `/api/v1/upload/files/${uploadDoc._id}`,
-        original_name: uploadDoc.filename,
-        size: uploadDoc.size
+        url: fileUrl,
+        original_name: req.file.originalname,
+        size: req.file.size
       }
     });
   } catch (error) {
@@ -265,17 +259,11 @@ router.post('/upload/multiple', verifyJWT, upload.array('files', 10), async (req
 
     const uploadedFiles = [];
     for (const file of req.files) {
-      const uploadDoc = new Upload({
-        filename: file.originalname,
-        mimetype: file.mimetype,
-        data: file.buffer.toString('base64'),
-        size: file.size
-      });
-      await uploadDoc.save();
+      const fileUrl = await saveFileToDisk(file, 'general');
       uploadedFiles.push({
-        url: `/api/v1/upload/files/${uploadDoc._id}`,
-        original_name: uploadDoc.filename,
-        size: uploadDoc.size
+        url: fileUrl,
+        original_name: file.originalname,
+        size: file.size
       });
     }
 

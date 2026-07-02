@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import Product from '../models/Product.js';
 import ProductVariant from '../models/ProductVariant.js';
 import Upload from '../models/Upload.js';
+import { saveFileToDisk } from '../utils/fileUpload.js';
 
 // Helper to generate SKU variant string
 const generateVariantSku = (productSku, color, size) => {
@@ -44,32 +45,20 @@ const processMultipartFiles = async (req) => {
     // 1. Process main product image file
     const mainImageFile = req.files.find(f => f.fieldname === 'image');
     if (mainImageFile) {
-      const uploadDoc = new Upload({
-        filename: mainImageFile.originalname,
-        mimetype: mainImageFile.mimetype,
-        data: mainImageFile.buffer.toString('base64'),
-        size: mainImageFile.size
-      });
-      await uploadDoc.save();
-      req.body.image = `/api/v1/upload/files/${uploadDoc._id}`;
+      const fileUrl = await saveFileToDisk(mainImageFile, 'products');
+      req.body.image = fileUrl;
     }
 
     // 2. Process colorConfigs files
     for (const file of req.files) {
       if (file.fieldname.startsWith('colorImage_')) {
         const color = file.fieldname.substring('colorImage_'.length);
-        const uploadDoc = new Upload({
-          filename: file.originalname,
-          mimetype: file.mimetype,
-          data: file.buffer.toString('base64'),
-          size: file.size
-        });
-        await uploadDoc.save();
+        const fileUrl = await saveFileToDisk(file, 'products');
         
         if (!req.body.colorConfigs[color]) {
           req.body.colorConfigs[color] = {};
         }
-        req.body.colorConfigs[color].image = `/api/v1/upload/files/${uploadDoc._id}`;
+        req.body.colorConfigs[color].image = fileUrl;
         req.body.colorConfigs[color].mode = 'custom';
       }
     }
