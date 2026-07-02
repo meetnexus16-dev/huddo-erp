@@ -28,6 +28,18 @@ const processMultipartFiles = async (req) => {
   req.body.sizes = parseJsonField(req.body.sizes);
   req.body.colors = parseJsonField(req.body.colors);
 
+  if (req.body.category) {
+    if (!mongoose.isValidObjectId(req.body.category)) {
+      const ProductCategory = mongoose.model('ProductCategory');
+      let catDoc = await ProductCategory.findOne({ name: { $regex: new RegExp(`^${req.body.category}$`, 'i') } });
+      if (!catDoc) {
+        catDoc = new ProductCategory({ name: req.body.category });
+        await catDoc.save();
+      }
+      req.body.category = catDoc._id;
+    }
+  }
+
   if (req.files && req.files.length > 0) {
     // 1. Process main product image file
     const mainImageFile = req.files.find(f => f.fieldname === 'image');

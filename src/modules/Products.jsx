@@ -748,15 +748,16 @@ export default function Products({ showToast }) {
                   <button
                     type="button"
                     onClick={() => setEditFormData({ ...editFormData, image: '', imageFile: null })}
-                    className="absolute inset-0 bg-rose-600/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white"
+                    className="absolute inset-0 bg-rose-600/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white cursor-pointer"
                   >
                     <X className="w-5 h-5" />
                   </button>
                 </div>
               ) : (
-                <label className="w-20 h-20 flex flex-col items-center justify-center border border-dashed border-slate-300 hover:border-brand-orange bg-slate-50 hover:bg-slate-100/50 rounded-lg cursor-pointer transition-colors">
-                  <Plus className="w-5 h-5 text-slate-400" />
-                  <span className="text-[10px] text-slate-400 mt-1 font-semibold">Upload</span>
+                <label className="w-full h-24 flex flex-col items-center justify-center border border-dashed border-slate-300 hover:border-brand-orange bg-slate-50 hover:bg-slate-100/50 rounded-lg cursor-pointer transition-colors">
+                  <Plus className="w-6 h-6 text-slate-400" />
+                  <span className="text-xs text-slate-500 mt-1 font-semibold">Click to upload product image</span>
+                  <span className="text-[10px] text-slate-400 mt-0.5">Supports PNG, JPG, JPEG</span>
                   <input
                     type="file"
                     accept="image/*"
@@ -771,18 +772,8 @@ export default function Products({ showToast }) {
                   />
                 </label>
               )}
-                <div className="flex-1">
-                  <input
-                    type="text"
-                    placeholder="Enter main product image URL..."
-                    value={editFormData.image}
-                    onChange={(e) => setEditFormData({ ...editFormData, image: e.target.value })}
-                    className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none"
-                  />
-                  <span className="text-[9px] text-slate-400 font-semibold mt-1 block">Specify a remote URL or select an image file to upload.</span>
-                </div>
-              </div>
             </div>
+          </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -854,21 +845,23 @@ export default function Products({ showToast }) {
                         </div>
                         
                         {config.mode === 'custom' && (
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-3 w-full">
                             {config.image ? (
                               <div className="relative w-12 h-12 rounded-lg border border-slate-200 overflow-hidden group">
                                 <img src={getImageUrl(config.image)} alt={col} className="w-full h-full object-cover" />
                                 <button
                                   type="button"
                                   onClick={() => handleColorImageRemoveEdit(col)}
-                                  className="absolute inset-0 bg-rose-600/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white"
+                                  className="absolute inset-0 bg-rose-600/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white cursor-pointer"
                                 >
                                   <X className="w-4 h-4" />
                                 </button>
                               </div>
                             ) : (
-                              <label className="w-12 h-12 flex flex-col items-center justify-center border border-dashed border-slate-300 hover:border-brand-orange bg-white rounded-lg cursor-pointer transition-colors">
-                                <Plus className="w-4 h-4 text-slate-400" />
+                              <label className="w-full h-12 flex flex-col items-center justify-center border border-dashed border-slate-300 hover:border-brand-orange bg-white rounded-lg cursor-pointer transition-colors">
+                                <span className="text-[10px] text-slate-500 font-semibold flex items-center gap-1">
+                                  <Plus className="w-3.5 h-3.5 text-slate-400" /> Click to upload color variant image
+                                </span>
                                 <input
                                   type="file"
                                   accept="image/*"
@@ -893,13 +886,6 @@ export default function Products({ showToast }) {
                                 />
                               </label>
                             )}
-                            <input
-                              type="text"
-                              placeholder="Or enter image URL..."
-                              value={config.image || ''}
-                              onChange={(e) => handleColorImageChangeEdit(col, e.target.value)}
-                              className="flex-1 text-xs border border-slate-200 rounded-lg p-2 focus:outline-none bg-white"
-                            />
                           </div>
                         )}
                       </div>
@@ -1070,15 +1056,16 @@ export default function Products({ showToast }) {
                   <button
                     type="button"
                     onClick={() => setFormData({ ...formData, image: '', imageFile: null })}
-                    className="absolute inset-0 bg-rose-600/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white"
+                    className="absolute inset-0 bg-rose-600/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white cursor-pointer"
                   >
                     <X className="w-5 h-5" />
                   </button>
                 </div>
               ) : (
-                <label className="w-20 h-20 flex flex-col items-center justify-center border border-dashed border-slate-300 hover:border-brand-orange bg-slate-50 hover:bg-slate-100/50 rounded-lg cursor-pointer transition-colors">
-                  <Plus className="w-5 h-5 text-slate-400" />
-                  <span className="text-[10px] text-slate-400 mt-1 font-semibold">Upload</span>
+                <label className="w-full h-24 flex flex-col items-center justify-center border border-dashed border-slate-300 hover:border-brand-orange bg-slate-50 hover:bg-slate-100/50 rounded-lg cursor-pointer transition-colors">
+                  <Plus className="w-6 h-6 text-slate-400" />
+                  <span className="text-xs text-slate-500 mt-1 font-semibold">Click to upload product image</span>
+                  <span className="text-[10px] text-slate-400 mt-0.5">Supports PNG, JPG, JPEG</span>
                   <input
                     type="file"
                     accept="image/*"
@@ -1093,16 +1080,6 @@ export default function Products({ showToast }) {
                   />
                 </label>
               )}
-              <div className="flex-1">
-                <input
-                  type="text"
-                  placeholder="Enter main product image URL..."
-                  value={formData.image}
-                  onChange={(e) => setFormData({ ...formData, image: e.target.value })}
-                  className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none"
-                />
-                <span className="text-[9px] text-slate-400 font-semibold mt-1 block">Specify a remote URL or select an image file to upload.</span>
-              </div>
             </div>
           </div>
 
@@ -1176,21 +1153,23 @@ export default function Products({ showToast }) {
                       </div>
                       
                       {config.mode === 'custom' && (
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 w-full">
                           {config.image ? (
                             <div className="relative w-12 h-12 rounded-lg border border-slate-200 overflow-hidden group">
                               <img src={getImageUrl(config.image)} alt={col} className="w-full h-full object-cover" />
                               <button
                                 type="button"
                                 onClick={() => handleColorImageRemove(col)}
-                                className="absolute inset-0 bg-rose-600/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white"
+                                className="absolute inset-0 bg-rose-600/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white cursor-pointer"
                               >
                                 <X className="w-4 h-4" />
                               </button>
                             </div>
                           ) : (
-                            <label className="w-12 h-12 flex flex-col items-center justify-center border border-dashed border-slate-300 hover:border-brand-orange bg-white rounded-lg cursor-pointer transition-colors">
-                              <Plus className="w-4 h-4 text-slate-400" />
+                            <label className="w-full h-12 flex flex-col items-center justify-center border border-dashed border-slate-300 hover:border-brand-orange bg-white rounded-lg cursor-pointer transition-colors">
+                              <span className="text-[10px] text-slate-500 font-semibold flex items-center gap-1">
+                                <Plus className="w-3.5 h-3.5 text-slate-400" /> Click to upload color variant image
+                              </span>
                               <input
                                 type="file"
                                 accept="image/*"
@@ -1215,13 +1194,6 @@ export default function Products({ showToast }) {
                               />
                             </label>
                           )}
-                          <input
-                            type="text"
-                            placeholder="Or enter image URL..."
-                            value={config.image || ''}
-                            onChange={(e) => handleColorImageChange(col, e.target.value)}
-                            className="flex-1 text-xs border border-slate-200 rounded-lg p-2 focus:outline-none bg-white"
-                          />
                         </div>
                       )}
                     </div>
