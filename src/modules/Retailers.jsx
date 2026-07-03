@@ -6,8 +6,13 @@ import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianG
 
 export default function Retailers({ showToast }) {
   const [retailers, setRetailers] = useState([]);
+  const [statesList, setStatesList] = useState([]);
+  const [citiesList, setCitiesList] = useState([]);
+  const [promotersList, setPromotersList] = useState([]);
+  const [cityManagersList, setCityManagersList] = useState([]);
 
   React.useEffect(() => {
+    // 1. Fetch Retailers
     fetch('/api/retailers')
       .then(res => res.json())
       .then(resData => {
@@ -19,11 +24,11 @@ export default function Retailers({ showToast }) {
             email: ret.email,
             mobile: ret.mobile,
             address: ret.shop_address || '',
-            state: ret.state?.name || ret.state || 'Maharashtra',
-            city: ret.city?.name || ret.city || 'Mumbai',
+            state: ret.state?.name || ret.state || 'Not Assigned',
+            city: ret.city?.name || ret.city || 'Not Assigned',
             category: ret.category || 'Standard',
-            promoter: ret.assigned_promoter?.full_name || 'None',
-            cityManager: ret.assigned_city_manager?.name || 'Sanjay Joshi',
+            promoter: ret.assigned_promoter?.name || ret.assigned_promoter?.full_name || 'None',
+            cityManager: ret.assigned_city_manager?.name || 'Not Assigned',
             ordersCount: ret.ordersCount || 10,
             revenue: ret.revenue || 0,
             status: ret.is_verified ? 'Approved' : 'Pending Verification',
@@ -40,6 +45,49 @@ export default function Retailers({ showToast }) {
         console.error("Error loading retailers from database:", err);
         setRetailers(initialRetailers);
       });
+
+    // 2. Fetch States
+    fetch('/api/states?limit=500')
+      .then(res => res.json())
+      .then(resData => {
+        if (resData.success && Array.isArray(resData.data)) {
+          setStatesList(resData.data.map(s => ({ id: s._id, name: s.name })));
+        }
+      })
+      .catch(err => console.error("Error loading states:", err));
+
+    // 3. Fetch Cities
+    fetch('/api/cities?limit=500')
+      .then(res => res.json())
+      .then(resData => {
+        if (resData.success && Array.isArray(resData.data)) {
+          setCitiesList(resData.data.map(c => ({ id: c._id, name: c.name, stateId: c.state?._id || c.state })));
+        }
+      })
+      .catch(err => console.error("Error loading cities:", err));
+
+    // 4. Fetch Promoters
+    fetch('/api/promoters')
+      .then(res => res.json())
+      .then(resData => {
+        if (resData.success && Array.isArray(resData.data)) {
+          setPromotersList(resData.data.map(p => ({ id: p.promoter_id || p._id, name: p.full_name || p.name })));
+        }
+      })
+      .catch(err => console.error("Error loading promoters:", err));
+
+    // 5. Fetch Users (filter CityManager)
+    fetch('/api/users?limit=500&page=1')
+      .then(res => res.json())
+      .then(resData => {
+        if (resData.success && Array.isArray(resData.data)) {
+          const managers = resData.data
+            .filter(u => u.roleName === 'CityManager' || u.role?.name === 'CityManager')
+            .map(u => ({ id: u._id, name: u.name }));
+          setCityManagersList(managers);
+        }
+      })
+      .catch(err => console.error("Error loading city managers:", err));
   }, []);
 
   const [activeCategoryTab, setActiveCategoryTab] = useState('All'); // All | Platinum | Gold | Silver | Standard | Pending
@@ -51,8 +99,8 @@ export default function Retailers({ showToast }) {
   // Form State
   const [formData, setFormData] = useState({
     shopName: '', owner: '', email: '', mobile: '', address: '',
-    state: 'Maharashtra', city: 'Mumbai', category: 'Standard',
-    promoter: 'None', cityManager: 'Sanjay Joshi',
+    state: '', city: '', category: 'Standard',
+    promoter: '', cityManager: '',
     gstNo: '', panNo: '', aadhaarNo: ''
   });
 
@@ -61,7 +109,31 @@ export default function Retailers({ showToast }) {
   const [isBulkChangeOpen, setIsBulkChangeOpen] = useState(false);
   const [bulkCategory, setBulkCategory] = useState('Gold');
   const [isBulkAssignOpen, setIsBulkAssignOpen] = useState(false);
-  const [bulkManager, setBulkManager] = useState('Sanjay Joshi');
+  const [bulkManager, setBulkManager] = useState('');
+
+  const handleStateChange = (stateId) => {
+    const matchedCities = citiesList.filter(c => c.stateId === stateId);
+    setFormData(prev => ({
+      ...prev,
+      state: stateId,
+      city: matchedCities[0]?.id || ''
+    }));
+  };
+
+  const handleOpenAddModal = () => {
+    const firstState = statesList[0]?.id || '';
+    const filteredCities = citiesList.filter(c => c.stateId === firstState);
+    setFormData({
+      shopName: '', owner: '', email: '', mobile: '', address: '',
+      state: firstState,
+      city: filteredCities[0]?.id || '',
+      category: 'Standard',
+      promoter: '',
+      cityManager: cityManagersList[0]?.id || '',
+      gstNo: '', panNo: '', aadhaarNo: ''
+    });
+    setIsAddOpen(true);
+  };
 
   const handleAddSubmit = (e) => {
     e.preventDefault();
@@ -70,45 +142,109 @@ export default function Retailers({ showToast }) {
       return;
     }
 
-    const newRetailer = {
-      id: `RET-${Date.now()}`,
-      ...formData,
-      ordersCount: 0,
-      revenue: 0,
-      status: "Approved"
-    };
-
-    // Save to database asynchronously
     fetch('/api/retailers', {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify({
         business_name: formData.shopName,
         owner_name: formData.owner,
         email: formData.email,
         mobile: formData.mobile,
         shop_address: formData.address,
+        state: formData.state || null,
+        city: formData.city || null,
         category: formData.category,
+        assigned_promoter: formData.promoter && formData.promoter !== '' ? formData.promoter : null,
+        assigned_city_manager: formData.cityManager || null,
         gst_number: formData.gstNo,
         pan_number: formData.panNo,
         aadhaar_number: formData.aadhaarNo,
         is_verified: true,
         is_active: true
       })
-    }).catch(err => console.error("Failed to save retailer:", err));
-
-    setRetailers([...retailers, newRetailer]);
-    setIsAddOpen(false);
-    showToast(`Retailer "${newRetailer.shopName}" registered successfully!`, "success");
+    })
+    .then(res => res.json())
+    .then(resData => {
+      if (resData.success && resData.data) {
+        const ret = resData.data;
+        const newRetailer = {
+          id: ret._id,
+          shopName: ret.business_name,
+          owner: ret.owner_name,
+          email: ret.email,
+          mobile: ret.mobile,
+          address: ret.shop_address || '',
+          state: ret.state?.name || 'Not Assigned',
+          city: ret.city?.name || 'Not Assigned',
+          category: ret.category || 'Standard',
+          promoter: ret.assigned_promoter?.name || ret.assigned_promoter?.full_name || 'None',
+          cityManager: ret.assigned_city_manager?.name || 'Not Assigned',
+          ordersCount: ret.ordersCount || 0,
+          revenue: ret.revenue || 0,
+          status: ret.is_verified ? 'Approved' : 'Pending Verification',
+          gstNo: ret.gst_number || '',
+          panNo: ret.pan_number || '',
+          aadhaarNo: ret.aadhaar_number || ''
+        };
+        setRetailers(prev => [...prev, newRetailer]);
+        setIsAddOpen(false);
+        showToast(`Retailer "${newRetailer.shopName}" registered successfully!`, "success");
+      } else {
+        showToast(resData.message || "Failed to register retailer.", "error");
+      }
+    })
+    .catch(err => {
+      console.error("Failed to save retailer:", err);
+      showToast("Error registering retailer.", "error");
+    });
   };
 
   const handleApprove = (id) => {
-    setRetailers(retailers.map(r => r.id === id ? { ...r, status: "Approved" } : r));
-    showToast("Shop registration approved and added to active channel.", "success");
+    fetch(`/api/retailers/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ is_verified: true })
+    })
+    .then(res => res.json())
+    .then(resData => {
+      if (resData.success) {
+        setRetailers(prev => prev.map(r => r.id === id ? { ...r, status: "Approved" } : r));
+        showToast("Shop registration approved and added to active channel.", "success");
+      } else {
+        showToast("Failed to approve retailer.", "error");
+      }
+    })
+    .catch(err => {
+      console.error("Error approving retailer:", err);
+      showToast("Error approving retailer.", "error");
+    });
   };
 
   const handleReject = (id) => {
-    setRetailers(retailers.map(r => r.id === id ? { ...r, status: "Rejected" } : r));
-    showToast("Shop registration rejected.", "error");
+    fetch(`/api/retailers/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ is_verified: false, is_active: false })
+    })
+    .then(res => res.json())
+    .then(resData => {
+      if (resData.success) {
+        setRetailers(prev => prev.map(r => r.id === id ? { ...r, status: "Rejected" } : r));
+        showToast("Shop registration rejected.", "error");
+      } else {
+        showToast("Failed to reject retailer.", "error");
+      }
+    })
+    .catch(err => {
+      console.error("Error rejecting retailer:", err);
+      showToast("Error rejecting retailer.", "error");
+    });
   };
 
   const handleBulkCategoryChange = () => {
@@ -116,10 +252,29 @@ export default function Retailers({ showToast }) {
       showToast("No retailers selected.", "error");
       return;
     }
-    setRetailers(retailers.map(r => selectedIds.includes(r.id) ? { ...r, category: bulkCategory } : r));
-    setSelectedIds([]);
-    setIsBulkChangeOpen(false);
-    showToast(`Bulk updated category for ${selectedIds.length} retailers to ${bulkCategory}.`, "success");
+    showToast(`Updating categories for ${selectedIds.length} retailers...`, "info");
+    Promise.all(
+      selectedIds.map(id =>
+        fetch(`/api/retailers/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category: bulkCategory })
+        }).then(res => res.json())
+      )
+    )
+    .then(results => {
+      const successfulIds = results
+        .filter(res => res.success && res.data)
+        .map(res => res.data._id);
+      setRetailers(prev => prev.map(r => selectedIds.includes(r.id) ? { ...r, category: bulkCategory } : r));
+      setSelectedIds([]);
+      setIsBulkChangeOpen(false);
+      showToast(`Bulk updated category for ${successfulIds.length} retailers to ${bulkCategory}.`, "success");
+    })
+    .catch(err => {
+      console.error("Error bulk updating categories:", err);
+      showToast("Error updating retailer categories.", "error");
+    });
   };
 
   const handleBulkAssignManager = () => {
@@ -127,10 +282,31 @@ export default function Retailers({ showToast }) {
       showToast("No retailers selected.", "error");
       return;
     }
-    setRetailers(retailers.map(r => selectedIds.includes(r.id) ? { ...r, cityManager: bulkManager } : r));
-    setSelectedIds([]);
-    setIsBulkAssignOpen(false);
-    showToast(`Assigned manager to ${selectedIds.length} retailers.`, "success");
+    const matchedManager = cityManagersList.find(m => m.id === bulkManager);
+    const managerName = matchedManager ? matchedManager.name : 'Not Assigned';
+    showToast(`Assigning manager to ${selectedIds.length} retailers...`, "info");
+    Promise.all(
+      selectedIds.map(id =>
+        fetch(`/api/retailers/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ assigned_city_manager: bulkManager })
+        }).then(res => res.json())
+      )
+    )
+    .then(results => {
+      const successfulIds = results
+        .filter(res => res.success && res.data)
+        .map(res => res.data._id);
+      setRetailers(prev => prev.map(r => selectedIds.includes(r.id) ? { ...r, cityManager: managerName } : r));
+      setSelectedIds([]);
+      setIsBulkAssignOpen(false);
+      showToast(`Assigned manager to ${successfulIds.length} retailers.`, "success");
+    })
+    .catch(err => {
+      console.error("Error bulk assigning manager:", err);
+      showToast("Error assigning manager to retailers.", "error");
+    });
   };
 
   const toggleSelectRow = (id) => {
@@ -216,7 +392,7 @@ export default function Retailers({ showToast }) {
         </div>
         
         <button 
-          onClick={() => setIsAddOpen(true)}
+          onClick={handleOpenAddModal}
           className="flex items-center gap-2 px-4 py-2 bg-brand-orange hover:bg-brand-orange-hover text-white text-sm font-semibold rounded-lg shadow-sm transition-colors self-start"
         >
           <Plus className="w-4 h-4" />
@@ -249,7 +425,10 @@ export default function Retailers({ showToast }) {
               Change Tier Category
             </button>
             <button 
-              onClick={() => setIsBulkAssignOpen(true)}
+              onClick={() => {
+                setBulkManager(cityManagersList[0]?.id || '');
+                setIsBulkAssignOpen(true);
+              }}
               className="px-3 py-1.5 bg-brand-orange hover:bg-brand-orange-hover text-xs font-bold rounded transition-colors"
             >
               Assign Local Manager
@@ -306,21 +485,20 @@ export default function Retailers({ showToast }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">State Allocation</label>
-              <select value={formData.state} onChange={(e) => setFormData({...formData, state: e.target.value})} className="w-full text-sm border border-slate-200 rounded-lg p-2 bg-white">
-                <option value="Maharashtra">Maharashtra</option>
-                <option value="Delhi">Delhi</option>
-                <option value="Karnataka">Karnataka</option>
-                <option value="Gujarat">Gujarat</option>
+              <select value={formData.state} onChange={(e) => handleStateChange(e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg p-2 bg-white">
+                {statesList.length === 0 && <option value="">No States Found</option>}
+                {statesList.map(st => (
+                  <option key={st.id} value={st.id}>{st.name}</option>
+                ))}
               </select>
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">City Location</label>
               <select value={formData.city} onChange={(e) => setFormData({...formData, city: e.target.value})} className="w-full text-sm border border-slate-200 rounded-lg p-2 bg-white">
-                <option value="Mumbai">Mumbai</option>
-                <option value="Pune">Pune</option>
-                <option value="New Delhi">New Delhi</option>
-                <option value="Bengaluru">Bengaluru</option>
-                <option value="Ahmedabad">Ahmedabad</option>
+                {citiesList.filter(c => c.stateId === formData.state).length === 0 && <option value="">No Cities Found</option>}
+                {citiesList.filter(c => c.stateId === formData.state).map(ct => (
+                  <option key={ct.id} value={ct.id}>{ct.name}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -338,19 +516,19 @@ export default function Retailers({ showToast }) {
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Promoter</label>
               <select value={formData.promoter} onChange={(e) => setFormData({...formData, promoter: e.target.value})} className="w-full text-[11px] border border-slate-200 rounded p-1.5 bg-white">
-                <option value="None">None</option>
-                <option value="Suresh Raina">Suresh Raina</option>
-                <option value="Harbhajan Singh">Harbhajan Singh</option>
-                <option value="Gautam Gambhir">Gautam Gambhir</option>
+                <option value="">None</option>
+                {promotersList.map(pr => (
+                  <option key={pr.id} value={pr.id}>{pr.name}</option>
+                ))}
               </select>
             </div>
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">City Manager</label>
               <select value={formData.cityManager} onChange={(e) => setFormData({...formData, cityManager: e.target.value})} className="w-full text-[11px] border border-slate-200 rounded p-1.5 bg-white">
-                <option value="Sanjay Joshi">Sanjay Joshi</option>
-                <option value="Amit Bansal">Amit Bansal</option>
-                <option value="Nikhil Gowda">Nikhil Gowda</option>
-                <option value="Harsh Shah">Harsh Shah</option>
+                {cityManagersList.length === 0 && <option value="">No Managers Found</option>}
+                {cityManagersList.map(mgr => (
+                  <option key={mgr.id} value={mgr.id}>{mgr.name}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -393,10 +571,9 @@ export default function Retailers({ showToast }) {
             onChange={(e) => setBulkManager(e.target.value)}
             className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white"
           >
-            <option value="Sanjay Joshi">Sanjay Joshi</option>
-            <option value="Amit Bansal">Amit Bansal</option>
-            <option value="Nikhil Gowda">Nikhil Gowda</option>
-            <option value="Harsh Shah">Harsh Shah</option>
+            {cityManagersList.map(mgr => (
+              <option key={mgr.id} value={mgr.id}>{mgr.name}</option>
+            ))}
           </select>
         </div>
       </Modal>
