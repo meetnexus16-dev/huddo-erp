@@ -19,6 +19,7 @@ export default function CountryManagerModule({ userRole = 'Founder', showToast, 
   // Admin routing state
   const [adminScreen, setAdminScreen] = useState('list'); // list | add | edit | detail
   const [selectedCmId, setSelectedCmId] = useState(null);
+  const [listVersion, setListVersion] = useState(0);
 
   // Own Workspace state (for Country Manager role)
   const [activeTab, setActiveTab] = useState('Dashboard');
@@ -62,6 +63,7 @@ export default function CountryManagerModule({ userRole = 'Founder', showToast, 
     if (target === 'list') {
       setAdminScreen('list');
       setSelectedCmId(null);
+      setListVersion((v) => v + 1);
     } else if (target === 'add') {
       setAdminScreen('add');
       setSelectedCmId(null);
@@ -80,7 +82,7 @@ export default function CountryManagerModule({ userRole = 'Founder', showToast, 
   if (userRole.toLowerCase() !== 'country manager') {
     switch (adminScreen) {
       case 'list':
-        return <CountryManagerList onNavigate={handleAdminNavigate} showToast={safeShowToast} />;
+        return <CountryManagerList key={listVersion} onNavigate={handleAdminNavigate} showToast={safeShowToast} />;
       case 'add':
         return <CountryManagerForm onNavigate={handleAdminNavigate} showToast={safeShowToast} />;
       case 'edit':

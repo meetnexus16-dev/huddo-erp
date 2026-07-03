@@ -88,6 +88,10 @@ export default function CountryManagerDashboard({ cmId, isTab = false, onNavigat
   }
 
   const { profile_snapshot, kpi_cards, current_period_targets, state_performance, city_performance_top10, retailer_performance, revenue_analysis, sales_trends, recent_approvals } = data;
+  const hasTargets = current_period_targets?.revenue?.target > 0
+    || current_period_targets?.orders?.target > 0
+    || current_period_targets?.retailer_acquisition?.target > 0;
+  const targetPeriodLabel = new Date().toISOString().slice(0, 7);
 
   const kpis = [
     { title: "States Managed", value: kpi_cards.total_states, delta: "Active coverage", icon: Layers, colorClass: "text-blue-600 bg-blue-50" },
@@ -158,7 +162,10 @@ export default function CountryManagerDashboard({ cmId, isTab = false, onNavigat
 
       {/* Target Progress Section */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
-        <h3 className="text-sm font-bold text-slate-900 font-display uppercase tracking-wide">Current Target Cycle (June 2026)</h3>
+        <h3 className="text-sm font-bold text-slate-900 font-display uppercase tracking-wide">Current Target Cycle ({targetPeriodLabel})</h3>
+        {!hasTargets ? (
+          <p className="text-sm text-slate-500 font-medium">No targets configured for this period yet.</p>
+        ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Revenue Target */}
           <div className="space-y-2">
@@ -193,15 +200,16 @@ export default function CountryManagerDashboard({ cmId, isTab = false, onNavigat
             </div>
           </div>
         </div>
+        )}
       </div>
 
       {/* Analytics Charts (2 Columns) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Monthly Revenue Trend Line Chart */}
         <DashboardCard 
           title="Monthly Revenue Trend" 
           subtitle="Plots total revenue generated under this country scope."
         >
+          {revenue_analysis.monthly_trend?.length > 0 ? (
           <DashboardLineChart
             data={revenue_analysis.monthly_trend}
             xKey="month"
@@ -209,13 +217,16 @@ export default function CountryManagerDashboard({ cmId, isTab = false, onNavigat
             tickFormatter={(val) => `₹${val / 100000}L`}
             formatter={(value) => [`₹${value.toLocaleString('en-IN')}`, 'Revenue']}
           />
+          ) : (
+            <p className="text-sm text-slate-500 font-medium py-16 text-center">No revenue data available yet.</p>
+          )}
         </DashboardCard>
 
-        {/* State Performance Bar Chart */}
         <DashboardCard 
           title="State Performance Ranking" 
           subtitle="Ranks state zones based on monthly sales."
         >
+          {state_performance?.length > 0 ? (
           <DashboardBarChart
             data={state_performance}
             layout="vertical"
@@ -224,6 +235,9 @@ export default function CountryManagerDashboard({ cmId, isTab = false, onNavigat
             tickFormatter={(val) => `₹${val / 100000}L`}
             formatter={(value) => `₹${value.toLocaleString('en-IN')}`}
           />
+          ) : (
+            <p className="text-sm text-slate-500 font-medium py-16 text-center">No state performance data available yet.</p>
+          )}
         </DashboardCard>
       </div>
 
@@ -248,6 +262,7 @@ export default function CountryManagerDashboard({ cmId, isTab = false, onNavigat
           <DashboardTable
             columns={cityColumns}
             data={city_performance_top10.slice(0, 5)}
+            emptyText="No city performance data available yet."
           />
         </DashboardCard>
 
@@ -283,6 +298,7 @@ export default function CountryManagerDashboard({ cmId, isTab = false, onNavigat
           subtitle="Tracks revenue performance over the last 7 operating days."
           className="lg:col-span-2"
         >
+          {sales_trends.daily_this_week?.length > 0 ? (
           <DashboardLineChart
             data={sales_trends.daily_this_week}
             xKey="day"
@@ -291,6 +307,9 @@ export default function CountryManagerDashboard({ cmId, isTab = false, onNavigat
             tickFormatter={(val) => `₹${val / 100000}L`}
             formatter={(value) => [`₹${value.toLocaleString('en-IN')}`, 'Sales']}
           />
+          ) : (
+            <p className="text-sm text-slate-500 font-medium py-16 text-center">No daily sales data available yet.</p>
+          )}
         </DashboardCard>
 
         {/* Top 5 Products Table */}
@@ -301,6 +320,7 @@ export default function CountryManagerDashboard({ cmId, isTab = false, onNavigat
           <DashboardTable
             columns={productColumns}
             data={sales_trends.top_products}
+            emptyText="No product sales data available yet."
           />
         </DashboardCard>
       </div>

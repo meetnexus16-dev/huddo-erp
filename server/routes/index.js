@@ -39,6 +39,17 @@ import {
 } from '../controllers/dashboardController.js';
 
 import { getReport } from '../controllers/reportController.js';
+import {
+  assignHierarchyManager,
+  createHierarchyManagerUser,
+  getCeoCandidates,
+  getAssignedManagers,
+  getAvailableCountries,
+  getCitiesWithHierarchyStats,
+  getCountriesWithHierarchyStats,
+  getStatesWithHierarchyStats,
+  validateCountryForManager
+} from '../controllers/hierarchyController.js';
 
 // Custom business logic imports
 import {
@@ -177,9 +188,20 @@ router.get('/reports/:type', verifyJWT, checkPermission('reports', 'export'), ge
 router.post('/orders/:id/approve', verifyJWT, checkPermission('orders', 'approve'), approveOrder);
 router.post('/orders/:id/reject', verifyJWT, checkPermission('orders', 'reject'), rejectOrder);
 
-// Hierarchy Revenue
+// Hierarchy Revenue & Manager Assignment
 router.get('/hierarchy/state/:id/revenue', verifyJWT, getStateRevenue);
 router.get('/hierarchy/city/:id/revenue', verifyJWT, getCityRevenue);
+router.get('/hierarchy/assigned-managers', verifyJWT, getAssignedManagers);
+router.get('/hierarchy/ceo-candidates', verifyJWT, getCeoCandidates);
+router.get('/hierarchy/available-countries', verifyJWT, getAvailableCountries);
+router.get('/hierarchy/validate-country', verifyJWT, validateCountryForManager);
+router.post('/hierarchy/manager-users', verifyJWT, checkPermission('users', 'create'), createHierarchyManagerUser);
+router.post('/hierarchy/assign-manager', verifyJWT, assignHierarchyManager);
+
+// Hierarchy geo lists with live child counts (must register before generic CRUD)
+router.get('/countries', verifyJWT, checkPermission('countries', 'view'), getCountriesWithHierarchyStats);
+router.get('/states', verifyJWT, checkPermission('states', 'view'), getStatesWithHierarchyStats);
+router.get('/cities', verifyJWT, checkPermission('cities', 'view'), getCitiesWithHierarchyStats);
 
 // Inventory QR & Returns
 router.post('/inventory/qr-in', verifyJWT, qrIn);
@@ -305,7 +327,7 @@ router.delete('/products/:id', verifyJWT, checkPermission('products', 'delete'),
 // 7. DYNAMIC CRUD REGISTRATION FOR ALL MODULES
 // ==========================================
 const modules = [
-  { path: 'users', model: User, populate: ['role'] },
+  { path: 'users', model: User, populate: ['role', 'country'] },
   { path: 'roles', model: Role },
   { path: 'countries', model: Country, populate: ['manager'] },
   { path: 'states', model: State, populate: ['country', 'manager'] },

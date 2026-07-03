@@ -337,7 +337,8 @@ export function Modal({
   onConfirm, 
   confirmText = "Confirm", 
   cancelText = "Cancel",
-  isDestructive = false
+  isDestructive = false,
+  maxWidth = "max-w-lg"
 }) {
   if (!isOpen) return null;
 
@@ -352,7 +353,7 @@ export function Modal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in"
       onClick={handleOverlayClick}
     >
-      <div className="bg-white w-full max-w-lg rounded-xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[90vh]">
+      <div className={`bg-white w-full ${maxWidth} rounded-xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[90vh]`}>
         {/* Modal Header */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
           <h3 className="text-base font-bold text-slate-900 font-display">{title}</h3>

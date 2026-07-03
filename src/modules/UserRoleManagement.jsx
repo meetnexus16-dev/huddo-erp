@@ -1,29 +1,49 @@
 import React, { useState } from 'react';
-import { Shield, UserPlus, FileText, CheckSquare, XSquare, Plus } from 'lucide-react';
+import { Shield, UserPlus, FileText, CheckSquare, XSquare, Plus, Edit2 } from 'lucide-react';
 import { initialUsers, STANDARD_ROLES, MODULES_LIST, PERMISSIONS_LIST, initialRolePermissions } from '../mockData';
 import { DataTable, Modal } from '../components/Common';
 
+const ROLE_DISPLAY_MAP = {
+  CountryManager: 'Country Manager',
+  StateManager: 'State Manager',
+  CityManager: 'City Manager',
+  TeamMember: 'Team Member',
+  SalesExecutive: 'Sales Executive',
+  SalesManager: 'Sales Manager',
+  PurchaseManager: 'Purchase Manager',
+  InventoryManager: 'Inventory Manager',
+  FinanceManager: 'Finance Manager',
+  HRManager: 'HR Manager'
+};
+
+const formatRoleForDisplay = (role) => ROLE_DISPLAY_MAP[role] || role;
+
+const isCountryManagerRole = (role) =>
+  role === 'Country Manager' || role === 'CountryManager';
+
+const mapUserFromApi = (u) => ({
+  id: u._id,
+  name: u.name,
+  email: u.email,
+  mobile: u.mobile,
+  role: formatRoleForDisplay(u.role?.name || u.roleName || u.role || 'Team Member'),
+  department: u.departmentName || u.department?.name || u.department || 'Sales',
+  status: u.status || (u.is_active ? 'Active' : 'Inactive'),
+  countryId: u.country?._id?.toString() || (typeof u.country === 'string' ? u.country : ''),
+  countryName: u.country?.name || ''
+});
 export default function UserRoleManagement({ showToast }) {
   const [activeTab, setActiveTab] = useState('users'); // users | roles
   const [users, setUsers] = useState([]);
   const [rolePermissions, setRolePermissions] = useState(initialRolePermissions);
   const [customRoles, setCustomRoles] = useState([]);
 
-  React.useEffect(() => {
-    fetch('/api/users')
+  const loadUsers = React.useCallback(() => {
+    fetch('/api/users?limit=500&page=1')
       .then(res => res.json())
       .then(resData => {
         if (resData.success && Array.isArray(resData.data)) {
-          const mapped = resData.data.map(u => ({
-            id: u._id,
-            name: u.name,
-            email: u.email,
-            mobile: u.mobile,
-            role: u.role?.name || u.role || 'Sales Executive',
-            department: u.department || 'Sales',
-            status: u.is_active ? 'Active' : 'Inactive'
-          }));
-          setUsers(mapped);
+          setUsers(resData.data.map(mapUserFromApi));
         } else {
           setUsers(initialUsers);
         }
@@ -34,10 +54,24 @@ export default function UserRoleManagement({ showToast }) {
       });
   }, []);
 
+  React.useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
+
   // Add User Modal State
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
-  const [newUserData, setNewUserData] = useState({ name: '', email: '', mobile: '', role: 'Sales Executive', department: 'Sales', status: 'Active' });
+  const [newUserData, setNewUserData] = useState({
+    name: '', email: '', mobile: '', role: 'Team Member', department: 'Sales', status: 'Active', countryId: ''
+  });
 
+  // Edit User Modal State
+  const [isEditUserOpen, setIsEditUserOpen] = useState(false);
+  const [editUserData, setEditUserData] = useState({
+    id: '', name: '', email: '', mobile: '', role: 'Team Member', department: 'Sales', status: 'Active', countryId: ''
+  });
+  const [editLoading, setEditLoading] = useState(false);
+  const [countries, setCountries] = useState([]);
+  const [countriesLoading, setCountriesLoading] = useState(false);
   // Custom Role Creator State
   const [isCustomRoleOpen, setIsCustomRoleOpen] = useState(false);
   const [customRoleName, setCustomRoleName] = useState('');
@@ -46,40 +80,216 @@ export default function UserRoleManagement({ showToast }) {
   const [editingRole, setEditingRole] = useState(null); // role name
   const [tempPermissions, setTempPermissions] = useState({}); // permissions copy
 
+  const loadAvailableCountries = React.useCallback(async (excludeUserId = null) => {
+    setCountriesLoading(true);
+    try {
+      const endpoint = excludeUserId
+        ? `/api/hierarchy/available-countries?exclude_user_id=${excludeUserId}`
+        : '/api/hierarchy/available-countries';
+      const res = await fetch(endpoint);
+      const data = await res.json();
+      if (data.success && Array.isArray(data.data)) {
+        setCountries(data.data);
+        return data.data;
+      }
+    } catch (err) {
+      console.error('Error loading countries:', err);
+    } finally {
+      setCountriesLoading(false);
+    }
+    return [];
+  }, []);
+
+  React.useEffect(() => {
+    if (!isAddUserOpen && !isEditUserOpen) return;
+
+    const role = isAddUserOpen ? newUserData.role : editUserData.role;
+    if (!isCountryManagerRole(role)) {
+      setCountries([]);
+      return;
+    }
+
+    loadAvailableCountries(isEditUserOpen ? editUserData.id : null);
+  }, [isAddUserOpen, isEditUserOpen, newUserData.role, editUserData.role, editUserData.id, loadAvailableCountries]);
+
+  const handleNewUserRoleChange = (role) => {
+    setNewUserData((prev) => ({
+      ...prev,
+      role,
+      countryId: isCountryManagerRole(role) ? prev.countryId : ''
+    }));
+  };
+
+  const handleEditUserRoleChange = (role) => {
+    setEditUserData((prev) => ({
+      ...prev,
+      role,
+      countryId: isCountryManagerRole(role) ? prev.countryId : ''
+    }));
+  };
+
+  const renderCountrySelect = (value, onChange, isEdit = false) => (
+    <div>
+      <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Assigned Country (Optional)</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={countriesLoading}
+        className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
+      >
+        <option value="">{countriesLoading ? 'Loading countries...' : 'Not Assigned — assign later from Hierarchy'}</option>
+        {countries.map((country) => (
+          <option key={country._id} value={country._id} disabled={country.available === false}>
+            {country.available === false
+              ? `${country.name} — Assigned to ${country.manager_name || 'another manager'}`
+              : country.name}
+          </option>
+        ))}
+      </select>
+      {!isEdit && countries.length > 0 && !countries.some((c) => c.available) && (
+        <p className="text-[11px] text-amber-700 font-medium mt-1">All countries are currently assigned. You can still create the account and assign a country later.</p>
+      )}
+      <p className="text-[11px] text-slate-500 font-medium mt-1">Optional. Assign country from Hierarchy when ready.</p>
+    </div>
+  );
+
   // Create User Handler
-  const handleAddUserSubmit = (e) => {
+  const handleAddUserSubmit = async (e) => {
     e.preventDefault();
     if (!newUserData.name || !newUserData.email || !newUserData.mobile) {
       showToast("Please fill all fields.", "error");
       return;
     }
-    const newUser = {
-      id: `U-${Date.now()}`,
-      ...newUserData
-    };
-
-    // Save to backend database
-    fetch('/api/users', {
-      method: 'POST',
-      body: JSON.stringify({
+    try {
+      const payload = {
         name: newUserData.name,
         email: newUserData.email,
         mobile: newUserData.mobile,
         roleName: newUserData.role,
+        departmentName: newUserData.department,
         password: 'password123',
-        is_active: newUserData.status === 'Active'
-      })
-    }).catch(err => console.error("Failed to save user to backend:", err));
+        is_active: newUserData.status === 'Active',
+        status: newUserData.status
+      };
+      if (isCountryManagerRole(newUserData.role) && newUserData.countryId) {
+        payload.assigned_country_id = newUserData.countryId;
+      }
 
-    setUsers([...users, newUser]);
-    setIsAddUserOpen(false);
-    setNewUserData({ name: '', email: '', mobile: '', role: 'Sales Executive', department: 'Sales', status: 'Active' });
-    showToast("User added successfully!", "success");
+      const res = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const resData = await res.json();
+
+      if (!res.ok || !resData.success) {
+        showToast(resData.message || "Failed to add user.", "error");
+        return;
+      }
+
+      setIsAddUserOpen(false);
+      setNewUserData({
+        name: '', email: '', mobile: '', role: 'Team Member', department: 'Sales', status: 'Active', countryId: ''
+      });
+      showToast("User added successfully!", "success");
+      loadUsers();
+    } catch (err) {
+      console.error("Failed to save user to backend:", err);
+      showToast("Failed to add user.", "error");
+    }
+  };
+
+  const openEditUser = (user) => {
+    setEditUserData({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      mobile: user.mobile,
+      role: user.role,
+      department: user.department,
+      status: user.status,
+      countryId: user.countryId || ''
+    });
+    setIsEditUserOpen(true);
+  };
+
+  const handleEditUserSubmit = async (e) => {
+    e.preventDefault();
+    if (!editUserData.name || !editUserData.email || !editUserData.mobile) {
+      showToast("Please fill all required fields.", "error");
+      return;
+    }
+    setEditLoading(true);
+    try {
+      const payload = {
+        name: editUserData.name,
+        email: editUserData.email,
+        mobile: editUserData.mobile,
+        roleName: editUserData.role,
+        departmentName: editUserData.department,
+        status: editUserData.status,
+        is_active: editUserData.status === 'Active'
+      };
+      if (isCountryManagerRole(editUserData.role) && editUserData.countryId) {
+        payload.assigned_country_id = editUserData.countryId;
+      }
+
+      const res = await fetch(`/api/users/${editUserData.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const resData = await res.json();
+
+      if (!res.ok || !resData.success) {
+        showToast(resData.message || "Failed to update user.", "error");
+        return;
+      }
+
+      const updated = resData.data ? mapUserFromApi(resData.data) : {
+        ...editUserData,
+        id: editUserData.id
+      };
+      setUsers((prev) => prev.map((u) => (u.id === editUserData.id ? updated : u)));
+      setIsEditUserOpen(false);
+      showToast("User updated successfully!", "success");
+      loadUsers();
+    } catch (err) {
+      console.error("Failed to update user:", err);
+      showToast("Failed to update user.", "error");
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleToggleUserStatus = async (user) => {
+    const newStatus = user.status === 'Active' ? 'Inactive' : 'Active';
+    try {
+      const res = await fetch(`/api/users/${user.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: newStatus,
+          is_active: newStatus === 'Active'
+        })
+      });
+      const resData = await res.json();
+      if (!res.ok || !resData.success) {
+        showToast(resData.message || "Failed to update status.", "error");
+        return;
+      }
+      setUsers((prev) =>
+        prev.map((u) => (u.id === user.id ? { ...u, status: newStatus } : u))
+      );
+      showToast(`Status updated to ${newStatus} for ${user.name}`, "success");
+    } catch (err) {
+      console.error("Failed to toggle user status:", err);
+      showToast("Failed to update status.", "error");
+    }
   };
 
   // Add Custom Role Handler
-  const handleAddCustomRole = () => {
-    if (!customRoleName.trim()) {
+  const handleAddCustomRole = () => {    if (!customRoleName.trim()) {
       showToast("Please enter a valid role name.", "error");
       return;
     }
@@ -160,18 +370,24 @@ export default function UserRoleManagement({ showToast }) {
       </span>
     )},
     { header: "Actions", accessor: "id", sortable: false, render: (val, row) => (
-      <button 
-        onClick={() => {
-          setUsers(users.map(u => u.id === val ? { ...u, status: u.status === 'Active' ? 'Inactive' : 'Active' } : u));
-          showToast(`Toggled status for ${row.name}`, "success");
-        }}
-        className="text-xs font-bold text-brand-orange hover:underline"
-      >
-        Toggle Status
-      </button>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => openEditUser(row)}
+          className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-brand-orange"
+          title="Edit user"
+        >
+          <Edit2 className="w-3.5 h-3.5" />
+          Edit
+        </button>
+        <button
+          onClick={() => handleToggleUserStatus(row)}
+          className="text-xs font-bold text-brand-orange hover:underline"
+        >
+          Toggle Status
+        </button>
+      </div>
     )}
   ];
-
   // Map role list for Role Management table
   const allAvailableRoles = [...STANDARD_ROLES, ...customRoles];
   const roleListData = allAvailableRoles.map(role => {
@@ -305,7 +521,7 @@ export default function UserRoleManagement({ showToast }) {
               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">System Role</label>
               <select 
                 value={newUserData.role}
-                onChange={(e) => setNewUserData({...newUserData, role: e.target.value})}
+                onChange={(e) => handleNewUserRoleChange(e.target.value)}
                 className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
               >
                 {allAvailableRoles.map(role => (
@@ -329,6 +545,10 @@ export default function UserRoleManagement({ showToast }) {
               </select>
             </div>
           </div>
+          {isCountryManagerRole(newUserData.role) && renderCountrySelect(
+            newUserData.countryId,
+            (countryId) => setNewUserData({ ...newUserData, countryId })
+          )}
           <div className="flex items-center justify-between border-t border-slate-100 pt-3">
             <span className="text-sm font-semibold text-slate-700">Account Access Status</span>
             <button 
@@ -342,9 +562,100 @@ export default function UserRoleManagement({ showToast }) {
         </form>
       </Modal>
 
+      {/* Edit User Modal */}
+      <Modal
+        isOpen={isEditUserOpen}
+        onClose={() => !editLoading && setIsEditUserOpen(false)}
+        title="Edit System User"
+        onConfirm={handleEditUserSubmit}
+        confirmText={editLoading ? 'Saving...' : 'Save Changes'}
+      >
+        <form className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Full Name</label>
+            <input
+              type="text"
+              placeholder="e.g., Ramesh Bhatia"
+              value={editUserData.name}
+              onChange={(e) => setEditUserData({ ...editUserData, name: e.target.value })}
+              className="w-full text-sm border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-brand-orange/20 focus:border-brand-orange"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email Address</label>
+              <input
+                type="email"
+                placeholder="ramesh@huddo.com"
+                value={editUserData.email}
+                onChange={(e) => setEditUserData({ ...editUserData, email: e.target.value })}
+                className="w-full text-sm border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Mobile Number</label>
+              <input
+                type="text"
+                placeholder="987654xxxx"
+                value={editUserData.mobile}
+                onChange={(e) => setEditUserData({ ...editUserData, mobile: e.target.value })}
+                className="w-full text-sm border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">System Role</label>
+              <select
+                value={editUserData.role}
+                onChange={(e) => handleEditUserRoleChange(e.target.value)}
+                className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
+              >
+                {allAvailableRoles.map(role => (
+                  <option key={role} value={role}>{role}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Department</label>
+              <select
+                value={editUserData.department}
+                onChange={(e) => setEditUserData({ ...editUserData, department: e.target.value })}
+                className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
+              >
+                <option value="Executive">Executive</option>
+                <option value="Sales">Sales</option>
+                <option value="Finance">Finance</option>
+                <option value="HR">HR</option>
+                <option value="Inventory">Inventory</option>
+                <option value="Marketing">Marketing</option>
+              </select>
+            </div>
+          </div>
+          {isCountryManagerRole(editUserData.role) && renderCountrySelect(
+            editUserData.countryId,
+            (countryId) => setEditUserData({ ...editUserData, countryId }),
+            true
+          )}
+          <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+            <span className="text-sm font-semibold text-slate-700">Account Access Status</span>
+            <button
+              type="button"
+              onClick={() => setEditUserData({
+                ...editUserData,
+                status: editUserData.status === 'Active' ? 'Inactive' : 'Active'
+              })}
+              className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-300 ${editUserData.status === 'Active' ? 'bg-emerald-500' : 'bg-slate-300'}`}
+            >
+              <span className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300 ${editUserData.status === 'Active' ? 'translate-x-6' : ''}`}></span>
+            </button>
+          </div>
+        </form>
+      </Modal>
+
       {/* Create Custom Role Modal */}
-      <Modal 
-        isOpen={isCustomRoleOpen} 
+      <Modal
+        isOpen={isCustomRoleOpen}
         onClose={() => setIsCustomRoleOpen(false)} 
         title="Create Custom System Role"
         onConfirm={handleAddCustomRole}

@@ -200,6 +200,10 @@ export async function handleCountryManagerApi(pathname, method, body, params) {
 
   // 1. GET /api/country-managers
   if (pathname === '/api/country-managers' && method === 'GET') {
+    if (countryManagers.length === 0) {
+      countryManagers = [...defaultCountryManagers];
+      saveAll();
+    }
     let list = [...countryManagers];
     if (params.search) {
       const q = params.search.toLowerCase();
@@ -207,6 +211,9 @@ export async function handleCountryManagerApi(pathname, method, body, params) {
     }
     if (params.status && params.status !== 'All') {
       list = list.filter(cm => cm.status === params.status);
+    }
+    if (params.country_id && params.country_id !== 'All') {
+      list = list.filter(cm => String(cm.assigned_country_id) === String(params.country_id));
     }
     // calculate simple states count
     const enrichedList = list.map(cm => {
@@ -219,6 +226,7 @@ export async function handleCountryManagerApi(pathname, method, body, params) {
       };
     });
     return jsonResponse({
+      success: true,
       data: enrichedList,
       pagination: { total: enrichedList.length, page: 1, limit: 10 }
     });
@@ -228,6 +236,7 @@ export async function handleCountryManagerApi(pathname, method, body, params) {
   if (pathname === '/api/country-managers' && method === 'POST') {
     const newCM = {
       id: countryManagers.length + 1,
+      user_id: body.user_id || `U_CM_${Date.now()}`,
       ...body,
       employee_code: `CM-IN-2026-00${countryManagers.length + 1}`,
       assigned_country_name: "India",
@@ -279,19 +288,23 @@ export async function handleCountryManagerApi(pathname, method, body, params) {
     });
 
     saveAll();
-    return jsonResponse({ cm_id: newCM.id, employee_code: newCM.employee_code, message: "Country Manager created." }, 201);
+    return jsonResponse({ success: true, cm_id: String(newCM.id), employee_code: newCM.employee_code, message: "Country Manager created." }, 201);
   }
 
   // 3. GET /api/country-managers/:id/profile
   const profileMatch = pathname.match(/^\/api\/country-managers\/([^/]+)\/profile$/);
   if (profileMatch && method === 'GET') {
-    const id = Number(profileMatch[1]);
-    const cm = countryManagers.find(c => c.id === id);
-    if (!cm) return jsonResponse({ error: "Country Manager not found" }, 404);
-    const states = cmStateAssignments.filter(sa => sa.country_manager_id === id && sa.is_active);
-    const target = cmTargets.find(t => t.country_manager_id === id && t.target_period === "2026-06") || {};
-    const unreadNotifs = cmNotifications.filter(n => n.country_manager_id === id && !n.is_read).length;
-    const pendingApps = cmApprovals.filter(a => a.country_manager_id === id && a.action === "Pending").length;
+    const idParam = profileMatch[1];
+    const id = Number(idParam);
+    const cm = Number.isNaN(id)
+      ? countryManagers.find(c => String(c.id) === idParam || String(c.user_id) === idParam)
+      : countryManagers.find(c => c.id === id);
+    if (!cm) return jsonResponse({ success: false, error: "Country Manager not found" }, 404);
+    const cmKey = cm.id;
+    const states = cmStateAssignments.filter(sa => sa.country_manager_id === cmKey && sa.is_active);
+    const target = cmTargets.find(t => t.country_manager_id === cmKey && t.target_period === "2026-06") || {};
+    const unreadNotifs = cmNotifications.filter(n => n.country_manager_id === cmKey && !n.is_read).length;
+    const pendingApps = cmApprovals.filter(a => a.country_manager_id === cmKey && a.action === "Pending").length;
     return jsonResponse({
       ...cm,
       assigned_states: states,

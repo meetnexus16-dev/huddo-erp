@@ -32,6 +32,8 @@ export default function CountryManagerForm({ cmId, onNavigate, showToast }) {
   });
 
   const [errors, setErrors] = useState({});
+  const [imageFile, setImageFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState('');
 
   // Load Reporting To users (Founder/CEO/Admin from system)
   useEffect(() => {
@@ -40,17 +42,23 @@ export default function CountryManagerForm({ cmId, onNavigate, showToast }) {
     setReportingToOptions(admins);
   }, []);
 
-  // Load countries from backend
+  // Load countries from backend (show all; assigned ones are disabled)
   useEffect(() => {
     const fetchCountries = async () => {
       try {
-        const res = await fetch('/api/countries');
+        const endpoint = isEdit
+          ? `/api/hierarchy/available-countries?exclude_user_id=${cmId}`
+          : '/api/hierarchy/available-countries';
+        const res = await fetch(endpoint);
         if (res.ok) {
           const data = await res.json();
-          if (data.success && Array.isArray(data.data) && data.data.length > 0) {
+          if (data.success && Array.isArray(data.data)) {
             setCountries(data.data);
             if (!isEdit) {
-              setFormData(prev => ({ ...prev, assigned_country_id: data.data[0]._id }));
+              setFormData((prev) => ({
+                ...prev,
+                assigned_country_id: ''
+              }));
             }
             return;
           }
@@ -59,15 +67,34 @@ export default function CountryManagerForm({ cmId, onNavigate, showToast }) {
         console.error("Error fetching countries:", err);
       }
 
-      // Fallback
-      const fallbackCountries = GEOGRAPHY.countries.map(c => ({ _id: c.id, name: c.name }));
+      if (isEdit) {
+        const res = await fetch('/api/countries');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.data)) {
+            setCountries(data.data.map((country) => ({
+              _id: country._id,
+              name: country.name,
+              available: true,
+              manager_name: country.manager?.name || null
+            })));
+            return;
+          }
+        }
+      }
+
+      const fallbackCountries = GEOGRAPHY.countries.map(c => ({
+        _id: c.id,
+        name: c.name,
+        available: true
+      }));
       setCountries(fallbackCountries);
       if (!isEdit && fallbackCountries.length > 0) {
         setFormData(prev => ({ ...prev, assigned_country_id: fallbackCountries[0]._id }));
       }
     };
     fetchCountries();
-  }, [isEdit]);
+  }, [isEdit, cmId]);
 
   // Fetch existing details if editing
   useEffect(() => {
@@ -138,7 +165,12 @@ export default function CountryManagerForm({ cmId, onNavigate, showToast }) {
       tempErrors.email = "Invalid email format";
     }
 
-    if (!formData.assigned_country_id) tempErrors.assigned_country_id = "Assigned Country is required";
+    const selectedCountry = countries.find((c) => String(c._id) === String(formData.assigned_country_id));
+    if (formData.assigned_country_id && !isEdit && selectedCountry && selectedCountry.available === false) {
+      tempErrors.assigned_country_id = selectedCountry.manager_name
+        ? `${selectedCountry.name} is already assigned to ${selectedCountry.manager_name}`
+        : `${selectedCountry.name} already has a Country Manager assigned`;
+    }
 
     // PAN Validation if provided
     if (formData.pan_number && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i.test(formData.pan_number)) {
@@ -154,6 +186,32 @@ export default function CountryManagerForm({ cmId, onNavigate, showToast }) {
     return Object.keys(tempErrors).length === 0;
   };
 
+  const getProfileImage = (url) => {
+    if (!url) return "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150";
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:')) return url;
+    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+    return `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+  };
+
+  const handlePhotoUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      showToast("File size exceeds 10MB limit.", "error");
+      return;
+    }
+
+    setImageFile(file);
+    setPreviewUrl(URL.createObjectURL(file));
+  };
+
+  const handleRemovePhoto = () => {
+    setImageFile(null);
+    setPreviewUrl('');
+    setFormData(prev => ({ ...prev, profile_photo_url: '' }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) {
@@ -166,22 +224,40 @@ export default function CountryManagerForm({ cmId, onNavigate, showToast }) {
       const url = isEdit ? `/api/country-managers/${cmId}` : '/api/country-managers';
       const method = isEdit ? 'PUT' : 'POST';
       
-      const payload = {
-        ...formData,
-        salary_structure: formData.salary_structure ? Number(formData.salary_structure) : null,
-        assigned_country_id: formData.assigned_country_id,
-        // If creating new, link user_id to a new simulated ID
-        user_id: formData.user_id || `U_CM_${Date.now()}`
-      };
+      const fd = new FormData();
+      fd.append('user_id', formData.user_id || `U_CM_${Date.now()}`);
+      fd.append('full_name', formData.full_name);
+      fd.append('mobile_number', formData.mobile_number);
+      fd.append('email', formData.email);
+      fd.append('assigned_country_id', formData.assigned_country_id || '');
+      fd.append('department', formData.department);
+      fd.append('designation', formData.designation);
+      fd.append('reporting_to', formData.reporting_to);
+      fd.append('joining_date', formData.joining_date);
+      fd.append('salary_structure', formData.salary_structure ? String(formData.salary_structure) : '');
+      fd.append('residential_address', formData.residential_address);
+      fd.append('aadhaar_number', formData.aadhaar_number);
+      fd.append('pan_number', formData.pan_number);
+      fd.append('bank_name', formData.bank_name);
+      fd.append('bank_account_number', formData.bank_account_number);
+      fd.append('bank_ifsc', formData.bank_ifsc);
+      fd.append('profile_photo_url', formData.profile_photo_url);
+
+      if (imageFile) {
+        fd.append('profile_photo', imageFile);
+      }
 
       const res = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: fd
       });
 
       if (res.ok) {
         const responseData = await res.json();
+        if (!responseData.cm_id && !isEdit) {
+          showToast(responseData.message || "Save operation failed", "error");
+          return;
+        }
         showToast(
           isEdit 
             ? "Country Manager profile updated successfully." 
@@ -190,8 +266,16 @@ export default function CountryManagerForm({ cmId, onNavigate, showToast }) {
         );
         onNavigate(`detail-${isEdit ? cmId : responseData.cm_id}`);
       } else {
-        const errResult = await res.json();
-        showToast(errResult.error || "Save operation failed", "error");
+        const errResult = await res.json().catch(() => ({}));
+        showToast(errResult.message || errResult.error || "Save operation failed", "error");
+        if (errResult.existing_manager_id) {
+          const openExisting = window.confirm(
+            `${errResult.message || 'Validation error'}\n\nWould you like to open the existing Country Manager profile?`
+          );
+          if (openExisting) {
+            onNavigate(`detail-${errResult.existing_manager_id}`);
+          }
+        }
       }
     } catch (err) {
       showToast("Error communicating with servers.", "error");
@@ -287,15 +371,44 @@ export default function CountryManagerForm({ cmId, onNavigate, showToast }) {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Profile Photo URL</label>
-              <input
-                type="text"
-                name="profile_photo_url"
-                value={formData.profile_photo_url}
-                onChange={handleChange}
-                className="w-full text-sm border border-slate-200 focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20 rounded-lg p-2.5 bg-white text-slate-800 focus:outline-none"
-                placeholder="https://image-link.com/photo.jpg"
-              />
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Profile Photo</label>
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-full border border-slate-200 overflow-hidden bg-slate-50 flex items-center justify-center shrink-0">
+                  {(previewUrl || formData.profile_photo_url) ? (
+                    <img 
+                      src={previewUrl || getProfileImage(formData.profile_photo_url)} 
+                      alt="Profile" 
+                      className="w-full h-full object-cover" 
+                    />
+                  ) : (
+                    <User className="w-6 h-6 text-slate-300" />
+                  )}
+                </div>
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 hover:border-slate-350 bg-white text-slate-700 text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer">
+                      <Upload className="w-3.5 h-3.5 text-brand-orange" />
+                      <span>Upload Photo</span>
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={handlePhotoUpload} 
+                        className="hidden" 
+                      />
+                    </label>
+                    {(previewUrl || formData.profile_photo_url) && (
+                      <button
+                        type="button"
+                        onClick={handleRemovePhoto}
+                        className="px-3 py-1.5 border border-rose-200 hover:border-rose-350 bg-rose-50 text-rose-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-semibold">Max size 10MB. (Optional)</span>
+                </div>
+              </div>
             </div>
 
             <div>
@@ -422,18 +535,30 @@ export default function CountryManagerForm({ cmId, onNavigate, showToast }) {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Assigned Country *</label>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Assigned Country (Optional)</label>
               <select
                 name="assigned_country_id"
                 value={formData.assigned_country_id}
                 onChange={handleChange}
                 className="w-full text-sm border border-slate-200 focus:border-brand-orange focus:ring-2 focus:ring-brand-orange/20 rounded-lg p-2.5 bg-white text-slate-800 focus:outline-none cursor-pointer font-semibold"
               >
-                {countries.map(c => (
-                  <option key={c._id} value={c._id}>{c.name}</option>
-                ))}
+                <option value="">Not Assigned — assign later from Hierarchy</option>
+                {countries.length === 0 ? (
+                  <option value="">No countries found</option>
+                ) : (
+                  countries.map(c => (
+                    <option key={c._id} value={c._id} disabled={c.available === false}>
+                      {c.available === false
+                        ? `${c.name} — Assigned to ${c.manager_name || 'another manager'}`
+                        : c.name}
+                    </option>
+                  ))
+                )}
               </select>
-              <p className="text-[10px] text-slate-400 font-medium mt-1">This Country Manager will automatically supervise all states and cities allocated under this country.</p>
+              {!isEdit && countries.length > 0 && !countries.some((c) => c.available) && (
+                <p className="text-[10px] text-amber-700 font-medium mt-1">All countries already have a Country Manager assigned. You can still register without a country and assign later.</p>
+              )}
+              <p className="text-[10px] text-slate-400 font-medium mt-1">Optional at registration. Assign or change country later from Hierarchy or by editing this profile.</p>
             </div>
           </div>
         </div>

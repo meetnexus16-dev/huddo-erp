@@ -55,7 +55,7 @@ export default function Products({ showToast }) {
             category: p.category?.name || p.category || 'Sports Shoes',
             categoryId: p.category?._id || p.category,
             description: p.description || '',
-            sizes: p.sizes && p.sizes.length > 0 ? p.sizes : [6, 7, 8, 9, 10, 11],
+            sizes: p.sizes && p.sizes.length > 0 ? p.sizes.map(Number) : [6, 7, 8, 9, 10, 11],
             colors: p.colors && p.colors.length > 0 ? p.colors : ["#EF4444", "#1F2937"],
             mrp: p.mrp || 2999,
             costPrice: p.costPrice || 1200,
@@ -89,27 +89,20 @@ export default function Products({ showToast }) {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isBulkOpen, setIsBulkOpen] = useState(false);
 
-  // Form states
+  // Form states (unified for Add and Edit)
   const [formData, setFormData] = useState({
     name: '', category: 'Sports Shoes', description: '',
     sizes: [6, 7, 8, 9, 10], colors: ["#EF4444", "#1F2937"],
     mrp: '', costPrice: '', status: 'Active',
     hsn_code: '', article_no: '', colour: '', franchise_points: '',
-    image: '', colorConfigs: {}
+    retailerMargin: 20, cityManagerIncentive: 2, stateManagerIncentive: 1,
+    image: '', colorConfigs: {}, imageFile: null, colorImageFiles: {}
   });
   const [customColorVal, setCustomColorVal] = useState('#EF4444');
   const [bulkAdjustment, setBulkAdjustment] = useState({ type: 'percent', value: '' });
 
-  // Edit states
+  // Edit identifier state
   const [editingProd, setEditingProd] = useState(null);
-  const [editFormData, setEditFormData] = useState({
-    name: '', category: '', description: '',
-    sizes: [6, 7, 8, 9, 10], colors: ["#EF4444", "#1F2937"],
-    mrp: '', costPrice: '', status: 'Active',
-    hsn_code: '', article_no: '', colour: '', franchise_points: '',
-    image: '', colorConfigs: {}
-  });
-  const [customColorValEdit, setCustomColorValEdit] = useState('#EF4444');
 
   const handleImageUpload = async (file) => {
     const fd = new FormData();
@@ -167,40 +160,7 @@ export default function Products({ showToast }) {
     });
   };
 
-  const handleColorModeChangeEdit = (col, mode) => {
-    setEditFormData(prev => {
-      const newConfigs = { ...prev.colorConfigs };
-      newConfigs[col] = {
-        mode,
-        image: mode === 'main' ? '' : (newConfigs[col]?.image || '')
-      };
-      return { ...prev, colorConfigs: newConfigs };
-    });
-  };
 
-  const handleColorImageChangeEdit = (col, imageUrl) => {
-    setEditFormData(prev => {
-      const newConfigs = { ...prev.colorConfigs };
-      newConfigs[col] = {
-        ...newConfigs[col],
-        image: imageUrl
-      };
-      return { ...prev, colorConfigs: newConfigs };
-    });
-  };
-
-  const handleColorImageRemoveEdit = (col) => {
-    setEditFormData(prev => {
-      const newConfigs = { ...prev.colorConfigs };
-      newConfigs[col] = {
-        ...newConfigs[col],
-        image: ''
-      };
-      const newFiles = { ...prev.colorImageFiles };
-      delete newFiles[col];
-      return { ...prev, colorConfigs: newConfigs, colorImageFiles: newFiles };
-    });
-  };
 
   const handleInspect = (prod) => {
     const id = prod._id || prod.id;
@@ -278,9 +238,9 @@ export default function Products({ showToast }) {
     fd.append('mrp', String(formData.mrp));
     fd.append('costPrice', String(formData.costPrice));
     fd.append('margin', String(marginVal));
-    fd.append('retailerMargin', '20');
-    fd.append('cityManagerIncentive', '2');
-    fd.append('stateManagerIncentive', '1');
+    fd.append('retailerMargin', String(formData.retailerMargin));
+    fd.append('cityManagerIncentive', String(formData.cityManagerIncentive));
+    fd.append('stateManagerIncentive', String(formData.stateManagerIncentive));
     fd.append('hsn_code', formData.hsn_code);
     fd.append('franchise_points', String(formData.franchise_points));
 
@@ -326,15 +286,15 @@ export default function Products({ showToast }) {
           category: categoryName,
           categoryId: resolvedCategory,
           description: addedDbProd.description || '',
-          sizes: addedDbProd.sizes && addedDbProd.sizes.length > 0 ? addedDbProd.sizes : formData.sizes,
+          sizes: addedDbProd.sizes && addedDbProd.sizes.length > 0 ? addedDbProd.sizes.map(Number) : formData.sizes,
           colors: addedDbProd.colors && addedDbProd.colors.length > 0 ? addedDbProd.colors : resolvedColors,
           mrp: Number(addedDbProd.mrp || formData.mrp),
           costPrice: Number(addedDbProd.costPrice || formData.costPrice),
           margin: addedDbProd.margin || marginVal,
           status: addedDbProd.is_active ? 'Active' : 'Inactive',
-          retailerMargin: addedDbProd.retailerMargin || 20,
-          cityManagerIncentive: addedDbProd.cityManagerIncentive || 2,
-          stateManagerIncentive: addedDbProd.stateManagerIncentive || 1,
+          retailerMargin: Number(addedDbProd.retailerMargin !== undefined ? addedDbProd.retailerMargin : formData.retailerMargin),
+          cityManagerIncentive: Number(addedDbProd.cityManagerIncentive !== undefined ? addedDbProd.cityManagerIncentive : formData.cityManagerIncentive),
+          stateManagerIncentive: Number(addedDbProd.stateManagerIncentive !== undefined ? addedDbProd.stateManagerIncentive : formData.stateManagerIncentive),
           hsn_code: addedDbProd.hsn_code || formData.hsn_code,
           article_no: addedDbProd.sku || formData.article_no,
           colour: addedDbProd.colour || resolvedColour,
@@ -342,15 +302,7 @@ export default function Products({ showToast }) {
           colorConfigs: addedDbProd.colorConfigs || {}
         };
         setProducts([...products, newLocalProd]);
-        setIsAddOpen(false);
-        // Reset form data
-        setFormData({
-          name: '', category: categories[0]?._id || 'Sports Shoes', description: '',
-          sizes: [6, 7, 8, 9, 10], colors: ["#EF4444", "#1F2937"],
-          mrp: '', costPrice: '', status: 'Active',
-          hsn_code: '', article_no: '', colour: '', franchise_points: '',
-          image: '', colorConfigs: {}, imageFile: null, colorImageFiles: {}
-        });
+        handleCloseModal();
         showToast(`Product "${newLocalProd.name}" added successfully with variants.`, "success");
       } else {
         showToast(data.message || "Failed to save product in database.", "error");
@@ -362,13 +314,65 @@ export default function Products({ showToast }) {
     });
   };
 
+  const handleCloseModal = () => {
+    setIsAddOpen(false);
+    setEditingProd(null);
+    setFormData({
+      name: '',
+      category: categories[0]?._id || 'Sports Shoes',
+      description: '',
+      sizes: [6, 7, 8, 9, 10],
+      colors: ["#EF4444", "#1F2937"],
+      mrp: '',
+      costPrice: '',
+      status: 'Active',
+      hsn_code: '',
+      article_no: '',
+      colour: '',
+      franchise_points: '',
+      retailerMargin: 20,
+      cityManagerIncentive: 2,
+      stateManagerIncentive: 1,
+      image: '',
+      imageFile: null,
+      colorConfigs: {},
+      colorImageFiles: {}
+    });
+  };
+
+  const handleStartAdd = () => {
+    setEditingProd(null);
+    setFormData({
+      name: '',
+      category: categories[0]?._id || 'Sports Shoes',
+      description: '',
+      sizes: [6, 7, 8, 9, 10],
+      colors: ["#EF4444", "#1F2937"],
+      mrp: '',
+      costPrice: '',
+      status: 'Active',
+      hsn_code: '',
+      article_no: '',
+      colour: '',
+      franchise_points: '',
+      retailerMargin: 20,
+      cityManagerIncentive: 2,
+      stateManagerIncentive: 1,
+      image: '',
+      imageFile: null,
+      colorConfigs: {},
+      colorImageFiles: {}
+    });
+    setIsAddOpen(true);
+  };
+
   const handleStartEdit = (prod) => {
     setEditingProd(prod);
-    setEditFormData({
+    setFormData({
       name: prod.name || '',
-      category: prod.categoryId || prod.category || '',
+      category: prod.categoryId || prod.category?._id || prod.category || '',
       description: prod.description || '',
-      sizes: prod.sizes || [6, 7, 8, 9, 10, 11],
+      sizes: prod.sizes ? prod.sizes.map(Number) : [6, 7, 8, 9, 10, 11],
       colors: prod.colors || ["#EF4444", "#1F2937"],
       mrp: prod.mrp || '',
       costPrice: prod.costPrice || '',
@@ -377,39 +381,44 @@ export default function Products({ showToast }) {
       article_no: prod.article_no || prod.sku || '',
       colour: prod.colour || '',
       franchise_points: prod.franchise_points || '',
+      retailerMargin: prod.retailerMargin !== undefined ? prod.retailerMargin : 20,
+      cityManagerIncentive: prod.cityManagerIncentive !== undefined ? prod.cityManagerIncentive : 2,
+      stateManagerIncentive: prod.stateManagerIncentive !== undefined ? prod.stateManagerIncentive : 1,
       image: prod.image || '',
-      colorConfigs: prod.colorConfigs || {}
+      imageFile: null,
+      colorConfigs: prod.colorConfigs || {},
+      colorImageFiles: {}
     });
-    setViewMode('edit');
+    setIsAddOpen(true);
   };
 
   const handleEditSubmit = (e) => {
     if (e && e.preventDefault) e.preventDefault();
-    if (!editFormData.name || !editFormData.mrp || !editFormData.costPrice || !editFormData.article_no || !editFormData.hsn_code || !editFormData.franchise_points) {
+    if (!formData.name || !formData.mrp || !formData.costPrice || !formData.article_no || !formData.hsn_code || !formData.franchise_points) {
       showToast("Please fill all required footwear parameters.", "error");
       return;
     }
-    if (!editFormData.image) {
+    if (!formData.image) {
       showToast("Please upload a main product image.", "error");
       return;
     }
-    if (Number(editFormData.mrp) <= 0 || Number(editFormData.costPrice) <= 0) {
+    if (Number(formData.mrp) <= 0 || Number(formData.costPrice) <= 0) {
       showToast("MRP and Cost Price must be greater than zero.", "error");
       return;
     }
-    if (Number(editFormData.costPrice) > Number(editFormData.mrp)) {
+    if (Number(formData.costPrice) > Number(formData.mrp)) {
       showToast("Cost Price cannot be greater than MRP.", "error");
       return;
     }
-    if (Number(editFormData.franchise_points) < 0) {
+    if (Number(formData.franchise_points) < 0) {
       showToast("Franchise Points must be non-negative.", "error");
       return;
     }
 
     // Resolve category name/ID
-    let resolvedCategory = editFormData.category;
-    let categoryName = editFormData.category;
-    const foundCat = categories.find(c => c._id === editFormData.category || c.name === editFormData.category);
+    let resolvedCategory = formData.category;
+    let categoryName = formData.category;
+    const foundCat = categories.find(c => c._id === formData.category || c.name === formData.category);
     if (foundCat) {
       resolvedCategory = foundCat._id;
       categoryName = foundCat.name;
@@ -418,28 +427,31 @@ export default function Products({ showToast }) {
       categoryName = categories[0].name;
     }
 
-    const marginVal = Math.round(((Number(editFormData.mrp) - Number(editFormData.costPrice)) / Number(editFormData.mrp)) * 100);
-    const resolvedColors = editFormData.colors.length > 0 ? editFormData.colors : ["#EF4444", "#1F2937"];
+    const marginVal = Math.round(((Number(formData.mrp) - Number(formData.costPrice)) / Number(formData.mrp)) * 100);
+    const resolvedColors = formData.colors.length > 0 ? formData.colors : ["#EF4444", "#1F2937"];
     const resolvedColour = resolvedColors.map(c => COLOR_NAMES[c] || c).join(" / ");
 
     const fd = new FormData();
-    fd.append('name', editFormData.name);
-    fd.append('sku', editFormData.article_no);
-    fd.append('description', editFormData.description);
-    fd.append('is_active', editFormData.status === 'Active' ? 'true' : 'false');
+    fd.append('name', formData.name);
+    fd.append('sku', formData.article_no);
+    fd.append('description', formData.description);
+    fd.append('is_active', formData.status === 'Active' ? 'true' : 'false');
     fd.append('category', resolvedCategory);
-    fd.append('sizes', JSON.stringify(editFormData.sizes));
+    fd.append('sizes', JSON.stringify(formData.sizes));
     fd.append('colors', JSON.stringify(resolvedColors));
     fd.append('colour', resolvedColour);
-    fd.append('mrp', String(editFormData.mrp));
-    fd.append('costPrice', String(editFormData.costPrice));
+    fd.append('mrp', String(formData.mrp));
+    fd.append('costPrice', String(formData.costPrice));
     fd.append('margin', String(marginVal));
-    fd.append('hsn_code', editFormData.hsn_code);
-    fd.append('franchise_points', String(editFormData.franchise_points));
+    fd.append('retailerMargin', String(formData.retailerMargin));
+    fd.append('cityManagerIncentive', String(formData.cityManagerIncentive));
+    fd.append('stateManagerIncentive', String(formData.stateManagerIncentive));
+    fd.append('hsn_code', formData.hsn_code);
+    fd.append('franchise_points', String(formData.franchise_points));
 
     const colorConfigsClean = {};
     for (const color of resolvedColors) {
-      const conf = editFormData.colorConfigs[color] || { mode: 'main', image: '' };
+      const conf = formData.colorConfigs[color] || { mode: 'main', image: '' };
       colorConfigsClean[color] = {
         mode: conf.mode,
         image: conf.image && conf.image.startsWith('blob:') ? '' : conf.image
@@ -447,15 +459,15 @@ export default function Products({ showToast }) {
     }
     fd.append('colorConfigs', JSON.stringify(colorConfigsClean));
 
-    if (editFormData.imageFile) {
-      fd.append('image', editFormData.imageFile);
+    if (formData.imageFile) {
+      fd.append('image', formData.imageFile);
     } else {
-      fd.append('image', editFormData.image);
+      fd.append('image', formData.image);
     }
 
-    if (editFormData.colorImageFiles) {
-      for (const color of Object.keys(editFormData.colorImageFiles)) {
-        const file = editFormData.colorImageFiles[color];
+    if (formData.colorImageFiles) {
+      for (const color of Object.keys(formData.colorImageFiles)) {
+        const file = formData.colorImageFiles[color];
         if (file) {
           fd.append(`colorImage_${color}`, file);
         }
@@ -478,24 +490,26 @@ export default function Products({ showToast }) {
           category: categoryName,
           categoryId: resolvedCategory,
           description: updatedDbProd.description || '',
-          sizes: updatedDbProd.sizes && updatedDbProd.sizes.length > 0 ? updatedDbProd.sizes : editFormData.sizes,
+          sizes: updatedDbProd.sizes && updatedDbProd.sizes.length > 0 ? updatedDbProd.sizes.map(Number) : formData.sizes,
           colors: updatedDbProd.colors && updatedDbProd.colors.length > 0 ? updatedDbProd.colors : resolvedColors,
-          mrp: Number(updatedDbProd.mrp || editFormData.mrp),
-          costPrice: Number(updatedDbProd.costPrice || editFormData.costPrice),
+          mrp: Number(updatedDbProd.mrp || formData.mrp),
+          costPrice: Number(updatedDbProd.costPrice || formData.costPrice),
           margin: updatedDbProd.margin || marginVal,
           status: updatedDbProd.is_active ? 'Active' : 'Inactive',
-          hsn_code: updatedDbProd.hsn_code || editFormData.hsn_code,
-          article_no: updatedDbProd.sku || editFormData.article_no,
+          retailerMargin: Number(updatedDbProd.retailerMargin !== undefined ? updatedDbProd.retailerMargin : formData.retailerMargin),
+          cityManagerIncentive: Number(updatedDbProd.cityManagerIncentive !== undefined ? updatedDbProd.cityManagerIncentive : formData.cityManagerIncentive),
+          stateManagerIncentive: Number(updatedDbProd.stateManagerIncentive !== undefined ? updatedDbProd.stateManagerIncentive : formData.stateManagerIncentive),
+          hsn_code: updatedDbProd.hsn_code || formData.hsn_code,
+          article_no: updatedDbProd.sku || formData.article_no,
           colour: updatedDbProd.colour || resolvedColour,
-          franchise_points: Number(updatedDbProd.franchise_points || editFormData.franchise_points) || 0,
-          image: updatedDbProd.image || editFormData.image,
+          franchise_points: Number(updatedDbProd.franchise_points || formData.franchise_points) || 0,
+          image: updatedDbProd.image || formData.image,
           colorConfigs: updatedDbProd.colorConfigs || {},
           variants: updatedDbProd.variants || []
         } : p));
         
-        showToast(`Product "${editFormData.name}" updated successfully.`, "success");
-        setViewMode('grid'); // Redirect back to Product Catalog
-        setEditingProd(null);
+        showToast(`Product "${formData.name}" updated successfully.`, "success");
+        handleCloseModal();
       } else {
         showToast(data.message || "Failed to update product.", "error");
       }
@@ -504,14 +518,6 @@ export default function Products({ showToast }) {
       console.error("Failed to update product:", err);
       showToast("Network error: Failed to update product.", "error");
     });
-  };
-
-  const toggleSizeCheckboxEdit = (sz) => {
-    if (editFormData.sizes.includes(sz)) {
-      setEditFormData({ ...editFormData, sizes: editFormData.sizes.filter(s => s !== sz) });
-    } else {
-      setEditFormData({ ...editFormData, sizes: [...editFormData.sizes, sz] });
-    }
   };
 
   const handleBulkPriceUpdate = () => {
@@ -660,7 +666,7 @@ export default function Products({ showToast }) {
           </button>
           
           <button 
-            onClick={() => setIsAddOpen(true)}
+            onClick={handleStartAdd}
             className="flex items-center gap-2 px-4 py-2 bg-brand-orange hover:bg-brand-orange-hover text-white text-sm font-semibold rounded-lg shadow-sm transition-colors"
           >
             <Plus className="w-4 h-4" />
@@ -687,275 +693,8 @@ export default function Products({ showToast }) {
           </button>
         </div>
       </div>
-
       {/* Main content display */}
-      {viewMode === 'edit' ? (
-        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm max-w-2xl mx-auto space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-            <div>
-              <h2 className="text-lg font-bold text-slate-900 font-display">Edit Footwear Product</h2>
-              <p className="text-xs text-slate-400 font-semibold mt-0.5">Modify parameters, sizes, and pricing indices for {editingProd?.name}.</p>
-            </div>
-            <button 
-              onClick={() => { setViewMode('grid'); setEditingProd(null); }}
-              className="px-3 py-1.5 border border-slate-200 hover:border-slate-300 rounded-lg text-xs font-semibold text-slate-700 bg-white transition-colors cursor-pointer"
-            >
-              Back to Catalog
-            </button>
-          </div>
-
-          <form onSubmit={handleEditSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Footwear Product Name *</label>
-              <input type="text" placeholder="Huddo Flex Alpha" value={editFormData.name} onChange={(e) => setEditFormData({...editFormData, name: e.target.value})} className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Product Category</label>
-                <select value={editFormData.category} onChange={(e) => setEditFormData({...editFormData, category: e.target.value})} className="w-full text-sm border border-slate-200 rounded-lg p-2 bg-white text-slate-800 cursor-pointer">
-                  {categories.length > 0 ? (
-                    categories.map(cat => (
-                      <option key={cat._id} value={cat._id}>{cat.name}</option>
-                    ))
-                  ) : (
-                    <>
-                      <option value="Sports Shoes">Sports Shoes</option>
-                      <option value="Formal Shoes">Formal Shoes</option>
-                      <option value="Casual Shoes">Casual Shoes</option>
-                      <option value="Sandals">Sandals</option>
-                    </>
-                  )}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Base MRP (₹) *</label>
-                <input type="number" placeholder="2999" value={editFormData.mrp} onChange={(e) => setEditFormData({...editFormData, mrp: e.target.value})} className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none" />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Franchise Cost Price (₹) *</label>
-                <input type="number" placeholder="1200" value={editFormData.costPrice} onChange={(e) => setEditFormData({...editFormData, costPrice: e.target.value})} className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Catalog Status</label>
-                <select value={editFormData.status} onChange={(e) => setEditFormData({...editFormData, status: e.target.value})} className="w-full text-sm border border-slate-200 rounded-lg p-2 bg-white text-slate-800 cursor-pointer">
-                  <option value="Active">Active</option>
-                  <option value="Discontinued">Discontinued</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Article No. *</label>
-                <input type="text" placeholder="ART-XX-XX" value={editFormData.article_no} onChange={(e) => setEditFormData({...editFormData, article_no: e.target.value})} className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">HSN Code *</label>
-                <input type="text" placeholder="6403.XX.XX" value={editFormData.hsn_code} onChange={(e) => setEditFormData({...editFormData, hsn_code: e.target.value})} className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none" />
-              </div>
-            </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Product Main Image *</label>
-            <div className="flex items-center gap-3">
-              {editFormData.image ? (
-                <div className="relative w-20 h-20 rounded-lg border border-slate-200 overflow-hidden group">
-                  <img src={getImageUrl(editFormData.image)} alt="Main Preview" className="w-full h-full object-cover" />
-                  <button
-                    type="button"
-                    onClick={() => setEditFormData({ ...editFormData, image: '', imageFile: null })}
-                    className="absolute inset-0 bg-rose-600/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white cursor-pointer"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-              ) : (
-                <label className="w-full h-24 flex flex-col items-center justify-center border border-dashed border-slate-300 hover:border-brand-orange bg-slate-50 hover:bg-slate-100/50 rounded-lg cursor-pointer transition-colors">
-                  <Plus className="w-6 h-6 text-slate-400" />
-                  <span className="text-xs text-slate-500 mt-1 font-semibold">Click to upload product image</span>
-                  <span className="text-[10px] text-slate-400 mt-0.5">Supports PNG, JPG, JPEG</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      if (e.target.files?.[0]) {
-                        const file = e.target.files[0];
-                        const localUrl = URL.createObjectURL(file);
-                        setEditFormData({ ...editFormData, image: localUrl, imageFile: file });
-                      }
-                    }}
-                  />
-                </label>
-              )}
-            </div>
-          </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Colour Names Label (Auto-generated/Custom) *</label>
-                <input type="text" placeholder="Red / Black" value={editFormData.colour} onChange={(e) => setEditFormData({...editFormData, colour: e.target.value})} className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Franchise Points *</label>
-                <input type="number" step="0.01" placeholder="10.0" value={editFormData.franchise_points} onChange={(e) => setEditFormData({...editFormData, franchise_points: e.target.value})} className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none" />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Select Available Colors</label>
-              <div className="flex gap-2 flex-wrap bg-slate-50 border border-slate-100 rounded-lg p-2">
-                {Object.entries(COLOR_NAMES).map(([hex, name]) => {
-                  const isSelected = editFormData.colors.includes(hex);
-                  return (
-                    <button
-                      key={hex}
-                      type="button"
-                      onClick={() => toggleColorEdit(hex)}
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs border font-bold transition-all cursor-pointer ${
-                        isSelected 
-                          ? 'bg-white border-brand-orange text-slate-800 shadow-xs ring-1 ring-brand-orange/30' 
-                          : 'bg-white border-slate-200 text-slate-500 hover:border-slate-355 hover:bg-slate-50'
-                      }`}
-                    >
-                      <span 
-                        className="w-3.5 h-3.5 rounded-full border border-slate-200" 
-                        style={{ backgroundColor: hex }}
-                      />
-                      <span>{name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {editFormData.colors.length > 0 && (
-              <div className="space-y-2">
-                <label className="block text-xs font-bold text-slate-500 uppercase">Color-specific Configurations</label>
-                <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto pr-1">
-                  {editFormData.colors.map(col => {
-                    const config = editFormData.colorConfigs[col] || { mode: 'main', image: '' };
-                    return (
-                      <div key={col} className="bg-slate-50 border border-slate-100 rounded-lg p-3 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="w-4 h-4 rounded-full border border-slate-300" style={{ backgroundColor: col }} />
-                            <span className="text-xs font-bold text-slate-700">{COLOR_NAMES[col] || col}</span>
-                          </div>
-                          <div className="flex bg-slate-200/60 p-0.5 rounded-lg text-[10px]">
-                            <button
-                              type="button"
-                              onClick={() => handleColorModeChangeEdit(col, 'main')}
-                              className={`px-2 py-1 rounded-md font-bold transition-all cursor-pointer ${config.mode === 'main' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500'}`}
-                            >
-                              Use Main Image
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleColorModeChangeEdit(col, 'custom')}
-                              className={`px-2 py-1 rounded-md font-bold transition-all cursor-pointer ${config.mode === 'custom' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500'}`}
-                            >
-                              Custom Image
-                            </button>
-                          </div>
-                        </div>
-                        
-                        {config.mode === 'custom' && (
-                          <div className="flex items-center gap-3 w-full">
-                            {config.image ? (
-                              <div className="relative w-12 h-12 rounded-lg border border-slate-200 overflow-hidden group">
-                                <img src={getImageUrl(config.image)} alt={col} className="w-full h-full object-cover" />
-                                <button
-                                  type="button"
-                                  onClick={() => handleColorImageRemoveEdit(col)}
-                                  className="absolute inset-0 bg-rose-600/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white cursor-pointer"
-                                >
-                                  <X className="w-4 h-4" />
-                                </button>
-                              </div>
-                            ) : (
-                              <label className="w-full h-12 flex flex-col items-center justify-center border border-dashed border-slate-300 hover:border-brand-orange bg-white rounded-lg cursor-pointer transition-colors">
-                                <span className="text-[10px] text-slate-500 font-semibold flex items-center gap-1">
-                                  <Plus className="w-3.5 h-3.5 text-slate-400" /> Click to upload color variant image
-                                </span>
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  className="hidden"
-                                  onChange={(e) => {
-                                    if (e.target.files?.[0]) {
-                                      const file = e.target.files[0];
-                                      const localUrl = URL.createObjectURL(file);
-                                      setEditFormData(prev => {
-                                        const newConfigs = { ...prev.colorConfigs };
-                                        newConfigs[col] = {
-                                          ...newConfigs[col],
-                                          image: localUrl,
-                                          mode: 'custom'
-                                        };
-                                        const newFiles = { ...prev.colorImageFiles || {} };
-                                        newFiles[col] = file;
-                                        return { ...prev, colorConfigs: newConfigs, colorImageFiles: newFiles };
-                                      });
-                                    }
-                                  }}
-                                />
-                              </label>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Select Available UK Sizes</label>
-              <div className="flex gap-2 flex-wrap bg-slate-50 border border-slate-100 rounded-lg p-2">
-                {[5, 6, 7, 8, 9, 10, 11, 12].map(sz => {
-                  const isSelected = editFormData.sizes.includes(sz);
-                  return (
-                    <button 
-                      key={sz}
-                      type="button"
-                      onClick={() => toggleSizeCheckboxEdit(sz)}
-                      className={`w-8 h-8 rounded text-xs border font-bold transition-all cursor-pointer ${isSelected ? 'bg-brand-orange border-brand-orange text-white' : 'bg-white border-slate-200 text-slate-650'}`}
-                    >
-                      {sz}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Product Description</label>
-              <textarea rows="2" placeholder="Describe product details, synthetic meshes, outsoles..." value={editFormData.description} onChange={(e) => setEditFormData({...editFormData, description: e.target.value})} className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none" />
-            </div>
-
-            <div className="flex justify-end gap-3 border-t border-slate-100 pt-4">
-              <button 
-                type="button"
-                onClick={() => { setViewMode('grid'); setEditingProd(null); }}
-                className="px-4 py-2 border border-slate-200 hover:border-slate-300 rounded-lg text-sm font-semibold text-slate-700 bg-white transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button 
-                type="submit"
-                className="px-4 py-2 bg-brand-orange hover:bg-brand-orange-hover text-white text-sm font-bold rounded-lg shadow-sm transition-colors cursor-pointer"
-              >
-                Save Changes
-              </button>
-            </div>
-          </form>
-        </div>
-      ) : viewMode === 'grid' ? (
+      {viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
           {products.map(prod => (
             <div 
@@ -1005,247 +744,368 @@ export default function Products({ showToast }) {
         />
       )}
 
-      {/* Add Product Modal */}
+      {/* Unified Add / Edit Product Modal */}
       <Modal
         isOpen={isAddOpen}
-        onClose={() => setIsAddOpen(false)}
-        title="Add Footwear Product"
-        onConfirm={handleAddSubmit}
+        onClose={handleCloseModal}
+        title={editingProd ? "Edit Footwear Product" : "Add Footwear Product"}
+        onConfirm={editingProd ? handleEditSubmit : handleAddSubmit}
+        confirmText={editingProd ? "Save Changes" : "Add Footwear"}
+        maxWidth="max-w-4xl"
       >
-        <form className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Footwear Product Name *</label>
-            <input type="text" placeholder="Huddo Flex Alpha" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Product Category</label>
-              <select value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})} className="w-full text-sm border border-slate-200 rounded-lg p-2 bg-white text-slate-800 cursor-pointer">
-                {categories.length > 0 ? (
-                  categories.map(cat => (
-                    <option key={cat._id} value={cat._id}>{cat.name}</option>
-                  ))
-                ) : (
-                  <>
-                    <option value="Sports Shoes">Sports Shoes</option>
-                    <option value="Formal Shoes">Formal Shoes</option>
-                    <option value="Casual Shoes">Casual Shoes</option>
-                    <option value="Sandals">Sandals</option>
-                  </>
-                )}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Base MRP (₹) *</label>
-              <input type="number" placeholder="2999" value={formData.mrp} onChange={(e) => setFormData({...formData, mrp: e.target.value})} className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none" />
-            </div>
-          </div>
+        <div className="text-xs text-slate-500 font-semibold mb-4 border-b border-slate-100 pb-3 flex items-center justify-between">
+          <span>{editingProd ? `Modify specifications for SKU: ${editingProd.sku || editingProd.article_no}` : "Configure basic parameters, sizing, color variants, and images."}</span>
+          <span className="text-[10px] text-rose-500">* Required fields</span>
+        </div>
 
-          <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Left Column: Form Details & Configurations (7 cols) */}
+          <div className="lg:col-span-7 space-y-4">
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Franchise Cost Price (₹) *</label>
-              <input type="number" placeholder="1200" value={formData.costPrice} onChange={(e) => setFormData({...formData, costPrice: e.target.value})} className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none" />
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Footwear Product Name *</label>
+              <input 
+                type="text" 
+                placeholder="e.g. Huddo Flex Alpha" 
+                value={formData.name} 
+                onChange={(e) => setFormData({...formData, name: e.target.value})} 
+                className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange/20 focus:border-brand-orange" 
+              />
             </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Catalog Status</label>
-              <select value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value})} className="w-full text-sm border border-slate-200 rounded-lg p-2 bg-white">
-                <option value="Active">Active</option>
-                <option value="Discontinued">Discontinued</option>
-              </select>
-            </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Article No. *</label>
-              <input type="text" placeholder="ART-XX-XX" value={formData.article_no} onChange={(e) => setFormData({...formData, article_no: e.target.value})} className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none" />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">HSN Code *</label>
-              <input type="text" placeholder="6403.XX.XX" value={formData.hsn_code} onChange={(e) => setFormData({...formData, hsn_code: e.target.value})} className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none" />
-            </div>
-          </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Product Category</label>
+                <select 
+                  value={formData.category} 
+                  onChange={(e) => setFormData({...formData, category: e.target.value})} 
+                  className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white text-slate-800 cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
+                >
+                  {categories.length > 0 ? (
+                    categories.map(cat => (
+                      <option key={cat._id} value={cat._id}>{cat.name}</option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="Sports Shoes">Sports Shoes</option>
+                      <option value="Formal Shoes">Formal Shoes</option>
+                      <option value="Casual Shoes">Casual Shoes</option>
+                      <option value="Sandals">Sandals</option>
+                    </>
+                  )}
+                </select>
+              </div>
 
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Product Main Image *</label>
-            <div className="flex items-center gap-3">
-              {formData.image ? (
-                <div className="relative w-20 h-20 rounded-lg border border-slate-200 overflow-hidden group">
-                  <img src={getImageUrl(formData.image)} alt="Main Preview" className="w-full h-full object-cover" />
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, image: '', imageFile: null })}
-                    className="absolute inset-0 bg-rose-600/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white cursor-pointer"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-              ) : (
-                <label className="w-full h-24 flex flex-col items-center justify-center border border-dashed border-slate-300 hover:border-brand-orange bg-slate-50 hover:bg-slate-100/50 rounded-lg cursor-pointer transition-colors">
-                  <Plus className="w-6 h-6 text-slate-400" />
-                  <span className="text-xs text-slate-500 mt-1 font-semibold">Click to upload product image</span>
-                  <span className="text-[10px] text-slate-400 mt-0.5">Supports PNG, JPG, JPEG</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      if (e.target.files?.[0]) {
-                        const file = e.target.files[0];
-                        const localUrl = URL.createObjectURL(file);
-                        setFormData({ ...formData, image: localUrl, imageFile: file });
-                      }
-                    }}
-                  />
-                </label>
-              )}
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Catalog Status</label>
+                <select 
+                  value={formData.status} 
+                  onChange={(e) => setFormData({...formData, status: e.target.value})} 
+                  className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white text-slate-800 cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
+                >
+                  <option value="Active">Active</option>
+                  <option value="Discontinued">Discontinued</option>
+                </select>
+              </div>
             </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Colour Names Label (Auto-generated/Custom) *</label>
-              <input type="text" placeholder="Red / Black" value={formData.colour} onChange={(e) => setFormData({...formData, colour: e.target.value})} className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none" />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Franchise Points *</label>
-              <input type="number" step="0.01" placeholder="10.0" value={formData.franchise_points} onChange={(e) => setFormData({...formData, franchise_points: e.target.value})} className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none" />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Select Available Colors</label>
-            <div className="flex gap-2 flex-wrap bg-slate-50 border border-slate-100 rounded-lg p-2">
-              {Object.entries(COLOR_NAMES).map(([hex, name]) => {
-                const isSelected = formData.colors.includes(hex);
-                return (
-                  <button
-                    key={hex}
-                    type="button"
-                    onClick={() => toggleColorAdd(hex)}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs border font-bold transition-all cursor-pointer ${
-                      isSelected 
-                        ? 'bg-white border-brand-orange text-slate-800 shadow-xs ring-1 ring-brand-orange/30' 
-                        : 'bg-white border-slate-200 text-slate-500 hover:border-slate-355 hover:bg-slate-50'
-                    }`}
-                  >
-                    <span 
-                      className="w-3.5 h-3.5 rounded-full border border-slate-200" 
-                      style={{ backgroundColor: hex }}
-                    />
-                    <span>{name}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {formData.colors.length > 0 && (
-            <div className="space-y-2">
-              <label className="block text-xs font-bold text-slate-500 uppercase">Color-specific Configurations</label>
-              <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto pr-1">
-                {formData.colors.map(col => {
-                  const config = formData.colorConfigs[col] || { mode: 'main', image: '' };
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Select Available UK Sizes</label>
+              <div className="flex gap-1.5 flex-wrap bg-slate-50 border border-slate-100 rounded-xl p-3">
+                {[5, 6, 7, 8, 9, 10, 11, 12].map(sz => {
+                  const isSelected = formData.sizes.includes(sz);
                   return (
-                    <div key={col} className="bg-slate-50 border border-slate-100 rounded-lg p-3 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="w-4 h-4 rounded-full border border-slate-300" style={{ backgroundColor: col }} />
-                          <span className="text-xs font-bold text-slate-700">{COLOR_NAMES[col] || col}</span>
-                        </div>
-                        <div className="flex bg-slate-200/60 p-0.5 rounded-lg text-[10px]">
-                          <button
-                            type="button"
-                            onClick={() => handleColorModeChange(col, 'main')}
-                            className={`px-2 py-1 rounded-md font-bold transition-all cursor-pointer ${config.mode === 'main' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500'}`}
-                          >
-                            Use Main Image
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleColorModeChange(col, 'custom')}
-                            className={`px-2 py-1 rounded-md font-bold transition-all cursor-pointer ${config.mode === 'custom' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500'}`}
-                          >
-                            Custom Image
-                          </button>
-                        </div>
-                      </div>
-                      
-                      {config.mode === 'custom' && (
-                        <div className="flex items-center gap-3 w-full">
-                          {config.image ? (
-                            <div className="relative w-12 h-12 rounded-lg border border-slate-200 overflow-hidden group">
-                              <img src={getImageUrl(config.image)} alt={col} className="w-full h-full object-cover" />
-                              <button
-                                type="button"
-                                onClick={() => handleColorImageRemove(col)}
-                                className="absolute inset-0 bg-rose-600/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white cursor-pointer"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
-                          ) : (
-                            <label className="w-full h-12 flex flex-col items-center justify-center border border-dashed border-slate-300 hover:border-brand-orange bg-white rounded-lg cursor-pointer transition-colors">
-                              <span className="text-[10px] text-slate-500 font-semibold flex items-center gap-1">
-                                <Plus className="w-3.5 h-3.5 text-slate-400" /> Click to upload color variant image
-                              </span>
-                              <input
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                onChange={(e) => {
-                                  if (e.target.files?.[0]) {
-                                    const file = e.target.files[0];
-                                    const localUrl = URL.createObjectURL(file);
-                                    setFormData(prev => {
-                                      const newConfigs = { ...prev.colorConfigs };
-                                      newConfigs[col] = {
-                                        ...newConfigs[col],
-                                        image: localUrl,
-                                        mode: 'custom'
-                                      };
-                                      const newFiles = { ...prev.colorImageFiles || {} };
-                                      newFiles[col] = file;
-                                      return { ...prev, colorConfigs: newConfigs, colorImageFiles: newFiles };
-                                    });
-                                  }
-                                }}
-                              />
-                            </label>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                    <button 
+                      key={sz}
+                      type="button"
+                      onClick={() => toggleSizeCheckbox(sz)}
+                      className={`w-9 h-9 rounded-lg text-xs border font-bold transition-all cursor-pointer ${
+                        isSelected 
+                          ? 'bg-brand-orange border-brand-orange text-white shadow-xs font-extrabold' 
+                          : 'bg-white border-slate-200 text-slate-650 hover:bg-slate-50'
+                      }`}
+                    >
+                      {sz}
+                    </button>
                   );
                 })}
               </div>
             </div>
-          )}
 
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Select Available UK Sizes</label>
-            <div className="flex gap-2 flex-wrap bg-slate-50 border border-slate-100 rounded-lg p-2">
-              {[5, 6, 7, 8, 9, 10, 11, 12].map(sz => {
-                const isSelected = formData.sizes.includes(sz);
-                return (
-                  <button 
-                    key={sz}
-                    type="button"
-                    onClick={() => toggleSizeCheckbox(sz)}
-                    className={`w-8 h-8 rounded text-xs border font-bold transition-all cursor-pointer ${isSelected ? 'bg-brand-orange border-brand-orange text-white' : 'bg-white border-slate-200 text-slate-650'}`}
-                  >
-                    {sz}
-                  </button>
-                );
-              })}
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Select Available Colors</label>
+              <div className="flex gap-2 flex-wrap bg-slate-50 border border-slate-100 rounded-xl p-3">
+                {Object.entries(COLOR_NAMES).map(([hex, name]) => {
+                  const isSelected = formData.colors.includes(hex);
+                  return (
+                    <button
+                      key={hex}
+                      type="button"
+                      onClick={() => toggleColorAdd(hex)}
+                      className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs border font-bold transition-all cursor-pointer ${
+                        isSelected 
+                          ? 'bg-white border-brand-orange text-slate-800 shadow-xs ring-2 ring-brand-orange/20' 
+                          : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span 
+                        className="w-3.5 h-3.5 rounded-full border border-slate-300 shadow-xxs" 
+                        style={{ backgroundColor: hex }}
+                      />
+                      <span>{name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {formData.colors.length > 0 && (
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-500 uppercase">Color-specific Configurations</label>
+                <div className="grid grid-cols-1 gap-2.5 max-h-56 overflow-y-auto pr-1">
+                  {formData.colors.map(col => {
+                    const config = formData.colorConfigs[col] || { mode: 'main', image: '' };
+                    return (
+                      <div key={col} className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex flex-col gap-2 shadow-xxs">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="w-4 h-4 rounded-full border border-slate-300 shadow-xxs" style={{ backgroundColor: col }} />
+                            <span className="text-xs font-bold text-slate-700">{COLOR_NAMES[col] || col}</span>
+                          </div>
+                          <div className="flex bg-slate-200/50 p-0.5 rounded-lg text-[10px]">
+                            <button
+                              type="button"
+                              onClick={() => handleColorModeChange(col, 'main')}
+                              className={`px-2.5 py-1 rounded-md font-bold transition-all cursor-pointer ${config.mode === 'main' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500'}`}
+                            >
+                              Use Main
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleColorModeChange(col, 'custom')}
+                              className={`px-2.5 py-1 rounded-md font-bold transition-all cursor-pointer ${config.mode === 'custom' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500'}`}
+                            >
+                              Custom
+                            </button>
+                          </div>
+                        </div>
+                        
+                        {config.mode === 'custom' && (
+                          <div className="flex items-center gap-3 w-full">
+                            {config.image ? (
+                              <div className="relative w-12 h-12 rounded-lg border border-slate-200 overflow-hidden group shadow-xxs">
+                                <img src={getImageUrl(config.image)} alt={col} className="w-full h-full object-cover" />
+                                <button
+                                  type="button"
+                                  onClick={() => handleColorImageRemove(col)}
+                                  className="absolute inset-0 bg-rose-600/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white cursor-pointer"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            ) : (
+                              <label className="w-full h-11 flex flex-col items-center justify-center border border-dashed border-slate-300 hover:border-brand-orange bg-white rounded-lg cursor-pointer transition-colors shadow-xxs">
+                                <span className="text-[10px] text-slate-500 font-semibold flex items-center gap-1">
+                                  <Plus className="w-3.5 h-3.5 text-slate-400" /> Upload color-variant image
+                                </span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    if (e.target.files?.[0]) {
+                                      const file = e.target.files[0];
+                                      const localUrl = URL.createObjectURL(file);
+                                      setFormData(prev => {
+                                        const newConfigs = { ...prev.colorConfigs };
+                                        newConfigs[col] = {
+                                          ...newConfigs[col],
+                                          image: localUrl,
+                                          mode: 'custom'
+                                        };
+                                        const newFiles = { ...prev.colorImageFiles || {} };
+                                        newFiles[col] = file;
+                                        return { ...prev, colorConfigs: newConfigs, colorImageFiles: newFiles };
+                                      });
+                                    }
+                                  }}
+                                />
+                              </label>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Right Column: Pricing, Inventory & Media (5 cols) */}
+          <div className="lg:col-span-5 space-y-4 border-t lg:border-t-0 lg:border-l border-slate-100 pt-4 lg:pt-0 lg:pl-6">
+            <div>
+              <label className="block text-xs font-bold text-slate-555 uppercase mb-1">Product Main Image *</label>
+              <div className="flex items-center gap-3">
+                {formData.image ? (
+                  <div className="relative w-full h-32 rounded-xl border border-slate-200 overflow-hidden group shadow-xxs">
+                    <img src={getImageUrl(formData.image)} alt="Main Preview" className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, image: '', imageFile: null })}
+                        className="p-2 bg-rose-600 rounded-full text-white hover:bg-rose-700 transition-colors cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="w-full h-32 flex flex-col items-center justify-center border border-dashed border-slate-300 hover:border-brand-orange bg-slate-50 hover:bg-slate-100/50 rounded-xl cursor-pointer transition-colors shadow-xxs">
+                    <Plus className="w-6 h-6 text-slate-400" />
+                    <span className="text-xs text-slate-600 mt-1.5 font-bold">Click to upload product image</span>
+                    <span className="text-[10px] text-slate-400 mt-0.5">Supports PNG, JPG, JPEG</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files?.[0]) {
+                          const file = e.target.files[0];
+                          const localUrl = URL.createObjectURL(file);
+                          setFormData({ ...formData, image: localUrl, imageFile: file });
+                        }
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Base MRP (₹) *</label>
+                <input 
+                  type="number" 
+                  placeholder="2999" 
+                  value={formData.mrp} 
+                  onChange={(e) => setFormData({...formData, mrp: e.target.value})} 
+                  className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Cost Price (₹) *</label>
+                <input 
+                  type="number" 
+                  placeholder="1200" 
+                  value={formData.costPrice} 
+                  onChange={(e) => setFormData({...formData, costPrice: e.target.value})} 
+                  className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Article No. *</label>
+                <input 
+                  type="text" 
+                  placeholder="ART-AC-01" 
+                  value={formData.article_no} 
+                  disabled={!!editingProd}
+                  onChange={(e) => setFormData({...formData, article_no: e.target.value})} 
+                  className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-brand-orange/20 disabled:bg-slate-100 disabled:text-slate-400" 
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">HSN Code *</label>
+                <input 
+                  type="text" 
+                  placeholder="6403.99.90" 
+                  value={formData.hsn_code} 
+                  onChange={(e) => setFormData({...formData, hsn_code: e.target.value})} 
+                  className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Franchise Points *</label>
+                <input 
+                  type="number" 
+                  step="0.01" 
+                  placeholder="10.0" 
+                  value={formData.franchise_points} 
+                  onChange={(e) => setFormData({...formData, franchise_points: e.target.value})} 
+                  className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Color Label</label>
+                <input 
+                  type="text" 
+                  placeholder="Red / Black" 
+                  value={formData.colour} 
+                  onChange={(e) => setFormData({...formData, colour: e.target.value})} 
+                  className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
+                />
+              </div>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-3.5 space-y-3">
+              <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wide">
+                <span className="w-1.5 h-3 bg-brand-orange rounded-full"></span>
+                Commission & Incentive Points
+              </h4>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Retailer (%)</label>
+                  <input 
+                    type="number" 
+                    placeholder="20" 
+                    value={formData.retailerMargin} 
+                    onChange={(e) => setFormData({...formData, retailerMargin: e.target.value})} 
+                    className="w-full text-xs border border-slate-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-brand-orange/20 bg-white" 
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">City Mgr (%)</label>
+                  <input 
+                    type="number" 
+                    placeholder="2" 
+                    value={formData.cityManagerIncentive} 
+                    onChange={(e) => setFormData({...formData, cityManagerIncentive: e.target.value})} 
+                    className="w-full text-xs border border-slate-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-brand-orange/20 bg-white" 
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">State Mgr (%)</label>
+                  <input 
+                    type="number" 
+                    placeholder="1" 
+                    value={formData.stateManagerIncentive} 
+                    onChange={(e) => setFormData({...formData, stateManagerIncentive: e.target.value})} 
+                    className="w-full text-xs border border-slate-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-brand-orange/20 bg-white" 
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Product Description</label>
+              <textarea 
+                rows="3" 
+                placeholder="Describe product details, synthetic meshes, outsoles..." 
+                value={formData.description} 
+                onChange={(e) => setFormData({...formData, description: e.target.value})} 
+                className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
+              />
             </div>
           </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Product Description</label>
-            <textarea rows="2" placeholder="Describe product details, synthetic meshes, outsoles..." value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none" />
-          </div>
-        </form>
+        </div>
       </Modal>
 
       {/* Bulk Price Update Modal */}

@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import { softDeletePlugin } from './plugins.js';
+import { normalizeRoleName } from '../utils/roleUtils.js';
 
 const userSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
@@ -51,10 +52,18 @@ const resolveReferences = async (doc, isUpdate = false, updateObj = null) => {
   // 1. Resolve roleName
   if (target.roleName && !target.role) {
     const Role = mongoose.model('Role');
-    const dbRole = await Role.findOne({ name: target.roleName });
+    const lookupName = normalizeRoleName(target.roleName);
+    const dbRole = await Role.findOne({ name: lookupName });
     if (dbRole) {
-      if (isUpdate) updateObj.role = dbRole._id;
-      else doc.role = dbRole._id;
+      if (isUpdate) {
+        updateObj.role = dbRole._id;
+        updateObj.roleName = dbRole.name;
+      } else {
+        doc.role = dbRole._id;
+        doc.roleName = dbRole.name;
+      }
+    } else {
+      throw new Error(`Role "${lookupName}" not found.`);
     }
   }
 

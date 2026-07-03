@@ -11,6 +11,18 @@ export default function CountryManagerList({ onNavigate, showToast }) {
     status: 'All',
     country: 'All'
   });
+  const [countryOptions, setCountryOptions] = useState([]);
+
+  useEffect(() => {
+    fetch('/api/countries')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.data)) {
+          setCountryOptions(data.data);
+        }
+      })
+      .catch(err => console.error('Error loading countries for filter:', err));
+  }, []);
 
   // Fetch all managers
   const fetchManagers = async () => {
@@ -18,12 +30,17 @@ export default function CountryManagerList({ onNavigate, showToast }) {
     try {
       const query = new URLSearchParams();
       if (filters.search) query.append('search', filters.search);
-      if (filters.status) query.append('status', filters.status);
-      if (filters.country) query.append('country_id', filters.country);
+      if (filters.status && filters.status !== 'All') query.append('status', filters.status);
+      if (filters.country && filters.country !== 'All') query.append('country_id', filters.country);
 
       const res = await fetch(`/api/country-managers?${query.toString()}`);
       const result = await res.json();
-      setManagers(result.data || []);
+      if (res.ok) {
+        setManagers(Array.isArray(result.data) ? result.data : []);
+      } else {
+        setManagers([]);
+        showToast(result.message || "Failed to fetch Country Managers", "error");
+      }
     } catch (err) {
       console.error(err);
       showToast("Failed to fetch Country Managers", "error");
@@ -73,14 +90,37 @@ export default function CountryManagerList({ onNavigate, showToast }) {
   // KPI Statistics
   const totalManagers = managers.length;
   const activeManagers = managers.filter(m => m.status === 'Active').length;
-  const countriesCovered = new Set(managers.map(m => m.assigned_country_name)).size;
-  const avgRevenue = totalManagers > 0 ? "₹1.24 Cr" : "₹0";
+  const formatCurrency = (value) => {
+    if (value === null || value === undefined) return '—';
+    return `₹${Number(value).toLocaleString('en-IN')}`;
+  };
+
+  const formatCount = (value, suffix = '') => {
+    if (value === null || value === undefined) return '—';
+    return `${value}${suffix}`;
+  };
+
+  const countriesCovered = new Set(
+    managers
+      .map((m) => m.assigned_country_name)
+      .filter((name) => name && name !== 'Not Assigned')
+  ).size;
+
+  const totalRevenue = managers.reduce((sum, manager) => sum + (manager.current_month_revenue || 0), 0);
+  const avgRevenue = totalManagers > 0 ? formatCurrency(Math.round(totalRevenue / totalManagers)) : '—';
+
+  const getProfileImage = (url) => {
+    if (!url) return "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150";
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:')) return url;
+    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+    return `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+  };
 
   const columns = [
-    { header: "Code", accessor: "employee_code", render: (val) => <span className="font-bold font-mono text-[13px] text-slate-700">{val}</span> },
+    { header: "Code", accessor: "employee_code", render: (val) => <span className="font-bold font-mono text-[13px] text-slate-700">{val || '—'}</span> },
     { header: "Full Name", accessor: "full_name", render: (val, row) => (
       <div className="flex items-center gap-2">
-        <img src={row.profile_photo_url || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"} alt="" className="w-7 h-7 rounded-full object-cover border border-slate-200" />
+        <img src={getProfileImage(row.profile_photo_url)} alt="" className="w-7 h-7 rounded-full object-cover border border-slate-200" />
         <span className="font-bold text-slate-800 font-display">{val}</span>
       </div>
     )},
@@ -90,16 +130,25 @@ export default function CountryManagerList({ onNavigate, showToast }) {
         <span className="text-slate-400 font-semibold">{row.email}</span>
       </div>
     )},
-    { header: "Country", accessor: "assigned_country_name", render: (val) => <span className="font-bold text-slate-800 flex items-center gap-1"><Globe className="w-3.5 h-3.5 text-slate-400" />{val}</span> },
-    { header: "States", accessor: "total_states", render: (val) => <span className="font-bold text-slate-700">{val} States</span> },
-    { header: "Monthly Sales", accessor: "current_month_revenue", render: (val) => <span className="font-bold text-slate-900">₹{val.toLocaleString('en-IN')}</span> },
+    { header: "Country", accessor: "assigned_country_name", render: (val) => (
+      <span className={`font-bold flex items-center gap-1 ${val === 'Not Assigned' ? 'text-slate-400' : 'text-slate-800'}`}>
+        <Globe className="w-3.5 h-3.5 text-slate-400" />
+        {val || 'Not Assigned'}
+      </span>
+    ) },
+    { header: "States", accessor: "total_states", render: (val) => <span className="font-bold text-slate-700">{formatCount(val, ' States')}</span> },
+    { header: "Monthly Sales", accessor: "current_month_revenue", render: (val) => <span className="font-bold text-slate-900">{formatCurrency(val)}</span> },
     { header: "Target %", accessor: "target_achievement_pct", render: (val) => (
-      <div className="flex items-center gap-1.5">
-        <div className="w-16 bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-200">
-          <div className="bg-orange-500 h-full" style={{ width: `${Math.min(val, 100)}%` }}></div>
+      val === null || val === undefined ? (
+        <span className="text-[11px] font-semibold text-slate-400">No target set</span>
+      ) : (
+        <div className="flex items-center gap-1.5">
+          <div className="w-16 bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-200">
+            <div className="bg-orange-500 h-full" style={{ width: `${Math.min(val, 100)}%` }}></div>
+          </div>
+          <span className="text-[11px] font-bold text-slate-700">{val}%</span>
         </div>
-        <span className="text-[11px] font-bold text-slate-700">{val}%</span>
-      </div>
+      )
     )},
     { header: "Status", accessor: "status", render: (val) => (
       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
@@ -219,7 +268,9 @@ export default function CountryManagerList({ onNavigate, showToast }) {
             className="text-xs font-bold border border-slate-200 rounded-lg p-2 bg-white text-slate-700 focus:outline-none cursor-pointer hover:border-slate-350"
           >
             <option value="All">Country: All</option>
-            <option value="1">India</option>
+            {countryOptions.map((country) => (
+              <option key={country._id} value={country._id}>{country.name}</option>
+            ))}
           </select>
         </div>
 

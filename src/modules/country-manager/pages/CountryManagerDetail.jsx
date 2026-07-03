@@ -43,6 +43,11 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
   const [targets, setTargets] = useState([]);
   const [commissions, setCommissions] = useState([]);
   const [stateManagers, setStateManagers] = useState([]);
+  const [stateManagerCandidates, setStateManagerCandidates] = useState([]);
+  const [loadingStateManagerCandidates, setLoadingStateManagerCandidates] = useState(false);
+  const [assignStateMode, setAssignStateMode] = useState('select');
+  const [newStateManagerUser, setNewStateManagerUser] = useState({ name: '', email: '', mobile: '' });
+  const [assignStateLoading, setAssignStateLoading] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [reports, setReports] = useState({ type: 'sales', data: null, generating: false });
 
@@ -53,9 +58,14 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
       if (res.ok) {
         const data = await res.json();
         setProfile(data);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.message || "Country Manager profile not found", "error");
+        setProfile(null);
       }
     } catch (err) {
       showToast("Failed to fetch profile info", "error");
+      setProfile(null);
     }
   };
 
@@ -122,22 +132,102 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
     loadTabData();
   }, [profile, activeTab]);
 
+  const fetchStateManagerCandidates = async (stateId) => {
+    if (!stateId) {
+      setStateManagerCandidates([]);
+      return;
+    }
+    setLoadingStateManagerCandidates(true);
+    try {
+      const res = await fetch(`/api/country-managers/${cmId}/state-manager-candidates?state_id=${stateId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setStateManagerCandidates(data.candidates || []);
+      } else {
+        setStateManagerCandidates([]);
+      }
+    } catch (err) {
+      setStateManagerCandidates([]);
+    } finally {
+      setLoadingStateManagerCandidates(false);
+    }
+  };
+
+  useEffect(() => {
+    if (assignStateModal && selectedState) {
+      fetchStateManagerCandidates(selectedState);
+    }
+  }, [assignStateModal, selectedState, cmId]);
+
+  const openAssignStateModal = (stateId) => {
+    if (!states.length) {
+      showToast('No states assigned to this country yet.', 'error');
+      return;
+    }
+    const targetState = states.find((s) => s.state_id === stateId) || states[0];
+    setSelectedState(targetState.state_id);
+    setSelectedStateManager(targetState.state_manager?.id || '');
+    setAssignStateMode('select');
+    setNewStateManagerUser({ name: '', email: '', mobile: '' });
+    setAssignStateModal(true);
+  };
+
+  const closeAssignStateModal = () => {
+    setAssignStateModal(false);
+    setAssignStateMode('select');
+    setNewStateManagerUser({ name: '', email: '', mobile: '' });
+  };
+
   // Actions
   const handleAssignManager = async () => {
-    if (!selectedState) return;
+    if (!selectedState) {
+      showToast('Please select a state.', 'error');
+      return;
+    }
+
+    setAssignStateLoading(true);
     try {
+      let managerId = selectedStateManager;
+
+      if (assignStateMode === 'create') {
+        if (!newStateManagerUser.name?.trim() || !newStateManagerUser.email?.trim() || !newStateManagerUser.mobile?.trim()) {
+          showToast('Please fill in name, email, and mobile to create a new state manager.', 'error');
+          return;
+        }
+
+        const createRes = await fetch(`/api/country-managers/${cmId}/state-manager-users`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newStateManagerUser)
+        });
+        const createData = await createRes.json().catch(() => ({}));
+        if (!createRes.ok || !createData.success) {
+          showToast(createData.message || 'Failed to create state manager.', 'error');
+          return;
+        }
+        managerId = createData.data._id;
+      } else if (!selectedStateManager) {
+        showToast('Please select a state manager or choose Unassign.', 'error');
+        return;
+      }
+
       const res = await fetch(`/api/country-managers/${cmId}/states/assign-manager`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ state_id: selectedState, state_manager_id: selectedStateManager })
+        body: JSON.stringify({ state_id: selectedState, state_manager_id: managerId })
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        showToast("State manager assigned successfully", "success");
-        setAssignStateModal(false);
+        showToast(data.message || 'State manager assigned successfully', 'success');
+        closeAssignStateModal();
         loadTabData();
+      } else {
+        showToast(data.message || 'Assignment failed', 'error');
       }
     } catch (err) {
-      showToast("Assignment failed", "error");
+      showToast('Assignment failed', 'error');
+    } finally {
+      setAssignStateLoading(false);
     }
   };
 
@@ -343,6 +433,9 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
   // Quick stats computed
   const totalStates = states.length;
   const pendingApprovalsCount = approvals.filter(a => a.action === 'Pending').length;
+  const activeRetailers = states.reduce((sum, state) => sum + (state.total_retailers || 0), 0);
+  const monthRevenue = states.reduce((sum, state) => sum + (state.monthly_revenue || 0), 0);
+  const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN')}`;
 
   const TABS_LIST = [
     { id: 'Overview', label: 'Overview', icon: Globe },
@@ -353,6 +446,13 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
     { id: 'State Managers', label: 'State Managers', icon: Users },
     { id: 'Notifications', label: 'Notifications', icon: Bell, badge: notifications.filter(n => !n.is_read).length }
   ];
+
+  const getProfileImage = (url) => {
+    if (!url) return "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150";
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:')) return url;
+    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+    return `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+  };
 
   return (
     <div className="space-y-6 cm-detail-page">
@@ -367,22 +467,29 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
               <ArrowLeft className="w-4 h-4" />
             </button>
           )}
-          <div className="flex-1">
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-slate-900 font-display">{profile.full_name}</h1>
-              <span className="px-2.5 py-0.5 bg-brand-orange/10 border border-brand-orange/20 rounded-full text-xs font-bold text-brand-orange">
-                {profile.employee_code}
-              </span>
-              <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
-                profile.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
-              }`}>
-                {profile.status}
-              </span>
+          <div className="flex items-center gap-3.5 flex-1">
+            <img 
+              src={getProfileImage(profile.profile_photo_url)} 
+              alt="" 
+              className="w-12 h-12 rounded-full object-cover border-2 border-slate-200 shadow-xs shrink-0" 
+            />
+            <div>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-bold text-slate-900 font-display">{profile.full_name}</h1>
+                <span className="px-2.5 py-0.5 bg-brand-orange/10 border border-brand-orange/20 rounded-full text-xs font-bold text-brand-orange">
+                  {profile.employee_code}
+                </span>
+                <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                  profile.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                }`}>
+                  {profile.status}
+                </span>
+              </div>
+              <p className="text-sm text-slate-500 flex items-center gap-1 mt-1">
+                <Globe className="w-3.5 h-3.5 text-slate-400" />
+                <span>Assigned Country: <b>{profile.assigned_country_name}</b></span>
+              </p>
             </div>
-            <p className="text-sm text-slate-500 flex items-center gap-1 mt-1">
-              <Globe className="w-3.5 h-3.5 text-slate-400" />
-              <span>Assigned Country: <b>{profile.assigned_country_name}</b></span>
-            </p>
           </div>
 
           {userRole !== 'Country Manager' && (
@@ -423,7 +530,7 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
           </div>
           <div className="text-center border-r border-slate-100 last:border-0">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Retailers</span>
-            <span className="text-lg font-bold text-slate-800 font-display mt-0.5 block">44 Shopfronts</span>
+            <span className="text-lg font-bold text-slate-800 font-display mt-0.5 block">{activeRetailers > 0 ? `${activeRetailers} Shopfronts` : '—'}</span>
           </div>
           <div className="text-center border-r border-slate-100 last:border-0">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Pending Approvals</span>
@@ -431,7 +538,7 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
           </div>
           <div className="text-center">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">This Month Revenue</span>
-            <span className="text-lg font-bold text-slate-800 font-display mt-0.5 block">₹1.24 Cr</span>
+            <span className="text-lg font-bold text-slate-800 font-display mt-0.5 block">{monthRevenue > 0 ? formatCurrency(monthRevenue) : '—'}</span>
           </div>
         </div>
       )}
@@ -484,11 +591,7 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
                 <p className="text-xs text-slate-400 font-semibold mt-0.5">Map showing state nodes and state managers allocated to this country.</p>
               </div>
               <button
-                onClick={() => {
-                  setSelectedState(states[0]?.state_id || '1');
-                  setSelectedStateManager('U3');
-                  setAssignStateModal(true);
-                }}
+                onClick={() => openAssignStateModal(states[0]?.state_id)}
                 className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 hover:border-slate-350 bg-white text-slate-700 text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5 text-brand-orange" />
@@ -514,11 +617,7 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
                 }},
                 { header: "Actions", accessor: "state_id", sortable: false, render: (val) => (
                   <button
-                    onClick={() => {
-                      setSelectedState(val);
-                      setSelectedStateManager('U3');
-                      setAssignStateModal(true);
-                    }}
+                    onClick={() => openAssignStateModal(val)}
                     className="text-xs font-bold text-brand-orange hover:underline cursor-pointer"
                   >
                     Reassign
@@ -527,6 +626,7 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
               ]}
               data={states}
               searchKeys={["state_name"]}
+              emptyStateText="No states assigned to this country manager yet."
             />
           </div>
         )}
@@ -593,6 +693,7 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
               ]}
               data={approvals}
               searchKeys={["reference_label"]}
+              emptyStateText="No pending approvals right now."
             />
           </div>
         )}
@@ -635,6 +736,7 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
               ]}
               data={targets}
               searchKeys={["target_period"]}
+              emptyStateText="No targets configured for this country manager yet."
             />
           </div>
         )}
@@ -688,6 +790,7 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
               ]}
               data={commissions}
               searchKeys={["period_label"]}
+              emptyStateText="No commission records found."
             />
           </div>
         )}
@@ -702,7 +805,12 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
               </div>
               <button
                 onClick={() => {
-                  setReviewForm({ state_manager_id: stateManagers[0]?.state_manager_id || 'U3', review_period: '2026-Q2', performance_rating: 5, remarks: '' });
+                  setReviewForm({
+                    state_manager_id: stateManagers[0]?.state_manager_id || '',
+                    review_period: '2026-Q2',
+                    performance_rating: 5,
+                    remarks: ''
+                  });
                   setReviewModal(true);
                 }}
                 className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 hover:border-slate-350 bg-white text-slate-700 text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer"
@@ -744,6 +852,7 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
               ]}
               data={stateManagers}
               searchKeys={["name"]}
+              emptyStateText="No state managers assigned under this country yet."
             />
           </div>
         )}
@@ -811,16 +920,22 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
       {/* 1. Reassign State Manager Modal */}
       <Modal
         isOpen={assignStateModal}
-        onClose={() => setAssignStateModal(false)}
+        onClose={closeAssignStateModal}
         title="Reassign State Manager"
         onConfirm={handleAssignManager}
+        confirmText={assignStateLoading ? 'Saving...' : 'Save'}
       >
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">State Select</label>
             <select
               value={selectedState}
-              onChange={(e) => setSelectedState(e.target.value)}
+              onChange={(e) => {
+                const nextStateId = e.target.value;
+                setSelectedState(nextStateId);
+                const nextState = states.find((s) => s.state_id === nextStateId);
+                setSelectedStateManager(nextState?.state_manager?.id || '');
+              }}
               className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white text-slate-800 focus:outline-none cursor-pointer font-semibold"
             >
               {states.map(s => (
@@ -828,17 +943,91 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
               ))}
             </select>
           </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Select State Manager</label>
-            <select
-              value={selectedStateManager}
-              onChange={(e) => setSelectedStateManager(e.target.value)}
-              className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white text-slate-800 focus:outline-none cursor-pointer font-semibold"
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setAssignStateMode('create')}
+              className={`flex-1 px-3 py-2 text-xs font-bold rounded-lg border transition-colors ${
+                assignStateMode === 'create'
+                  ? 'bg-brand-orange text-white border-brand-orange'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+              }`}
             >
-              <option value="U3">Preeti Verma (State Manager)</option>
-              <option value="U_NEW_SM">Rajesh Kumar (Unassigned SM)</option>
-            </select>
+              Create New State Manager
+            </button>
+            <button
+              type="button"
+              onClick={() => setAssignStateMode('select')}
+              className={`flex-1 px-3 py-2 text-xs font-bold rounded-lg border transition-colors ${
+                assignStateMode === 'select'
+                  ? 'bg-brand-orange text-white border-brand-orange'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+              }`}
+            >
+              Select Existing
+            </button>
           </div>
+
+          {assignStateMode === 'create' ? (
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Full Name *</label>
+                <input
+                  type="text"
+                  value={newStateManagerUser.name}
+                  onChange={(e) => setNewStateManagerUser({ ...newStateManagerUser, name: e.target.value })}
+                  className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white text-slate-800"
+                  placeholder="Enter full name"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email *</label>
+                <input
+                  type="email"
+                  value={newStateManagerUser.email}
+                  onChange={(e) => setNewStateManagerUser({ ...newStateManagerUser, email: e.target.value })}
+                  className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white text-slate-800"
+                  placeholder="email@example.com"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Mobile *</label>
+                <input
+                  type="text"
+                  value={newStateManagerUser.mobile}
+                  onChange={(e) => setNewStateManagerUser({ ...newStateManagerUser, mobile: e.target.value })}
+                  className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white text-slate-800"
+                  placeholder="10-digit mobile number"
+                  maxLength={10}
+                />
+              </div>
+              <p className="text-[11px] text-slate-500">Default password: password123. The new user will be assigned to the selected state on save.</p>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">Select State Manager</label>
+              <select
+                value={selectedStateManager}
+                onChange={(e) => setSelectedStateManager(e.target.value)}
+                disabled={loadingStateManagerCandidates}
+                className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white text-slate-800 focus:outline-none cursor-pointer font-semibold disabled:opacity-60"
+              >
+                <option value="">— Select state manager —</option>
+                <option value="unassign">Unassign current manager</option>
+                {stateManagerCandidates.map((sm) => (
+                  <option key={sm._id} value={sm._id}>
+                    {sm.name}{sm.is_current ? ' (Current)' : ''}{sm.mobile ? ` · ${sm.mobile}` : ''}
+                  </option>
+                ))}
+              </select>
+              {!loadingStateManagerCandidates && stateManagerCandidates.length === 0 && (
+                <p className="text-[11px] text-amber-700 font-medium mt-2">
+                  No available state managers. Use &quot;Create New State Manager&quot; to add one.
+                </p>
+              )}
+            </div>
+          )}
         </div>
       </Modal>
 

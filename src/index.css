@@ -50,6 +50,98 @@ body {
   line-height: 1.25rem !important;
 }
 
+/* Interactive Channel Node Mapping — org-chart connectors */
+.hierarchy-org-tree,
+.hierarchy-org-tree ul {
+  padding-top: 1.25rem;
+  position: relative;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.hierarchy-org-tree ul::after {
+  content: '';
+  display: table;
+  clear: both;
+}
+
+.hierarchy-org-tree > ul {
+  padding-top: 0;
+}
+
+.hierarchy-org-tree li {
+  float: left;
+  text-align: center;
+  list-style-type: none;
+  position: relative;
+  padding: 1.25rem 0.75rem 0 0.75rem;
+}
+
+.hierarchy-org-tree li::before,
+.hierarchy-org-tree li::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 50%;
+  border-top: 2px solid #cbd5e1;
+  width: 50%;
+  height: 1.25rem;
+}
+
+.hierarchy-org-tree li::after {
+  right: auto;
+  left: 50%;
+  border-left: 2px solid #cbd5e1;
+}
+
+.hierarchy-org-tree li:only-child::before,
+.hierarchy-org-tree li:only-child::after {
+  display: none;
+}
+
+.hierarchy-org-tree li:only-child {
+  padding-top: 0;
+}
+
+.hierarchy-org-tree li:first-child::before,
+.hierarchy-org-tree li:last-child::after {
+  border: 0 none;
+}
+
+.hierarchy-org-tree li:last-child::before {
+  border-right: 2px solid #cbd5e1;
+  border-radius: 0 6px 0 0;
+}
+
+.hierarchy-org-tree li:first-child::after {
+  border-radius: 6px 0 0 0;
+}
+
+.hierarchy-org-tree ul ul::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  border-left: 2px solid #cbd5e1;
+  width: 0;
+  height: 1.25rem;
+  transform: translateX(-50%);
+}
+
+.hierarchy-org-tree .tree-node-card {
+  display: inline-block;
+  position: relative;
+  z-index: 1;
+  min-width: 220px;
+  max-width: 300px;
+  width: max-content;
+}
+
+.hierarchy-org-tree .tree-node-card--city {
+  min-width: 200px;
+  max-width: 260px;
+}
+
 /* Hide scrollbars but keep functionality */
 .scrollbar-none::-webkit-scrollbar {
   display: none;
