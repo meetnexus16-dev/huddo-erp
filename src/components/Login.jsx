@@ -41,7 +41,7 @@ export default function Login({ onLoginSuccess }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!email || !password) {
-      setError('Please enter your email or employee ID and password.');
+      setError('Please enter your email, mobile number, or employee ID and password.');
       return;
     }
 
@@ -108,13 +108,13 @@ export default function Login({ onLoginSuccess }) {
             {/* Username/Email Input */}
             <div>
               <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1.5 tracking-wider">
-                Email Address or Employee ID
+                Email Address, Mobile Number or Employee ID
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
                 <input
                   type="text"
-                  placeholder="name@huddoerp.in"
+                  placeholder="name@huddoerp.in or 9821012345"
                   value={email}
                   onChange={(e) => { setEmail(e.target.value); setError(''); }}
                   disabled={loading}

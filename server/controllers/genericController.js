@@ -239,6 +239,48 @@ export const genericController = (Model, populateOptions = []) => {
         const doc = new Model(req.body);
         await doc.save();
 
+        // Auto-create a linked User account when a Retailer is created
+        if (Model.modelName === 'Retailer') {
+          try {
+            const RetailerRole = mongoose.model('Role');
+            const retailerRole = await RetailerRole.findOne({ name: 'Retailer' });
+
+            const existingUser = await mongoose.model('User').findOne({
+              $or: [
+                { email: req.body.email },
+                { mobile: req.body.mobile }
+              ],
+              is_deleted: { $ne: true }
+            });
+
+            if (!existingUser && retailerRole && req.body.email && req.body.mobile) {
+              const newUser = new (mongoose.model('User'))({
+                name: req.body.owner_name || req.body.business_name,
+                email: req.body.email,
+                mobile: req.body.mobile,
+                password: DEFAULT_USER_PASSWORD,
+                role: retailerRole._id,
+                roleName: 'Retailer',
+                designationName: 'Retailer',
+                status: 'Active',
+                is_verified: true,
+                is_active: true
+              });
+              await newUser.save();
+
+              // Link the user back to the retailer
+              await mongoose.model('Retailer').findByIdAndUpdate(doc._id, { user: newUser._id });
+              doc.user = newUser._id;
+            } else if (existingUser) {
+              // Link existing user if not already linked
+              await mongoose.model('Retailer').findByIdAndUpdate(doc._id, { user: existingUser._id });
+              doc.user = existingUser._id;
+            }
+          } catch (userCreateErr) {
+            console.warn('[genericController] Could not auto-create user for retailer:', userCreateErr.message);
+          }
+        }
+
         if (Model.modelName === 'User' && req.body.roleName === 'CountryManager' && req.body.country) {
           const {
             assignCountryManager,

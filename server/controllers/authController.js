@@ -179,12 +179,13 @@ export const login = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Email/Employee ID and password are required.' });
     }
 
-    // Fetch user by email, employee_id, or user_code and include role
+    // Fetch user by email, employee_id, user_code, or mobile number
     const user = await User.findOne({
       $or: [
         { email: email.toLowerCase() },
         { employee_id: email },
-        { user_code: email }
+        { user_code: email },
+        { mobile: email }
       ]
     }).populate('role');
     
