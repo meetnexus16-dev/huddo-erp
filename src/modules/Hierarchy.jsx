@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GitBranch, MapPin, Award, User, Layers, Plus, ExternalLink, ShieldAlert } from 'lucide-react';
-import { DataTable, Modal } from '../components/Common';
+import { DataTable, Modal, DefaultPasswordNotice } from '../components/Common';
+import { getUserCreatedMessage } from '../constants/defaultCredentials';
 
 export default function Hierarchy({ showToast, userRole }) {
   const [activeTab, setActiveTab] = useState('tree'); // tree | countries | states | cities
@@ -532,7 +533,7 @@ export default function Hierarchy({ showToast, userRole }) {
         return;
       }
 
-      showToast(`Assigned ${managerName} as ${assignTarget.type} Manager.`, "success");
+      showToast(assignData.message || getUserCreatedMessage(`Assigned ${managerName} as ${assignTarget.type} Manager.`), 'success');
       if (assignTarget.type === 'CEO') {
         setCeoManager(managerName);
       } else {
@@ -1138,7 +1139,7 @@ export default function Hierarchy({ showToast, userRole }) {
                   maxLength={10}
                 />
               </div>
-              <p className="text-[11px] text-slate-500">Default password: password123</p>
+              <DefaultPasswordNotice />
             </div>
           ) : (
             <div>

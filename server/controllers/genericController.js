@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { DEFAULT_USER_PASSWORD } from '../constants/defaultCredentials.js';
 
 export const genericController = (Model, populateOptions = []) => {
   return {
@@ -228,6 +229,10 @@ export const genericController = (Model, populateOptions = []) => {
               req.body.country = assignedCountryId;
             }
           }
+
+          if (!req.body.password) {
+            req.body.password = DEFAULT_USER_PASSWORD;
+          }
         }
 
         // If creating a User or Employee, check if we need to auto-link
@@ -263,11 +268,16 @@ export const genericController = (Model, populateOptions = []) => {
           }
         }
 
-        res.status(201).json({
+        const createPayload = {
           success: true,
           message: `${Model.modelName} created successfully.`,
           data: responseData
-        });
+        };
+        if (Model.modelName === 'User') {
+          createPayload.default_password = DEFAULT_USER_PASSWORD;
+          createPayload.message = `User created successfully. Default login password: ${DEFAULT_USER_PASSWORD}.`;
+        }
+        res.status(201).json(createPayload);
       } catch (error) {
         next(error);
       }

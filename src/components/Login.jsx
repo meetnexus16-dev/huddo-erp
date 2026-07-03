@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Lock, Mail, ShieldAlert, RefreshCw, LogIn, ArrowRight } from 'lucide-react';
+import { DEFAULT_USER_PASSWORD } from '../constants/defaultCredentials';
 
 export default function Login({ onLoginSuccess }) {
   const [email, setEmail] = useState('');
@@ -29,7 +30,7 @@ export default function Login({ onLoginSuccess }) {
     const demo = demoAccounts.find(d => d.role === roleName);
     if (demo) {
       setEmail(demo.email);
-      setPassword('password123');
+      setPassword(DEFAULT_USER_PASSWORD);
     } else {
       setEmail('');
       setPassword('');
@@ -160,6 +161,9 @@ export default function Login({ onLoginSuccess }) {
                   </option>
                 ))}
               </select>
+              <p className="text-[10px] text-slate-500 mt-2 leading-relaxed">
+                Newly created accounts use the default password <span className="font-mono font-semibold text-slate-400">{DEFAULT_USER_PASSWORD}</span> until changed in My Profile.
+              </p>
             </div>
 
             {/* Sign In Button */}

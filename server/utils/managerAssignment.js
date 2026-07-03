@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { DEFAULT_USER_PASSWORD } from '../constants/defaultCredentials.js';
 import User from '../models/User.js';
 import Role from '../models/Role.js';
 import Country from '../models/Country.js';
@@ -501,7 +502,7 @@ export const createManagerUser = async ({ name, email, mobile, roleName }) => {
     name: name.trim(),
     email: email.toLowerCase().trim(),
     mobile: mobile.trim(),
-    password: 'password123',
+    password: DEFAULT_USER_PASSWORD,
     role: role._id,
     roleName: normalizedRole,
     designationName: designationMap[normalizedRole] || normalizedRole,

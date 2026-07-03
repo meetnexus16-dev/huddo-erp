@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { User, Shield, Briefcase, CreditCard, ArrowLeft, Save, RefreshCw, Upload, Globe } from 'lucide-react';
 import { initialUsers, GEOGRAPHY } from '../../../mockData';
+import { DefaultPasswordNotice } from '../../../components/Common';
+import { getUserCreatedMessage } from '../../../constants/defaultCredentials';
 
 export default function CountryManagerForm({ cmId, onNavigate, showToast }) {
   const isEdit = !!cmId;
@@ -259,10 +261,10 @@ export default function CountryManagerForm({ cmId, onNavigate, showToast }) {
           return;
         }
         showToast(
-          isEdit 
-            ? "Country Manager profile updated successfully." 
-            : "Country Manager registered successfully.",
-          "success"
+          isEdit
+            ? 'Country Manager profile updated successfully.'
+            : getUserCreatedMessage(responseData.message || 'Country Manager registered successfully.'),
+          'success'
         );
         onNavigate(`detail-${isEdit ? cmId : responseData.cm_id}`);
       } else {
@@ -316,6 +318,7 @@ export default function CountryManagerForm({ cmId, onNavigate, showToast }) {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {!isEdit && <DefaultPasswordNotice />}
         {/* Section A: Personal Information */}
         <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-4">
           <div className="flex items-center gap-2 border-b border-slate-100 pb-3">

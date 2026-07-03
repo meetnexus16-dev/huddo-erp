@@ -6,7 +6,8 @@ import {
 } from 'lucide-react';
 import CountryManagerDashboard from './CountryManagerDashboard';
 import AnalyticsDeepDive from './AnalyticsDeepDive';
-import { DataTable, Modal } from '../../../components/Common';
+import { DataTable, Modal, DefaultPasswordNotice } from '../../../components/Common';
+import { getUserCreatedMessage } from '../../../constants/defaultCredentials';
 
 export default function CountryManagerDetail({ cmId, onNavigate, showToast, userRole = 'Founder', initialTab }) {
   const [profile, setProfile] = useState(null);
@@ -218,7 +219,7 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        showToast(data.message || 'State manager assigned successfully', 'success');
+        showToast(data.message || getUserCreatedMessage('State manager assigned successfully'), 'success');
         closeAssignStateModal();
         loadTabData();
       } else {
@@ -1002,7 +1003,7 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
                   maxLength={10}
                 />
               </div>
-              <p className="text-[11px] text-slate-500">Default password: password123. The new user will be assigned to the selected state on save.</p>
+              <DefaultPasswordNotice suffix="The new user will be assigned to the selected state when you save." />
             </div>
           ) : (
             <div>

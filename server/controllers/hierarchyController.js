@@ -19,6 +19,7 @@ import {
   unassignStateManager,
   validateCountryAvailable
 } from '../utils/managerAssignment.js';
+import { DEFAULT_USER_PASSWORD } from '../constants/defaultCredentials.js';
 
 export const getCeoCandidates = async (req, res, next) => {
   try {
@@ -113,7 +114,8 @@ export const createHierarchyManagerUser = async (req, res, next) => {
         role: user.role,
         designationName: user.designationName
       },
-      message: 'Manager user created successfully.'
+      default_password: DEFAULT_USER_PASSWORD,
+      message: `Manager user created successfully. Default login password: ${DEFAULT_USER_PASSWORD}.`
     });
   } catch (error) {
     if (error.message.includes('already exists') || error.message.includes('not found')) {

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Shield, UserPlus, FileText, CheckSquare, XSquare, Plus, Edit2 } from 'lucide-react';
 import { initialUsers, STANDARD_ROLES, MODULES_LIST, PERMISSIONS_LIST, initialRolePermissions } from '../mockData';
-import { DataTable, Modal } from '../components/Common';
+import { DataTable, Modal, DefaultPasswordNotice } from '../components/Common';
+import { DEFAULT_USER_PASSWORD, getUserCreatedMessage } from '../constants/defaultCredentials';
 
 const ROLE_DISPLAY_MAP = {
   CountryManager: 'Country Manager',
@@ -167,7 +168,7 @@ export default function UserRoleManagement({ showToast }) {
         mobile: newUserData.mobile,
         roleName: newUserData.role,
         departmentName: newUserData.department,
-        password: 'password123',
+        password: DEFAULT_USER_PASSWORD,
         is_active: newUserData.status === 'Active',
         status: newUserData.status
       };
@@ -191,7 +192,7 @@ export default function UserRoleManagement({ showToast }) {
       setNewUserData({
         name: '', email: '', mobile: '', role: 'Team Member', department: 'Sales', status: 'Active', countryId: ''
       });
-      showToast("User added successfully!", "success");
+      showToast(resData.message || getUserCreatedMessage('User added successfully!'), 'success');
       loadUsers();
     } catch (err) {
       console.error("Failed to save user to backend:", err);
@@ -549,6 +550,7 @@ export default function UserRoleManagement({ showToast }) {
             newUserData.countryId,
             (countryId) => setNewUserData({ ...newUserData, countryId })
           )}
+          <DefaultPasswordNotice />
           <div className="flex items-center justify-between border-t border-slate-100 pt-3">
             <span className="text-sm font-semibold text-slate-700">Account Access Status</span>
             <button 

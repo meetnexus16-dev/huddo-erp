@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Save, Upload, FileText, CheckCircle2 } from 'lucide-react';
+import { DefaultPasswordNotice } from '../../../components/Common';
+import { getUserCreatedMessage } from '../../../constants/defaultCredentials';
 
 export default function PromoterForm({ promoterId, onNavigate, showToast }) {
   const isEdit = !!promoterId;
@@ -152,7 +154,12 @@ export default function PromoterForm({ promoterId, onNavigate, showToast }) {
 
       const result = await res.json();
       if (res.ok) {
-        showToast(isEdit ? "Promoter details updated." : `Promoter registered. Code: ${result.promoter_code}`, "success");
+        showToast(
+          isEdit
+            ? 'Promoter details updated.'
+            : getUserCreatedMessage(result.message || `Promoter registered. Code: ${result.promoter_code}`),
+          'success'
+        );
         onNavigate(isEdit ? `detail-${promoterId}` : `detail-${result.promoter_id}`);
       } else {
         showToast(result.error || "Operation failed.", "error");
@@ -189,6 +196,7 @@ export default function PromoterForm({ promoterId, onNavigate, showToast }) {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {!isEdit && <DefaultPasswordNotice />}
         {/* Section A: Personal Information */}
         <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-4">
           <h3 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2 font-display">Section A — Personal Information</h3>

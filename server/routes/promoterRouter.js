@@ -8,6 +8,7 @@ import CommissionRecord from '../models/CommissionRecord.js';
 import Order from '../models/Order.js';
 import Notification from '../models/Notification.js';
 import { verifyJWT } from '../middleware/auth.js';
+import { DEFAULT_USER_PASSWORD } from '../constants/defaultCredentials.js';
 
 const router = express.Router();
 
@@ -236,7 +237,7 @@ router.post('/register', verifyJWT, async (req, res, next) => {
       name: full_name,
       email: email || `${pCode.toLowerCase()}@huddoerp.in`,
       mobile: mobile_number,
-      password: 'password123',
+      password: DEFAULT_USER_PASSWORD,
       role: pRole._id,
       roleName: 'Promoter',
       employee_id: pCode,
@@ -273,7 +274,8 @@ router.post('/register', verifyJWT, async (req, res, next) => {
       success: true,
       promoter_id: promoter._id.toString(),
       promoter_code: pCode,
-      message: "Promoter registered."
+      default_password: DEFAULT_USER_PASSWORD,
+      message: `Promoter registered. Default login password: ${DEFAULT_USER_PASSWORD}.`
     });
   } catch (error) {
     next(error);

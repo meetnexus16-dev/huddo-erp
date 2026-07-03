@@ -24,6 +24,7 @@ import {
   unassignStateManager,
   validateCountryAvailable
 } from '../utils/managerAssignment.js';
+import { DEFAULT_USER_PASSWORD } from '../constants/defaultCredentials.js';
 
 const router = express.Router();
 
@@ -399,7 +400,7 @@ router.post('/', verifyJWT, upload.single('profile_photo'), async (req, res, nex
       name: full_name,
       email: email,
       mobile: mobile_number,
-      password: 'password123', // Default password
+      password: DEFAULT_USER_PASSWORD,
       role: cmRole._id,
       roleName: 'CountryManager',
       designationName: 'Country Manager',
@@ -442,7 +443,8 @@ router.post('/', verifyJWT, upload.single('profile_photo'), async (req, res, nex
       success: true,
       cm_id: user._id.toString(),
       employee_code: user.employee_id,
-      message: "Country Manager created."
+      default_password: DEFAULT_USER_PASSWORD,
+      message: `Country Manager created. Default login password: ${DEFAULT_USER_PASSWORD}.`
     });
   } catch (error) {
     if (error.statusCode === 400 || error.existingManagerId) {
@@ -795,7 +797,9 @@ router.post('/:id/state-manager-users', verifyJWT, async (req, res, next) => {
         roleName: user.roleName,
         designationName: user.designationName,
         role: user.role ? { name: user.role.name } : null
-      }
+      },
+      default_password: DEFAULT_USER_PASSWORD,
+      message: `State Manager user created. Default login password: ${DEFAULT_USER_PASSWORD}.`
     });
   } catch (error) {
     return res.status(400).json({ success: false, message: error.message || 'Failed to create state manager.' });

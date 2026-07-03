@@ -1,5 +1,23 @@
 import React, { useState, useMemo } from 'react';
-import { Search, ChevronDown, ChevronUp, Download, Eye, Edit2, AlertCircle, X, CheckCircle } from 'lucide-react';
+import { Search, ChevronDown, ChevronUp, Download, Eye, Edit2, AlertCircle, X, CheckCircle, KeyRound } from 'lucide-react';
+import { DEFAULT_PASSWORD_LABEL } from '../constants/defaultCredentials';
+
+export function DefaultPasswordNotice({ className = '', suffix = '' }) {
+  return (
+    <div className={`rounded-lg border border-amber-200 bg-amber-50/80 px-3.5 py-3 ${className}`}>
+      <div className="flex items-start gap-2.5">
+        <KeyRound className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+        <div>
+          <p className="text-[11px] font-bold text-amber-900 uppercase tracking-wide">Login account</p>
+          <p className="text-xs text-amber-900/90 mt-1 leading-relaxed">
+            A system login is created automatically. <span className="font-semibold">{DEFAULT_PASSWORD_LABEL}</span>.
+            {suffix ? ` ${suffix}` : ' The user signs in with their email and should change the password from My Profile after first login.'}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Custom Success/Error Toast notification component
 export function Toast({ message, type = 'success', onClose }) {
