@@ -10,6 +10,13 @@ import {
   updateProduct,
   deleteProduct
 } from '../controllers/productController.js';
+import {
+  getAllProductCategories,
+  getProductCategoryById,
+  createProductCategory,
+  updateProductCategory,
+  deleteProductCategory
+} from '../controllers/productCategoryController.js';
 
 // Auth Controller imports
 import {
@@ -323,6 +330,12 @@ router.post('/products', verifyJWT, checkPermission('products', 'create'), uploa
 router.put('/products/:id', verifyJWT, checkPermission('products', 'edit'), upload.any(), updateProduct);
 router.delete('/products/:id', verifyJWT, checkPermission('products', 'delete'), deleteProduct);
 
+router.get('/product-categories', verifyJWT, checkPermission('product-categories', 'view'), getAllProductCategories);
+router.get('/product-categories/:id', verifyJWT, checkPermission('product-categories', 'view'), getProductCategoryById);
+router.post('/product-categories', verifyJWT, checkPermission('product-categories', 'create'), createProductCategory);
+router.put('/product-categories/:id', verifyJWT, checkPermission('product-categories', 'edit'), updateProductCategory);
+router.delete('/product-categories/:id', verifyJWT, checkPermission('product-categories', 'delete'), deleteProductCategory);
+
 // ==========================================
 // 7. DYNAMIC CRUD REGISTRATION FOR ALL MODULES
 // ==========================================
@@ -334,7 +347,6 @@ const modules = [
   { path: 'cities', model: City, populate: ['state', 'manager'] },
   { path: 'employees', model: Employee, populate: ['user', 'department', 'designation', 'reporting_manager'] },
   { path: 'retailers', model: Retailer, populate: ['user', 'state', 'city', 'assigned_promoter', 'assigned_city_manager'] },
-  { path: 'product-categories', model: ProductCategory },
   { path: 'product-variants', model: ProductVariant, populate: ['product'] },
   { path: 'orders', model: Order, populate: ['retailer', 'items.product_variant', 'created_by'] },
   { path: 'invoices', model: Invoice, populate: ['order', 'retailer'] },

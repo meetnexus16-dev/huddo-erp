@@ -3,7 +3,7 @@ import { Percent, Save, Plus, Trash2, CheckCircle, Calculator, Info } from 'luci
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell } from 'recharts';
 
 export default function Commissions({ showToast }) {
-  const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [promoters, setPromoters] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [countries, setCountries] = useState([]);
@@ -62,20 +62,26 @@ export default function Commissions({ showToast }) {
   const [calculatedReward, setCalculatedReward] = useState(null);
 
   const loadData = () => {
-    fetch('/api/products')
+    fetch('/api/product-categories')
       .then(res => res.json())
       .then(resData => {
         if (resData.success && Array.isArray(resData.data)) {
-          setProducts(resData.data.map(p => ({
-            id: p.sku || p._id,
-            _id: p._id,
-            name: p.name,
-            category: p.category?.name || p.category || 'Sports Shoes',
-            retailerMargin: p.retailerMargin || 25
+          setCategories(resData.data.map(c => ({
+            _id: c._id,
+            name: c.name,
+            code: c.code || '',
+            product_count: c.product_count || 0,
+            commissions: c.commissions || {
+              retailer: 20,
+              cityManager: 2,
+              stateManager: 1,
+              countryManager: 0.5,
+              promoter: 5
+            }
           })));
         }
       })
-      .catch(err => console.error("Error loading products:", err));
+      .catch(err => console.error("Error loading categories:", err));
 
     fetch('/api/promoters')
       .then(res => res.json())
@@ -164,27 +170,35 @@ export default function Commissions({ showToast }) {
     loadData();
   }, []);
 
-  const handleUpdateMargin = (id, newPct) => {
-    setProducts(products.map(p => 
-      p.id === id ? { ...p, retailerMargin: Number(newPct) } : p
+  const handleUpdateCategoryCommission = (id, roleKey, newPct) => {
+    setCategories(categories.map((c) =>
+      c._id === id
+        ? { ...c, commissions: { ...c.commissions, [roleKey]: Number(newPct) } }
+        : c
     ));
   };
 
   const handleSaveMargins = async () => {
     try {
-      const promises = products.map(prod => 
-        fetch(`/api/products/${prod._id}`, {
+      const promises = categories.map((cat) =>
+        fetch(`/api/product-categories/${cat._id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ retailerMargin: prod.retailerMargin })
+          body: JSON.stringify({ commissions: cat.commissions })
         })
       );
-      await Promise.all(promises);
-      showToast("Wholesale retailer margin structure updated successfully.", "success");
+      const results = await Promise.all(promises);
+      const failed = results.find((res) => !res.ok);
+      if (failed) {
+        const data = await failed.json().catch(() => ({}));
+        showToast(data.message || 'Failed to save category commissions.', 'error');
+        return;
+      }
+      showToast('Category commission structure updated for all products in each category.', 'success');
       loadData();
     } catch (err) {
       console.error(err);
-      showToast("Failed to save margins.", "error");
+      showToast('Failed to save category commissions.', 'error');
     }
   };
 
@@ -313,7 +327,7 @@ export default function Commissions({ showToast }) {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 font-display">Commission & Incentives</h1>
-          <p className="text-sm text-slate-500">Configure retail trade margins, setup regional employee slab systems, and settle promoter royalties.</p>
+          <p className="text-sm text-slate-500">Configure category-level trade margins and incentives. All products in a category inherit these rates automatically.</p>
         </div>
       </div>
 
@@ -323,7 +337,7 @@ export default function Commissions({ showToast }) {
           onClick={() => setActiveSubTab('retailer')}
           className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${activeSubTab === 'retailer' ? 'border-brand-orange text-brand-orange' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
         >
-          1. Retailer Trade Margins
+          1. Category Commissions
         </button>
         <button 
           onClick={() => setActiveSubTab('employee')}
@@ -344,15 +358,15 @@ export default function Commissions({ showToast }) {
         <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-4">
           <div className="flex justify-between items-center">
             <div>
-              <h3 className="text-sm font-bold text-slate-900 font-display">Category Trade Margins (%)</h3>
-              <p className="text-xs text-slate-400 font-semibold">Modify base margins for retailers per model. Margins directly impact final wholesale payouts.</p>
+              <h3 className="text-sm font-bold text-slate-900 font-display">Category Commission Matrix (%)</h3>
+              <p className="text-xs text-slate-400 font-semibold">Set commission rates once per category. Every product in that category uses these values.</p>
             </div>
             <button 
               onClick={handleSaveMargins}
               className="flex items-center gap-1.5 px-3 py-2 bg-brand-orange hover:bg-brand-orange-hover text-white rounded-lg text-xs font-bold transition-colors shadow-sm"
             >
               <Save className="w-3.5 h-3.5" />
-              <span>Save All Margins</span>
+              <span>Save Category Commissions</span>
             </button>
           </div>
 
@@ -360,30 +374,38 @@ export default function Commissions({ showToast }) {
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500">
-                  <th className="px-4 py-3">Footwear Model</th>
                   <th className="px-4 py-3">Category</th>
-                  <th className="px-4 py-3 text-right">Retailer Base Margin (Editable)</th>
+                  <th className="px-4 py-3">Products</th>
+                  <th className="px-4 py-3 text-right">Retailer %</th>
+                  <th className="px-4 py-3 text-right">City Mgr %</th>
+                  <th className="px-4 py-3 text-right">State Mgr %</th>
+                  <th className="px-4 py-3 text-right">Country Mgr %</th>
+                  <th className="px-4 py-3 text-right">Promoter %</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
-                {products.length === 0 ? (
+                {categories.length === 0 ? (
                   <tr>
-                    <td colSpan="3" className="px-4 py-3 text-center text-slate-400">No products found in database.</td>
+                    <td colSpan="7" className="px-4 py-3 text-center text-slate-400">No categories found. Add categories from Product Categories master.</td>
                   </tr>
                 ) : (
-                  products.map(prod => (
-                    <tr key={prod.id}>
-                      <td className="px-4 py-3 text-slate-900">{prod.name}</td>
-                      <td className="px-4 py-3 text-slate-500">{prod.category}</td>
-                      <td className="px-4 py-3 text-right">
-                        <input 
-                          type="number"
-                          value={prod.retailerMargin}
-                          onChange={(e) => handleUpdateMargin(prod.id, e.target.value)}
-                          className="border border-slate-200 text-slate-800 rounded p-1 w-20 text-right font-bold focus:outline-none focus:ring-1 focus:ring-brand-orange bg-white"
-                        />
-                        <span className="ml-1 text-slate-400">%</span>
-                      </td>
+                  categories.map((cat) => (
+                    <tr key={cat._id}>
+                      <td className="px-4 py-3 text-slate-900">{cat.name}</td>
+                      <td className="px-4 py-3 text-slate-500">{cat.product_count || 0}</td>
+                      {['retailer', 'cityManager', 'stateManager', 'countryManager', 'promoter'].map((roleKey) => (
+                        <td key={roleKey} className="px-4 py-3 text-right">
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.1"
+                            value={cat.commissions?.[roleKey] ?? 0}
+                            onChange={(e) => handleUpdateCategoryCommission(cat._id, roleKey, e.target.value)}
+                            className="border border-slate-200 text-slate-800 rounded p-1 w-20 text-right font-bold focus:outline-none focus:ring-1 focus:ring-brand-orange bg-white"
+                          />
+                        </td>
+                      ))}
                     </tr>
                   ))
                 )}

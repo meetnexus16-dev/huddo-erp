@@ -3,6 +3,10 @@ import Product from '../models/Product.js';
 import ProductVariant from '../models/ProductVariant.js';
 import Upload from '../models/Upload.js';
 import { saveFileToDisk } from '../utils/fileUpload.js';
+import {
+  enrichProductWithCommissions,
+  getCategoryCommissions
+} from '../utils/categoryCommission.js';
 
 // Helper to generate SKU variant string
 const generateVariantSku = (productSku, color, size) => {
@@ -29,16 +33,17 @@ const processMultipartFiles = async (req) => {
   req.body.sizes = parseJsonField(req.body.sizes);
   req.body.colors = parseJsonField(req.body.colors);
 
-  if (req.body.category) {
+  if (req.body.category !== undefined && req.body.category !== null && String(req.body.category).trim() !== '') {
     if (!mongoose.isValidObjectId(req.body.category)) {
       const ProductCategory = mongoose.model('ProductCategory');
-      let catDoc = await ProductCategory.findOne({ name: { $regex: new RegExp(`^${req.body.category}$`, 'i') } });
-      if (!catDoc) {
-        catDoc = new ProductCategory({ name: req.body.category });
-        await catDoc.save();
-      }
-      req.body.category = catDoc._id;
+      const catDoc = await ProductCategory.findOne({
+        name: { $regex: new RegExp(`^${String(req.body.category).trim()}$`, 'i') },
+        is_deleted: { $ne: true }
+      });
+      req.body.category = catDoc?._id || null;
     }
+  } else {
+    req.body.category = null;
   }
 
   if (req.files && req.files.length > 0) {
@@ -67,10 +72,13 @@ const processMultipartFiles = async (req) => {
   if (req.body.mrp !== undefined && req.body.mrp !== '') req.body.mrp = Number(req.body.mrp);
   if (req.body.costPrice !== undefined && req.body.costPrice !== '') req.body.costPrice = Number(req.body.costPrice);
   if (req.body.margin !== undefined && req.body.margin !== '') req.body.margin = Number(req.body.margin);
-  if (req.body.retailerMargin !== undefined && req.body.retailerMargin !== '') req.body.retailerMargin = Number(req.body.retailerMargin);
-  if (req.body.cityManagerIncentive !== undefined && req.body.cityManagerIncentive !== '') req.body.cityManagerIncentive = Number(req.body.cityManagerIncentive);
-  if (req.body.stateManagerIncentive !== undefined && req.body.stateManagerIncentive !== '') req.body.stateManagerIncentive = Number(req.body.stateManagerIncentive);
   if (req.body.franchise_points !== undefined && req.body.franchise_points !== '') req.body.franchise_points = Number(req.body.franchise_points);
+
+  delete req.body.retailerMargin;
+  delete req.body.cityManagerIncentive;
+  delete req.body.stateManagerIncentive;
+  delete req.body.countryManagerIncentive;
+  delete req.body.promoterRoyalty;
 };
 
 export const getAllProducts = async (req, res, next) => {
@@ -123,12 +131,14 @@ export const getAllProducts = async (req, res, next) => {
       .skip(skip)
       .limit(limitNum);
 
+    const enrichedData = data.map((product) => enrichProductWithCommissions(product));
+
     const total = await Product.countDocuments(criteria);
 
     res.status(200).json({
       success: true,
       message: 'Products retrieved successfully.',
-      data,
+      data: enrichedData,
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -168,10 +178,10 @@ export const getProductById = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: 'Product retrieved successfully.',
-      data: {
+      data: enrichProductWithCommissions({
         ...product.toObject(),
         variants
-      }
+      })
     });
   } catch (error) {
     next(error);
@@ -187,8 +197,31 @@ export const createProduct = async (req, res, next) => {
     // Process uploaded files and parse JSON strings
     await processMultipartFiles(req);
 
+    if (!req.body.category) {
+      return res.status(400).json({
+        success: false,
+        message: 'Product category is required. Add a category in Product Categories first.',
+        data: null
+      });
+    }
+
+    const ProductCategory = mongoose.model('ProductCategory');
+    const categoryDoc = await ProductCategory.findOne({
+      _id: req.body.category,
+      is_deleted: { $ne: true }
+    });
+    if (!categoryDoc) {
+      return res.status(400).json({
+        success: false,
+        message: 'Selected product category not found.',
+        data: null
+      });
+    }
+
     // Extract size and color configs for variants
-    const { sizes = [], colors = [], colorConfigs = {}, mrp, costPrice, margin, retailerMargin } = req.body;
+    const { sizes = [], colors = [], colorConfigs = {}, mrp, costPrice, margin } = req.body;
+    const categoryCommissions = await getCategoryCommissions(req.body.category);
+    const retailerMargin = categoryCommissions.retailer;
 
     const product = new Product(req.body);
     await product.save();
@@ -229,10 +262,10 @@ export const createProduct = async (req, res, next) => {
     res.status(201).json({
       success: true,
       message: 'Product and variants created successfully.',
-      data: {
+      data: enrichProductWithCommissions({
         ...product.toObject(),
         variants
-      }
+      })
     });
   } catch (error) {
     next(error);
@@ -254,6 +287,29 @@ export const updateProduct = async (req, res, next) => {
     // Process uploaded files and parse JSON strings
     await processMultipartFiles(req);
 
+    if (req.body.category !== undefined) {
+      if (!req.body.category) {
+        return res.status(400).json({
+          success: false,
+          message: 'Product category is required.',
+          data: null
+        });
+      }
+
+      const ProductCategory = mongoose.model('ProductCategory');
+      const categoryDoc = await ProductCategory.findOne({
+        _id: req.body.category,
+        is_deleted: { $ne: true }
+      });
+      if (!categoryDoc) {
+        return res.status(400).json({
+          success: false,
+          message: 'Selected product category not found.',
+          data: null
+        });
+      }
+    }
+
     const product = await Product.findByIdAndUpdate(
       id,
       { $set: req.body },
@@ -269,7 +325,9 @@ export const updateProduct = async (req, res, next) => {
     }
 
     // Sync variants: sizes, colors, colorConfigs
-    const { sizes = [], colors = [], colorConfigs = {}, mrp, costPrice, margin, retailerMargin } = req.body;
+    const { sizes = [], colors = [], colorConfigs = {}, mrp, costPrice, margin } = req.body;
+    const categoryCommissions = await getCategoryCommissions(product.category);
+    const retailerMargin = categoryCommissions.retailer;
 
     const existingVariants = await ProductVariant.find({ product: id });
     const existingMap = new Map();
@@ -341,10 +399,10 @@ export const updateProduct = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: 'Product and variants updated successfully.',
-      data: {
+      data: enrichProductWithCommissions({
         ...product.toObject(),
         variants: updatedVariants
-      }
+      })
     });
   } catch (error) {
     next(error);

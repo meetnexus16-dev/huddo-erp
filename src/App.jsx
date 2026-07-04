@@ -4,7 +4,7 @@ import {
   Home, GitBranch, LayoutGrid, Users, UsersRound, Award, Store, Package, 
   ShoppingCart, CreditCard, Percent, TrendingUp, Target, MapPin, CheckSquare, 
   Archive, Shield, Bell, BarChart3, Lock, ChevronLeft, ChevronRight, Search, 
-  Menu, LogOut, Settings, User, X, ShoppingBag
+  Menu, LogOut, Settings, User, X, ShoppingBag, Layers
 } from 'lucide-react';
 import { Toast } from './components/Common';
 import { DashboardLayout } from './components/DesignSystem';
@@ -20,6 +20,7 @@ import Departments from './modules/Departments';
 import Promoters from './modules/Promoters';
 import Retailers from './modules/Retailers';
 import Products from './modules/Products';
+import ProductCategories from './modules/ProductCategories';
 import Orders from './modules/Orders';
 import BillingPayments from './modules/BillingPayments';
 import Commissions from './modules/Commissions';
@@ -78,6 +79,7 @@ const NAV_MENU = [
     items: [
       { id: "Retailers", label: "Retailers", icon: Store, component: Retailers },
       { id: "Products", label: "Products", icon: Package, component: Products },
+      { id: "ProductCategories", label: "Product Categories", icon: Layers, component: ProductCategories },
       { id: "Orders", label: "Orders", icon: ShoppingCart, component: Orders }
     ]
   },
@@ -128,6 +130,7 @@ const NAV_MODULE_MAP = {
   'CountryManagers': 'countries',
   'Retailers': 'retailers',
   'Products': 'products',
+  'ProductCategories': 'product-categories',
   'Orders': 'orders',
   'Billing': 'invoices',
   'Commissions': 'commission-records',

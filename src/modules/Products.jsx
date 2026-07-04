@@ -1,7 +1,21 @@
 import React, { useState } from 'react';
-import { Package, Grid, List, Plus, Eye, DollarSign, Edit, Save, ToggleLeft, ToggleRight, X } from 'lucide-react';
+import { Package, Grid, List, Plus, Eye, DollarSign, Edit, Save, ToggleLeft, ToggleRight, X, Layers } from 'lucide-react';
 import { initialProducts } from '../mockData';
 import { DataTable, Modal } from '../components/Common';
+
+const DEFAULT_COMMISSIONS = {
+  retailer: 20,
+  cityManager: 2,
+  stateManager: 1,
+  countryManager: 0.5,
+  promoter: 5
+};
+
+const getCategoryCommissions = (categoryId, categories, productCommissions) => {
+  if (productCommissions) return productCommissions;
+  const category = categories.find((c) => c._id === categoryId || c.name === categoryId);
+  return category?.commissions || DEFAULT_COMMISSIONS;
+};
 
 const COLOR_NAMES = {
   '#EF4444': 'Red',
@@ -27,7 +41,7 @@ const getImageUrl = (url) => {
   return `${prefix}/${url}`;
 };
 
-export default function Products({ showToast }) {
+export default function Products({ showToast, onNavigate }) {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
 
@@ -52,7 +66,7 @@ export default function Products({ showToast }) {
             _id: p._id,
             name: p.name,
             image: p.image || "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400",
-            category: p.category?.name || p.category || 'Sports Shoes',
+            category: p.category?.name || p.category || '',
             categoryId: p.category?._id || p.category,
             description: p.description || '',
             sizes: p.sizes && p.sizes.length > 0 ? p.sizes.map(Number) : [6, 7, 8, 9, 10, 11],
@@ -61,9 +75,13 @@ export default function Products({ showToast }) {
             costPrice: p.costPrice || 1200,
             margin: p.margin || 25,
             status: p.lifecycle_status === 'Active' ? 'Active' : 'Inactive',
-            retailerMargin: p.retailerMargin || 25,
-            cityManagerIncentive: p.cityManagerIncentive || 2,
-            stateManagerIncentive: p.stateManagerIncentive || 1,
+            commissions: p.commissions || {
+              retailer: p.retailerMargin,
+              cityManager: p.cityManagerIncentive,
+              stateManager: p.stateManagerIncentive,
+              countryManager: p.countryManagerIncentive,
+              promoter: p.promoterRoyalty
+            },
             hsn_code: p.hsn_code || '6403.99.90',
             article_no: p.sku || 'ART-AC-01',
             colour: p.colour || 'Red',
@@ -91,11 +109,10 @@ export default function Products({ showToast }) {
 
   // Form states (unified for Add and Edit)
   const [formData, setFormData] = useState({
-    name: '', category: 'Sports Shoes', description: '',
+    name: '', category: '', description: '',
     sizes: [6, 7, 8, 9, 10], colors: ["#EF4444", "#1F2937"],
     mrp: '', costPrice: '', status: 'Active',
     hsn_code: '', article_no: '', colour: '', franchise_points: '',
-    retailerMargin: 20, cityManagerIncentive: 2, stateManagerIncentive: 1,
     image: '', colorConfigs: {}, imageFile: null, colorImageFiles: {}
   });
   const [customColorVal, setCustomColorVal] = useState('#EF4444');
@@ -210,17 +227,13 @@ export default function Products({ showToast }) {
       return;
     }
 
-    // Resolve category name/ID
-    let resolvedCategory = formData.category;
-    let categoryName = formData.category;
     const foundCat = categories.find(c => c._id === formData.category || c.name === formData.category);
-    if (foundCat) {
-      resolvedCategory = foundCat._id;
-      categoryName = foundCat.name;
-    } else if (categories.length > 0) {
-      resolvedCategory = categories[0]._id;
-      categoryName = categories[0].name;
+    if (!formData.category || !foundCat) {
+      showToast("Please select a product category.", "error");
+      return;
     }
+    const resolvedCategory = foundCat._id;
+    const categoryName = foundCat.name;
 
     const marginVal = Math.round(((Number(formData.mrp) - Number(formData.costPrice)) / Number(formData.mrp)) * 100);
     const resolvedColors = formData.colors.length > 0 ? formData.colors : ["#EF4444", "#1F2937"];
@@ -238,9 +251,6 @@ export default function Products({ showToast }) {
     fd.append('mrp', String(formData.mrp));
     fd.append('costPrice', String(formData.costPrice));
     fd.append('margin', String(marginVal));
-    fd.append('retailerMargin', String(formData.retailerMargin));
-    fd.append('cityManagerIncentive', String(formData.cityManagerIncentive));
-    fd.append('stateManagerIncentive', String(formData.stateManagerIncentive));
     fd.append('hsn_code', formData.hsn_code);
     fd.append('franchise_points', String(formData.franchise_points));
 
@@ -292,9 +302,7 @@ export default function Products({ showToast }) {
           costPrice: Number(addedDbProd.costPrice || formData.costPrice),
           margin: addedDbProd.margin || marginVal,
           status: addedDbProd.is_active ? 'Active' : 'Inactive',
-          retailerMargin: Number(addedDbProd.retailerMargin !== undefined ? addedDbProd.retailerMargin : formData.retailerMargin),
-          cityManagerIncentive: Number(addedDbProd.cityManagerIncentive !== undefined ? addedDbProd.cityManagerIncentive : formData.cityManagerIncentive),
-          stateManagerIncentive: Number(addedDbProd.stateManagerIncentive !== undefined ? addedDbProd.stateManagerIncentive : formData.stateManagerIncentive),
+          commissions: addedDbProd.commissions || getCategoryCommissions(resolvedCategory, categories),
           hsn_code: addedDbProd.hsn_code || formData.hsn_code,
           article_no: addedDbProd.sku || formData.article_no,
           colour: addedDbProd.colour || resolvedColour,
@@ -314,55 +322,34 @@ export default function Products({ showToast }) {
     });
   };
 
+  const getEmptyFormData = () => ({
+    name: '',
+    category: '',
+    description: '',
+    sizes: [6, 7, 8, 9, 10],
+    colors: ["#EF4444", "#1F2937"],
+    mrp: '',
+    costPrice: '',
+    status: 'Active',
+    hsn_code: '',
+    article_no: '',
+    colour: '',
+    franchise_points: '',
+    image: '',
+    imageFile: null,
+    colorConfigs: {},
+    colorImageFiles: {}
+  });
+
   const handleCloseModal = () => {
     setIsAddOpen(false);
     setEditingProd(null);
-    setFormData({
-      name: '',
-      category: categories[0]?._id || 'Sports Shoes',
-      description: '',
-      sizes: [6, 7, 8, 9, 10],
-      colors: ["#EF4444", "#1F2937"],
-      mrp: '',
-      costPrice: '',
-      status: 'Active',
-      hsn_code: '',
-      article_no: '',
-      colour: '',
-      franchise_points: '',
-      retailerMargin: 20,
-      cityManagerIncentive: 2,
-      stateManagerIncentive: 1,
-      image: '',
-      imageFile: null,
-      colorConfigs: {},
-      colorImageFiles: {}
-    });
+    setFormData(getEmptyFormData());
   };
 
   const handleStartAdd = () => {
     setEditingProd(null);
-    setFormData({
-      name: '',
-      category: categories[0]?._id || 'Sports Shoes',
-      description: '',
-      sizes: [6, 7, 8, 9, 10],
-      colors: ["#EF4444", "#1F2937"],
-      mrp: '',
-      costPrice: '',
-      status: 'Active',
-      hsn_code: '',
-      article_no: '',
-      colour: '',
-      franchise_points: '',
-      retailerMargin: 20,
-      cityManagerIncentive: 2,
-      stateManagerIncentive: 1,
-      image: '',
-      imageFile: null,
-      colorConfigs: {},
-      colorImageFiles: {}
-    });
+    setFormData(getEmptyFormData());
     setIsAddOpen(true);
   };
 
@@ -381,9 +368,6 @@ export default function Products({ showToast }) {
       article_no: prod.article_no || prod.sku || '',
       colour: prod.colour || '',
       franchise_points: prod.franchise_points || '',
-      retailerMargin: prod.retailerMargin !== undefined ? prod.retailerMargin : 20,
-      cityManagerIncentive: prod.cityManagerIncentive !== undefined ? prod.cityManagerIncentive : 2,
-      stateManagerIncentive: prod.stateManagerIncentive !== undefined ? prod.stateManagerIncentive : 1,
       image: prod.image || '',
       imageFile: null,
       colorConfigs: prod.colorConfigs || {},
@@ -415,17 +399,13 @@ export default function Products({ showToast }) {
       return;
     }
 
-    // Resolve category name/ID
-    let resolvedCategory = formData.category;
-    let categoryName = formData.category;
     const foundCat = categories.find(c => c._id === formData.category || c.name === formData.category);
-    if (foundCat) {
-      resolvedCategory = foundCat._id;
-      categoryName = foundCat.name;
-    } else if (categories.length > 0) {
-      resolvedCategory = categories[0]._id;
-      categoryName = categories[0].name;
+    if (!formData.category || !foundCat) {
+      showToast("Please select a product category.", "error");
+      return;
     }
+    const resolvedCategory = foundCat._id;
+    const categoryName = foundCat.name;
 
     const marginVal = Math.round(((Number(formData.mrp) - Number(formData.costPrice)) / Number(formData.mrp)) * 100);
     const resolvedColors = formData.colors.length > 0 ? formData.colors : ["#EF4444", "#1F2937"];
@@ -443,9 +423,6 @@ export default function Products({ showToast }) {
     fd.append('mrp', String(formData.mrp));
     fd.append('costPrice', String(formData.costPrice));
     fd.append('margin', String(marginVal));
-    fd.append('retailerMargin', String(formData.retailerMargin));
-    fd.append('cityManagerIncentive', String(formData.cityManagerIncentive));
-    fd.append('stateManagerIncentive', String(formData.stateManagerIncentive));
     fd.append('hsn_code', formData.hsn_code);
     fd.append('franchise_points', String(formData.franchise_points));
 
@@ -496,9 +473,7 @@ export default function Products({ showToast }) {
           costPrice: Number(updatedDbProd.costPrice || formData.costPrice),
           margin: updatedDbProd.margin || marginVal,
           status: updatedDbProd.is_active ? 'Active' : 'Inactive',
-          retailerMargin: Number(updatedDbProd.retailerMargin !== undefined ? updatedDbProd.retailerMargin : formData.retailerMargin),
-          cityManagerIncentive: Number(updatedDbProd.cityManagerIncentive !== undefined ? updatedDbProd.cityManagerIncentive : formData.cityManagerIncentive),
-          stateManagerIncentive: Number(updatedDbProd.stateManagerIncentive !== undefined ? updatedDbProd.stateManagerIncentive : formData.stateManagerIncentive),
+          commissions: updatedDbProd.commissions || getCategoryCommissions(resolvedCategory, categories),
           hsn_code: updatedDbProd.hsn_code || formData.hsn_code,
           article_no: updatedDbProd.sku || formData.article_no,
           colour: updatedDbProd.colour || resolvedColour,
@@ -535,37 +510,6 @@ export default function Products({ showToast }) {
     }));
     setIsBulkOpen(false);
     showToast(`Bulk updated all catalogue product prices by ${bulkAdjustment.value}%.`, "success");
-  };
-
-  const handleSaveCommissions = async (id, retM, cityM, stateM) => {
-    try {
-      const response = await fetch(`/api/products/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          retailerMargin: Number(retM),
-          cityManagerIncentive: Number(cityM),
-          stateManagerIncentive: Number(stateM)
-        })
-      });
-      const data = await response.json().catch(() => ({}));
-      if (response.ok && data.success) {
-        setProducts(products.map(p => 
-          (p.id === id || p._id === id) ? { 
-            ...p, 
-            retailerMargin: Number(retM), 
-            cityManagerIncentive: Number(cityM), 
-            stateManagerIncentive: Number(stateM) 
-          } : p
-        ));
-        showToast("Product commission structure updated.", "success");
-      } else {
-        showToast(data.message || "Failed to update commission structure.", "error");
-      }
-    } catch (err) {
-      console.error(err);
-      showToast("Failed to update commission structure.", "error");
-    }
   };
 
   const toggleSizeCheckbox = (sz) => {
@@ -657,7 +601,17 @@ export default function Products({ showToast }) {
           <h1 className="text-2xl font-bold text-slate-900 font-display">Product Catalog</h1>
           <p className="text-sm text-slate-500">Maintain footwear stocks, set regional wholesale markup margins, configure multi-level commission incentive points.</p>
         </div>
-        <div className="flex items-center gap-2 self-start">
+        <div className="flex items-center gap-2 self-start flex-wrap">
+          {onNavigate && (
+            <button
+              type="button"
+              onClick={() => onNavigate('ProductCategories')}
+              className="flex items-center gap-2 px-3 py-2 border border-slate-200 hover:border-brand-orange hover:text-brand-orange rounded-lg text-sm font-semibold text-slate-700 bg-white transition-colors"
+            >
+              <Layers className="w-4 h-4" />
+              <span>Manage Categories</span>
+            </button>
+          )}
           <button 
             onClick={() => setIsBulkOpen(true)}
             className="px-3 py-2 border border-slate-200 hover:border-slate-300 rounded-lg text-sm font-semibold text-slate-700 bg-white transition-colors"
@@ -774,25 +728,31 @@ export default function Products({ showToast }) {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Product Category</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Product Category <span className="text-red-500">*</span></label>
                 <select 
                   value={formData.category} 
                   onChange={(e) => setFormData({...formData, category: e.target.value})} 
+                  required
                   className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white text-slate-800 cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
                 >
+                  <option value="" disabled>Select category</option>
                   {categories.length > 0 ? (
                     categories.map(cat => (
                       <option key={cat._id} value={cat._id}>{cat.name}</option>
                     ))
                   ) : (
-                    <>
-                      <option value="Sports Shoes">Sports Shoes</option>
-                      <option value="Formal Shoes">Formal Shoes</option>
-                      <option value="Casual Shoes">Casual Shoes</option>
-                      <option value="Sandals">Sandals</option>
-                    </>
+                    <option value="" disabled>No categories yet — use Manage Categories</option>
                   )}
                 </select>
+                {onNavigate && categories.length === 0 && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('ProductCategories')}
+                    className="mt-2 text-[11px] font-bold text-brand-orange hover:underline"
+                  >
+                    + Add your first category
+                  </button>
+                )}
               </div>
 
               <div>
@@ -807,6 +767,8 @@ export default function Products({ showToast }) {
                 </select>
               </div>
             </div>
+
+            <CategoryCommissionPreview categoryId={formData.category} categories={categories} />
 
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Select Available UK Sizes</label>
@@ -1055,45 +1017,6 @@ export default function Products({ showToast }) {
               </div>
             </div>
 
-            <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-3.5 space-y-3">
-              <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wide">
-                <span className="w-1.5 h-3 bg-brand-orange rounded-full"></span>
-                Commission & Incentive Points
-              </h4>
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Retailer (%)</label>
-                  <input 
-                    type="number" 
-                    placeholder="20" 
-                    value={formData.retailerMargin} 
-                    onChange={(e) => setFormData({...formData, retailerMargin: e.target.value})} 
-                    className="w-full text-xs border border-slate-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-brand-orange/20 bg-white" 
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">City Mgr (%)</label>
-                  <input 
-                    type="number" 
-                    placeholder="2" 
-                    value={formData.cityManagerIncentive} 
-                    onChange={(e) => setFormData({...formData, cityManagerIncentive: e.target.value})} 
-                    className="w-full text-xs border border-slate-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-brand-orange/20 bg-white" 
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">State Mgr (%)</label>
-                  <input 
-                    type="number" 
-                    placeholder="1" 
-                    value={formData.stateManagerIncentive} 
-                    onChange={(e) => setFormData({...formData, stateManagerIncentive: e.target.value})} 
-                    className="w-full text-xs border border-slate-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-brand-orange/20 bg-white" 
-                  />
-                </div>
-              </div>
-            </div>
-
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Product Description</label>
               <textarea 
@@ -1250,12 +1173,9 @@ export default function Products({ showToast }) {
               )}
 
               {prodTab === 'commissions' && (
-                <CommissionForm 
-                  product={viewingProd} 
-                  onSave={(retM, cityM, stateM) => {
-                    handleSaveCommissions(viewingProd.id, retM, cityM, stateM);
-                    setViewingProd(null);
-                  }} 
+                <CategoryCommissionInfo
+                  product={viewingProd}
+                  categories={categories}
                 />
               )}
             </div>
@@ -1267,51 +1187,71 @@ export default function Products({ showToast }) {
   );
 }
 
-// Inner helper component to manage local state for commission points safely
-function CommissionForm({ product, onSave }) {
-  const [retMargin, setRetMargin] = useState(product.retailerMargin || 20);
-  const [cityIncentive, setCityIncentive] = useState(product.cityManagerIncentive || 2);
-  const [stateIncentive, setStateIncentive] = useState(product.stateManagerIncentive || 1);
+// Read-only commission info inherited from product category
+function CategoryCommissionPreview({ categoryId, categories }) {
+  const commissions = getCategoryCommissions(categoryId, categories);
+  const category = categories.find((c) => c._id === categoryId);
+
+  return (
+    <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
+      <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wide">
+        <Layers className="w-3.5 h-3.5 text-brand-orange" />
+        Category Commissions (inherited)
+      </h4>
+      {!categoryId ? (
+        <p className="text-[11px] text-slate-500">Select a category to view commission rates applied to this product.</p>
+      ) : (
+        <>
+          <p className="text-[11px] text-slate-500">
+            Rates from <span className="font-semibold text-slate-700">{category?.name || 'selected category'}</span>. Edit in Product Categories master.
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mt-2">
+            {[
+              ['Retailer', commissions.retailer],
+              ['City Mgr', commissions.cityManager],
+              ['State Mgr', commissions.stateManager],
+              ['Country Mgr', commissions.countryManager],
+              ['Promoter', commissions.promoter]
+            ].map(([label, value]) => (
+              <div key={label} className="bg-white border border-slate-200 rounded-lg p-2 text-center">
+                <p className="text-[9px] font-bold text-slate-400 uppercase">{label}</p>
+                <p className="text-sm font-bold text-slate-800">{value}%</p>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function CategoryCommissionInfo({ product, categories }) {
+  const commissions = product.commissions || getCategoryCommissions(product.categoryId, categories);
+  const category = categories.find((c) => c._id === product.categoryId || c.name === product.category);
 
   return (
     <div className="space-y-4 text-xs font-semibold text-slate-700">
-      <h4 className="text-xs font-bold text-slate-500 uppercase">Commission & Incentive Points Distribution</h4>
-      <div className="space-y-3 bg-slate-50 border border-slate-100 p-4 rounded-xl">
-        <div>
-          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Retailer Base Margin (%)</label>
-          <input 
-            type="number" 
-            value={retMargin} 
-            onChange={(e) => setRetMargin(e.target.value)} 
-            className="border border-slate-200 p-2 rounded w-full bg-white font-bold" 
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">City Manager Incentive (%)</label>
-          <input 
-            type="number" 
-            value={cityIncentive} 
-            onChange={(e) => setCityIncentive(e.target.value)} 
-            className="border border-slate-200 p-2 rounded w-full bg-white font-bold" 
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">State Manager Incentive (%)</label>
-          <input 
-            type="number" 
-            value={stateIncentive} 
-            onChange={(e) => setStateIncentive(e.target.value)} 
-            className="border border-slate-200 p-2 rounded w-full bg-white font-bold" 
-          />
+      <h4 className="text-xs font-bold text-slate-500 uppercase">Inherited Category Commissions</h4>
+      <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl space-y-3">
+        <p className="text-[11px] text-slate-500 leading-relaxed">
+          This product uses commission rates from category <span className="font-bold text-slate-800">{category?.name || product.category}</span>.
+          To change rates, update the category in <span className="font-bold">Product Categories</span> — all products in that category update automatically.
+        </p>
+        <div className="grid grid-cols-1 gap-2">
+          {[
+            ['Retailer Margin', commissions.retailer],
+            ['City Manager Incentive', commissions.cityManager],
+            ['State Manager Incentive', commissions.stateManager],
+            ['Country Manager Incentive', commissions.countryManager],
+            ['Promoter Royalty', commissions.promoter]
+          ].map(([label, value]) => (
+            <div key={label} className="flex justify-between items-center bg-white border border-slate-200 rounded-lg px-3 py-2">
+              <span className="font-bold text-slate-600">{label}</span>
+              <span className="font-bold text-brand-orange">{value}%</span>
+            </div>
+          ))}
         </div>
       </div>
-      <button 
-        type="button" 
-        onClick={() => onSave(retMargin, cityIncentive, stateIncentive)} 
-        className="w-full py-2.5 bg-brand-orange hover:bg-brand-orange-hover text-white text-sm font-bold rounded-lg shadow-sm transition-colors text-center"
-      >
-        Save Commission Settings
-      </button>
     </div>
   );
 }

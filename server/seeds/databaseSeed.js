@@ -564,13 +564,33 @@ const seedData = async () => {
 
     // 8. Seed Product Categories, Products, and Variants
     console.log('[Seeder] Seeding Products & Variants...');
-    const catSports = new ProductCategory({ name: "Sports Shoes", code: "SPT", is_active: true });
+    const catSports = new ProductCategory({
+      name: 'Sports Shoes',
+      code: 'SPT',
+      is_active: true,
+      commissions: { retailer: 22, cityManager: 2, stateManager: 1, countryManager: 0.5, promoter: 5 }
+    });
     await catSports.save();
-    const catFormal = new ProductCategory({ name: "Formal Shoes", code: "FRM", is_active: true });
+    const catFormal = new ProductCategory({
+      name: 'Formal Shoes',
+      code: 'FRM',
+      is_active: true,
+      commissions: { retailer: 18, cityManager: 2.5, stateManager: 1.2, countryManager: 0.6, promoter: 4.5 }
+    });
     await catFormal.save();
-    const catCasual = new ProductCategory({ name: "Casual Shoes", code: "CSL", is_active: true });
+    const catCasual = new ProductCategory({
+      name: 'Casual Shoes',
+      code: 'CSL',
+      is_active: true,
+      commissions: { retailer: 20, cityManager: 2, stateManager: 1, countryManager: 0.5, promoter: 5 }
+    });
     await catCasual.save();
-    const catSandals = new ProductCategory({ name: "Sandals", code: "SND", is_active: true });
+    const catSandals = new ProductCategory({
+      name: 'Sandals',
+      code: 'SND',
+      is_active: true,
+      commissions: { retailer: 25, cityManager: 1.5, stateManager: 0.8, countryManager: 0.4, promoter: 6 }
+    });
     await catSandals.save();
 
     const catsMap = {
