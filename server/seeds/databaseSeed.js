@@ -7,6 +7,7 @@ import State from '../models/State.js';
 import City from '../models/City.js';
 import Employee from '../models/Employee.js';
 import Promoter from '../models/Promoter.js';
+import PromoterBonusStructure from '../models/PromoterBonusStructure.js';
 import Retailer from '../models/Retailer.js';
 import ProductCategory from '../models/ProductCategory.js';
 import Product from '../models/Product.js';
@@ -224,6 +225,7 @@ const seedData = async () => {
     await City.deleteMany({});
     await Employee.deleteMany({});
     await Promoter.deleteMany({});
+    await PromoterBonusStructure.deleteMany({});
     await Retailer.deleteMany({});
     await ProductCategory.deleteMany({});
     await Product.deleteMany({});
@@ -302,15 +304,36 @@ const seedData = async () => {
       { name: "Apex Sole Distributors", email: "manish@apexsole.com", mobile: "9810101010", roleName: "Retailer", password: "password123" }
     ];
 
+    const roleNameByLabel = {
+      'Founder': 'Founder',
+      'Country Manager': 'CountryManager',
+      'State Manager': 'StateManager',
+      'City Manager': 'CityManager',
+      'Finance Manager': 'FinanceManager',
+      'HR Manager': 'HRManager',
+      'Inventory Manager': 'InventoryManager',
+      'Sales Executive': 'SalesExecutive',
+      'Promoter': 'Promoter',
+      'Retailer': 'Retailer'
+    };
+
     for (const u of defaultUsers) {
+      const year = new Date().getFullYear();
+      const codeSuffix = Math.floor(1000 + Math.random() * 9000);
+      const userCode = `USR-${year}-${codeSuffix}`;
       const dbUser = new User({
         name: u.name,
         email: u.email,
         mobile: u.mobile,
         role: rolesMap[u.roleName],
+        roleName: roleNameByLabel[u.roleName] || u.roleName,
         password: u.password,
+        user_code: userCode,
+        employee_id: userCode,
         is_verified: true,
-        is_active: true
+        is_active: true,
+        approval_status: 'Approved',
+        onboarding_source: 'admin'
       });
       await dbUser.save();
       usersMap[u.name] = dbUser;
@@ -365,6 +388,23 @@ const seedData = async () => {
       });
       await cityDoc.save();
       cityDocs[c.name] = cityDoc;
+    }
+
+    await User.findByIdAndUpdate(usersMap['Rajesh Sharma']._id, { country: india._id, roleName: 'CountryManager' });
+    for (const s of states) {
+      await User.findByIdAndUpdate(usersMap[s.managerName]._id, {
+        country: india._id,
+        state: stateDocs[s.name]._id,
+        roleName: 'StateManager'
+      });
+    }
+    for (const c of cities) {
+      await User.findByIdAndUpdate(usersMap[c.managerName]._id, {
+        country: india._id,
+        state: stateDocs[c.stateName]._id,
+        city: cityDocs[c.name]._id,
+        roleName: 'CityManager'
+      });
     }
 
     // 4. Seed Departments & Designations
@@ -568,30 +608,65 @@ const seedData = async () => {
       name: 'Sports Shoes',
       code: 'SPT',
       is_active: true,
-      commissions: { retailer: 22, cityManager: 2, stateManager: 1, countryManager: 0.5, promoter: 5 }
+      commissions: {
+        retailer: 22,
+        cityManager: 2,
+        stateManager: 1,
+        countryManager: 0.5,
+        promoterCommissions: { retailer: 8, cityManager: 6.5, stateManager: 6, countryManager: 5.5 }
+      }
     });
     await catSports.save();
     const catFormal = new ProductCategory({
       name: 'Formal Shoes',
       code: 'FRM',
       is_active: true,
-      commissions: { retailer: 18, cityManager: 2.5, stateManager: 1.2, countryManager: 0.6, promoter: 4.5 }
+      commissions: {
+        retailer: 18,
+        cityManager: 2.5,
+        stateManager: 1.2,
+        countryManager: 0.6,
+        promoterCommissions: { retailer: 7.5, cityManager: 6, stateManager: 5.5, countryManager: 5 }
+      }
     });
     await catFormal.save();
     const catCasual = new ProductCategory({
       name: 'Casual Shoes',
       code: 'CSL',
       is_active: true,
-      commissions: { retailer: 20, cityManager: 2, stateManager: 1, countryManager: 0.5, promoter: 5 }
+      commissions: {
+        retailer: 20,
+        cityManager: 2,
+        stateManager: 1,
+        countryManager: 0.5,
+        promoterCommissions: { retailer: 8, cityManager: 6.5, stateManager: 6, countryManager: 5.5 }
+      }
     });
     await catCasual.save();
     const catSandals = new ProductCategory({
       name: 'Sandals',
       code: 'SND',
       is_active: true,
-      commissions: { retailer: 25, cityManager: 1.5, stateManager: 0.8, countryManager: 0.4, promoter: 6 }
+      commissions: {
+        retailer: 25,
+        cityManager: 1.5,
+        stateManager: 0.8,
+        countryManager: 0.4,
+        promoterCommissions: { retailer: 9, cityManager: 7.5, stateManager: 7, countryManager: 6.5 }
+      }
     });
     await catSandals.save();
+
+    console.log('[Seeder] Seeding Referrer Commission Fallbacks...');
+    const bonusDefaults = [
+      { promoted_role: 'Retailer', extra_bonus_percentage: 8, description: 'Global fallback referrer % when category has no promoted-retailer rate' },
+      { promoted_role: 'CityManager', extra_bonus_percentage: 6.5, description: 'Global fallback referrer % when category has no promoted-city-manager rate' },
+      { promoted_role: 'StateManager', extra_bonus_percentage: 6, description: 'Global fallback referrer % when category has no promoted-state-manager rate' },
+      { promoted_role: 'CountryManager', extra_bonus_percentage: 5.5, description: 'Global fallback referrer % when category has no promoted-country-manager rate' }
+    ];
+    for (const bonus of bonusDefaults) {
+      await PromoterBonusStructure.create(bonus);
+    }
 
     const catsMap = {
       "Sports Shoes": catSports._id,
@@ -601,11 +676,11 @@ const seedData = async () => {
     };
 
     const productsData = [
-      { id: "P1", name: "Huddo Air Classic", sku: "SKU-AC-01", category: "Sports Shoes", mrp: 2999, cost: 1200, margin: 25 },
-      { id: "P2", name: "Huddo Flex Runner", sku: "SKU-FR-02", category: "Sports Shoes", mrp: 2499, cost: 1000, margin: 22 },
-      { id: "P3", name: "Huddo Elegant Derby", sku: "SKU-ED-03", category: "Formal Shoes", mrp: 4999, cost: 2000, margin: 28 },
-      { id: "P4", name: "Huddo Leather Loafer", sku: "SKU-LL-04", category: "Casual Shoes", mrp: 3499, cost: 1400, margin: 24 },
-      { id: "P5", name: "Huddo Comfort Slide", sku: "SKU-CS-05", category: "Sandals", mrp: 1299, cost: 500, margin: 20 }
+      { id: "P1", name: "Huddo Air Classic", sku: "SKU-AC-01", category: "Sports Shoes", mrp: 2999, cost: 1200, margin: 25, franchise_points: 1000 },
+      { id: "P2", name: "Huddo Flex Runner", sku: "SKU-FR-02", category: "Sports Shoes", mrp: 2499, cost: 1000, margin: 22, franchise_points: 800 },
+      { id: "P3", name: "Huddo Elegant Derby", sku: "SKU-ED-03", category: "Formal Shoes", mrp: 4999, cost: 2000, margin: 28, franchise_points: 1500 },
+      { id: "P4", name: "Huddo Leather Loafer", sku: "SKU-LL-04", category: "Casual Shoes", mrp: 3499, cost: 1400, margin: 24, franchise_points: 1100 },
+      { id: "P5", name: "Huddo Comfort Slide", sku: "SKU-CS-05", category: "Sandals", mrp: 1299, cost: 500, margin: 20, franchise_points: 400 }
     ];
 
     const variantDocs = {};
@@ -615,6 +690,10 @@ const seedData = async () => {
         sku: p.sku,
         category: catsMap[p.category],
         description: `${p.name} premium footwear description.`,
+        mrp: p.mrp,
+        costPrice: p.cost,
+        margin: p.margin,
+        franchise_points: p.franchise_points,
         is_active: true
       });
       await prodDoc.save();

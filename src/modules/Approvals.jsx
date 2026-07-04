@@ -20,8 +20,9 @@ export default function Approvals({ showToast }) {
   const loadApprovals = () => {
     Promise.all([
       fetch('/api/orders').then(res => res.json()),
-      fetch('/api/retailers').then(res => res.json())
-    ]).then(([ordersData, retailersData]) => {
+      fetch('/api/retailers').then(res => res.json()),
+      fetch('/api/onboarding/pending').then(res => res.json())
+    ]).then(([ordersData, retailersData, onboardingData]) => {
       const mappedOrders = (ordersData.success && Array.isArray(ordersData.data) ? ordersData.data : [])
         .filter(o => o.status === 'Submitted' || o.status === 'Pending')
         .map(o => ({
@@ -46,8 +47,18 @@ export default function Approvals({ showToast }) {
           rawType: 'retailer'
         }));
 
-      // Set combined approvals
-      setApprovals([...mappedOrders, ...mappedRetailers]);
+      const mappedOnboarding = (onboardingData.success && Array.isArray(onboardingData.data) ? onboardingData.data : [])
+        .map(u => ({
+          id: u._id,
+          requester: u.name,
+          type: "User Onboarding",
+          status: "Pending",
+          details: `${u.roleName || u.role?.name} onboarding referred by ${u.promoted_by?.name || u.promoter_code_used || 'Unknown'}.`,
+          date: u.createdAt ? new Date(u.createdAt).toISOString().split('T')[0] : '2026-06-11',
+          rawType: 'onboarding'
+        }));
+
+      setApprovals([...mappedOrders, ...mappedRetailers, ...mappedOnboarding]);
     }).catch(err => console.error("Error loading approvals:", err));
   };
 
@@ -63,19 +74,28 @@ export default function Approvals({ showToast }) {
 
   const handleConfirmActionSubmit = () => {
     const isApprove = reqAction === 'approve';
-    const endpoint = selectedReq.rawType === 'order'
-      ? `/api/orders/${selectedReq.id}/${isApprove ? 'approve' : 'reject'}`
-      : `/api/retailers/${selectedReq.id}`;
+    let endpoint = '';
+    let fetchMethod = 'POST';
+    let payload = {};
 
-    const fetchMethod = selectedReq.rawType === 'order' ? 'POST' : 'PUT';
-    const payload = selectedReq.rawType === 'order'
-      ? JSON.stringify({ comment: commentVal })
-      : JSON.stringify({ is_verified: isApprove });
+    if (selectedReq.rawType === 'order') {
+      endpoint = `/api/orders/${selectedReq.id}/${isApprove ? 'approve' : 'reject'}`;
+      fetchMethod = 'POST';
+      payload = { comment: commentVal };
+    } else if (selectedReq.rawType === 'onboarding') {
+      endpoint = `/api/onboarding/${selectedReq.id}/approve`;
+      fetchMethod = 'POST';
+      payload = { action: isApprove ? 'approve' : 'reject', rejection_reason: commentVal };
+    } else {
+      endpoint = `/api/retailers/${selectedReq.id}`;
+      fetchMethod = 'PUT';
+      payload = { is_verified: isApprove };
+    }
 
     fetch(endpoint, {
       method: fetchMethod,
       headers: { 'Content-Type': 'application/json' },
-      body: payload
+      body: JSON.stringify(payload)
     })
       .then(res => res.json())
       .then(resData => {

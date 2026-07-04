@@ -204,6 +204,15 @@ export const login = async (req, res, next) => {
       return res.status(403).json({ success: false, message: 'Access denied: User account is suspended.' });
     }
 
+    if (user.approval_status && user.approval_status !== 'Approved') {
+      return res.status(403).json({
+        success: false,
+        message: user.approval_status === 'Pending'
+          ? 'Access denied: Your account is pending admin approval.'
+          : 'Access denied: Your account registration was rejected.'
+      });
+    }
+
     // Compare passwords
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {

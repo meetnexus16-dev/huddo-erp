@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Percent, Save, Plus, Trash2, CheckCircle, Calculator, Info } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell } from 'recharts';
+import PromoterBonusStructures from './PromoterBonusStructures';
+import NetworkWorkspace from './network/NetworkWorkspace';
 
 export default function Commissions({ showToast }) {
   const [categories, setCategories] = useState([]);
@@ -76,7 +78,12 @@ export default function Commissions({ showToast }) {
               cityManager: 2,
               stateManager: 1,
               countryManager: 0.5,
-              promoter: 5
+              promoterCommissions: {
+                retailer: 8,
+                cityManager: 6.5,
+                stateManager: 6,
+                countryManager: 5.5
+              }
             }
           })));
         }
@@ -174,6 +181,23 @@ export default function Commissions({ showToast }) {
     setCategories(categories.map((c) =>
       c._id === id
         ? { ...c, commissions: { ...c.commissions, [roleKey]: Number(newPct) } }
+        : c
+    ));
+  };
+
+  const handleUpdatePromoterCommission = (id, roleKey, newPct) => {
+    setCategories(categories.map((c) =>
+      c._id === id
+        ? {
+            ...c,
+            commissions: {
+              ...c.commissions,
+              promoterCommissions: {
+                ...(c.commissions?.promoterCommissions || {}),
+                [roleKey]: Number(newPct)
+              }
+            }
+          }
         : c
     ));
   };
@@ -346,10 +370,16 @@ export default function Commissions({ showToast }) {
           2. Employee Incentive Slabs
         </button>
         <button 
-          onClick={() => setActiveSubTab('promoter')}
-          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${activeSubTab === 'promoter' ? 'border-brand-orange text-brand-orange' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+          onClick={() => setActiveSubTab('referrer-bonus')}
+          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${activeSubTab === 'referrer-bonus' ? 'border-brand-orange text-brand-orange' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
         >
-          3. Promoter Royalty Settlements
+          4. Referrer Fallback Rates
+        </button>
+        <button 
+          onClick={() => setActiveSubTab('payouts')}
+          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${activeSubTab === 'payouts' ? 'border-brand-orange text-brand-orange' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+        >
+          5. Commission Payouts
         </button>
       </div>
 
@@ -358,8 +388,8 @@ export default function Commissions({ showToast }) {
         <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-4">
           <div className="flex justify-between items-center">
             <div>
-              <h3 className="text-sm font-bold text-slate-900 font-display">Category Commission Matrix (%)</h3>
-              <p className="text-xs text-slate-400 font-semibold">Set commission rates once per category. Every product in that category uses these values.</p>
+              <h3 className="text-sm font-bold text-slate-900 font-display">Category Commission Matrix (% of Franchise Points)</h3>
+              <p className="text-xs text-slate-400 font-semibold">Commissions apply to managers and referrers only — not retailers. Base is Franchise Points × quantity on each approved order.</p>
             </div>
             <button 
               onClick={handleSaveMargins}
@@ -374,27 +404,33 @@ export default function Commissions({ showToast }) {
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500">
-                  <th className="px-4 py-3">Category</th>
-                  <th className="px-4 py-3">Products</th>
-                  <th className="px-4 py-3 text-right">Retailer %</th>
-                  <th className="px-4 py-3 text-right">City Mgr %</th>
-                  <th className="px-4 py-3 text-right">State Mgr %</th>
-                  <th className="px-4 py-3 text-right">Country Mgr %</th>
-                  <th className="px-4 py-3 text-right">Promoter %</th>
+                  <th className="px-4 py-3" rowSpan={2}>Category</th>
+                  <th className="px-4 py-3" rowSpan={2}>Products</th>
+                  <th className="px-4 py-3 text-center border-l border-slate-200" colSpan={3}>Manager Incentives</th>
+                  <th className="px-4 py-3 text-center border-l border-slate-200" colSpan={4}>Referrer / Promoter Commissions</th>
+                </tr>
+                <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500">
+                  <th className="px-4 py-3 text-right border-l border-slate-200">City Mgr</th>
+                  <th className="px-4 py-3 text-right">State Mgr</th>
+                  <th className="px-4 py-3 text-right">Country Mgr</th>
+                  <th className="px-4 py-3 text-right border-l border-slate-200">Referred Retailer</th>
+                  <th className="px-4 py-3 text-right">Referred City Mgr</th>
+                  <th className="px-4 py-3 text-right">Referred State Mgr</th>
+                  <th className="px-4 py-3 text-right">Referred Country Mgr</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
                 {categories.length === 0 ? (
                   <tr>
-                    <td colSpan="7" className="px-4 py-3 text-center text-slate-400">No categories found. Add categories from Product Categories master.</td>
+                    <td colSpan="9" className="px-4 py-3 text-center text-slate-400">No categories found. Add categories from Product Categories master.</td>
                   </tr>
                 ) : (
                   categories.map((cat) => (
                     <tr key={cat._id}>
                       <td className="px-4 py-3 text-slate-900">{cat.name}</td>
                       <td className="px-4 py-3 text-slate-500">{cat.product_count || 0}</td>
-                      {['retailer', 'cityManager', 'stateManager', 'countryManager', 'promoter'].map((roleKey) => (
-                        <td key={roleKey} className="px-4 py-3 text-right">
+                      {['cityManager', 'stateManager', 'countryManager'].map((roleKey) => (
+                        <td key={roleKey} className="px-4 py-3 text-right border-l border-slate-50 first:border-l-slate-200">
                           <input
                             type="number"
                             min="0"
@@ -403,6 +439,19 @@ export default function Commissions({ showToast }) {
                             value={cat.commissions?.[roleKey] ?? 0}
                             onChange={(e) => handleUpdateCategoryCommission(cat._id, roleKey, e.target.value)}
                             className="border border-slate-200 text-slate-800 rounded p-1 w-20 text-right font-bold focus:outline-none focus:ring-1 focus:ring-brand-orange bg-white"
+                          />
+                        </td>
+                      ))}
+                      {['retailer', 'cityManager', 'stateManager', 'countryManager'].map((roleKey) => (
+                        <td key={`promoter-${roleKey}`} className="px-4 py-3 text-right border-l border-slate-50 first:border-l-slate-200">
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.1"
+                            value={cat.commissions?.promoterCommissions?.[roleKey] ?? 0}
+                            onChange={(e) => handleUpdatePromoterCommission(cat._id, roleKey, e.target.value)}
+                            className="border border-purple-200 text-purple-900 rounded p-1 w-20 text-right font-bold focus:outline-none focus:ring-1 focus:ring-purple-400 bg-white"
                           />
                         </td>
                       ))}
@@ -657,6 +706,18 @@ export default function Commissions({ showToast }) {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {activeSubTab === 'referrer-bonus' && (
+        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs">
+          <PromoterBonusStructures showToast={showToast} />
+        </div>
+      )}
+
+      {activeSubTab === 'payouts' && (
+        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs">
+          <NetworkWorkspace showToast={showToast} initialTab="payments" />
         </div>
       )}
 

@@ -1,8 +1,8 @@
 // CM-MODULE: Frontend entry point and router for the Country Manager Module
 import React, { useState, useEffect } from 'react';
 import { 
-  Home, Layers, CheckSquare, Target, Percent, Users, BarChart3, Bell, 
-  TrendingUp, Shield, LogOut, Settings, Menu, X, ChevronLeft, ChevronRight, RefreshCw, Lock
+  Home, Layers, CheckSquare, Target, Users, BarChart3, Bell, 
+  TrendingUp, ShoppingCart
 } from 'lucide-react';
 
 import CountryManagerList from './pages/CountryManagerList';
@@ -12,6 +12,12 @@ import CountryManagerDashboard from './pages/CountryManagerDashboard';
 import AnalyticsDeepDive from './pages/AnalyticsDeepDive';
 import { DashboardLayout } from '../../components/DesignSystem';
 import MyProfile from '../MyProfile';
+import NetworkWorkspace from '../network/NetworkWorkspace';
+import { NETWORK_SIDEBAR_SECTION, getNetworkTab, isNetworkScreen } from '../network/networkSidebarConfig';
+import ManagerOrdersLive from '../manager/ManagerOrdersLive';
+import ManagerApprovalsLive from '../manager/ManagerApprovalsLive';
+import { fetchPendingOrderCount } from '../manager/pendingOrderUtils';
+import { isCountryManager } from '../../utils/roleRouting';
 
 export default function CountryManagerModule({ userRole = 'Founder', showToast, onSwitchRole }) {
   const safeShowToast = showToast || ((msg, type) => console.log(`[Toast] type: ${type}, msg: ${msg}`));
@@ -39,23 +45,25 @@ export default function CountryManagerModule({ userRole = 'Founder', showToast, 
   };
 
   useEffect(() => {
-    if (userRole.toLowerCase() === 'country manager') {
-      const fetchOwnStats = async () => {
-        try {
-          const res = await fetch('/api/country-managers/1/profile'); // hardcoded CM ID 1 for Rajesh Sharma
-          if (res.ok) {
-            const data = await res.json();
-            setProfile(data);
-            setStats({
-              pendingApprovals: data.pending_approval_count || 0,
-              unreadNotifications: data.unread_notification_count || 0
+    if (isCountryManager(userRole)) {
+      fetchPendingOrderCount().then((count) => {
+        setStats((prev) => ({ ...prev, pendingApprovals: count }));
+      });
+
+      const token = localStorage.getItem('huddo_token');
+      fetch('/api/profile', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.success && data.data) {
+            setProfile({
+              full_name: data.data.name,
+              profile_photo_url: data.data.profile_photo
             });
           }
-        } catch (err) {
-          console.error(err);
-        }
-      };
-      fetchOwnStats();
+        })
+        .catch((err) => console.error(err));
     }
   }, [userRole, activeTab]);
 
@@ -79,7 +87,7 @@ export default function CountryManagerModule({ userRole = 'Founder', showToast, 
   // ────────────────────────────────────────────────────────────────────────
   // A. RETAILER/FOUNDER/CEO/ADMIN WORKSPACE VIEW
   // ────────────────────────────────────────────────────────────────────────
-  if (userRole.toLowerCase() !== 'country manager') {
+  if (!isCountryManager(userRole)) {
     switch (adminScreen) {
       case 'list':
         return <CountryManagerList key={listVersion} onNavigate={handleAdminNavigate} showToast={safeShowToast} />;
@@ -98,32 +106,77 @@ export default function CountryManagerModule({ userRole = 'Founder', showToast, 
   // B. DEDICATED WORKSPACE FOR COUNTRY MANAGER ROLE (PAGE 4)
   // ────────────────────────────────────────────────────────────────────────
   
+  const handlePendingCountChange = (count) => {
+    setStats((prev) => ({ ...prev, pendingApprovals: count }));
+  };
+
   const SIDEBAR_ITEMS = [
-    { id: 'Dashboard', label: 'My Dashboard', icon: Home },
-    { id: 'States', label: 'States Management', icon: Layers },
-    { id: 'Approvals', label: 'Approvals Queue', icon: CheckSquare, badge: stats.pendingApprovals },
-    { id: 'Targets', label: 'My Targets', icon: Target },
-    { id: 'Commissions', label: 'Commission Ledger', icon: Percent },
-    { id: 'State Managers', label: 'State Managers', icon: Users },
-    { id: 'Analytics', label: 'Analytics Deep-Dive', icon: TrendingUp },
-    { id: 'Notifications', label: 'Notifications Hub', icon: Bell, badge: notifications.filter(n => !n.read).length }
+    {
+      section: 'OVERVIEW',
+      items: [{ id: 'Dashboard', label: 'My Dashboard', icon: Home }]
+    },
+    NETWORK_SIDEBAR_SECTION,
+    {
+      section: 'OPERATIONS',
+      items: [
+        { id: 'Orders', label: 'Orders', icon: ShoppingCart },
+        { id: 'Approvals', label: 'Approvals Queue', icon: CheckSquare, badge: stats.pendingApprovals }
+      ]
+    },
+    {
+      section: 'MANAGEMENT',
+      items: [
+        { id: 'States', label: 'States Management', icon: Layers },
+        { id: 'State Managers', label: 'State Managers', icon: Users },
+        { id: 'Targets', label: 'My Targets', icon: Target },
+        { id: 'Analytics', label: 'Analytics Deep-Dive', icon: TrendingUp }
+      ]
+    },
+    {
+      section: 'ACCOUNT',
+      items: [
+        { id: 'Notifications', label: 'Notifications Hub', icon: Bell, badge: notifications.filter(n => !n.read).length }
+      ]
+    }
   ];
 
   const renderActiveScreen = () => {
     if (activeTab === 'Profile') {
       return <MyProfile showToast={safeShowToast} userRole={userRole} onSwitchRole={onSwitchRole} />;
     }
+    if (isNetworkScreen(activeTab)) {
+      return (
+        <NetworkWorkspace
+          showToast={safeShowToast}
+          initialTab={getNetworkTab(activeTab)}
+          hideTabBar
+          key={activeTab}
+        />
+      );
+    }
     switch (activeTab) {
       case 'Dashboard':
         return <CountryManagerDashboard cmId={1} isTab={true} onNavigate={setActiveTab} showToast={safeShowToast} />;
+      case 'Orders':
+        return (
+          <ManagerOrdersLive
+            showToast={safeShowToast}
+            title="Country Orders"
+            onPendingCountChange={handlePendingCountChange}
+          />
+        );
       case 'States':
         return <CountryManagerDetail cmId={1} onNavigate={() => {}} showToast={safeShowToast} userRole={userRole} initialTab="States" />;
       case 'Approvals':
-        return <CountryManagerDetail cmId={1} onNavigate={() => {}} showToast={safeShowToast} userRole={userRole} initialTab="Approvals" />;
+        return (
+          <ManagerApprovalsLive
+            showToast={safeShowToast}
+            title="Order Approvals Queue"
+            onPendingCountChange={handlePendingCountChange}
+          />
+        );
       case 'Targets':
         return <CountryManagerDetail cmId={1} onNavigate={() => {}} showToast={safeShowToast} userRole={userRole} initialTab="Targets" />;
-      case 'Commissions':
-        return <CountryManagerDetail cmId={1} onNavigate={() => {}} showToast={safeShowToast} userRole={userRole} initialTab="Commissions" />;
       case 'State Managers':
         return <CountryManagerDetail cmId={1} onNavigate={() => {}} showToast={safeShowToast} userRole={userRole} initialTab="State Managers" />;
       case 'Analytics':

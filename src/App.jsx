@@ -47,6 +47,16 @@ import PromoterModule from './modules/promoter/PromoterModule';
 import EmployeeModule from './modules/employee/EmployeeModule';
 import CommunicationSettings from './modules/CommunicationSettings';
 import MyProfile from './modules/MyProfile';
+import OnboardingForm from './modules/OnboardingForm';
+import {
+  getRoleDisplayName,
+  isCityManager,
+  isCountryManager,
+  isPromoter,
+  isRetailerOrDistributor,
+  isStateManager,
+  resolveUserRole
+} from './utils/roleRouting';
 
 
 
@@ -149,6 +159,12 @@ const NAV_MODULE_MAP = {
 };
 
 export default function App() {
+  const isOnboardingRoute = window.location.pathname === '/onboard' || window.location.pathname.startsWith('/onboard/');
+
+  if (isOnboardingRoute) {
+    return <OnboardingForm />;
+  }
+
   const [activeScreen, setActiveScreen] = useState('Dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [toast, setToast] = useState(null);
@@ -165,6 +181,16 @@ export default function App() {
   });
 
   const [currentRole, setCurrentRole] = useState(() => localStorage.getItem('huddo_role') || 'Founder');
+
+  useEffect(() => {
+    if (user) {
+      const displayRole = getRoleDisplayName(resolveUserRole(user));
+      if (displayRole && displayRole !== currentRole) {
+        setCurrentRole(displayRole);
+        localStorage.setItem('huddo_role', displayRole);
+      }
+    }
+  }, [user]);
 
   useEffect(() => {
     const handleProfileUpdate = () => {
@@ -229,9 +255,12 @@ export default function App() {
         if (data.success && data.data.access_token) {
           localStorage.setItem('huddo_token', data.data.access_token);
           localStorage.setItem('huddo_user', JSON.stringify(data.data.user));
+          const displayRole = getRoleDisplayName(resolveUserRole(data.data.user) || role);
+          localStorage.setItem('huddo_role', displayRole);
           setToken(data.data.access_token);
           setUser(data.data.user);
-          console.log(`[Auth] Backend JWT authenticated successfully for ${role}`);
+          setCurrentRole(displayRole);
+          console.log(`[Auth] Backend JWT authenticated successfully for ${displayRole}`);
         }
       } catch (err) {
         console.warn(`[Auth] Backend login failed: ${err.message}`);
@@ -299,12 +328,13 @@ export default function App() {
     return (
       <Login 
         onLoginSuccess={(userData, userToken) => {
+          const displayRole = getRoleDisplayName(resolveUserRole(userData));
           localStorage.setItem('huddo_token', userToken);
           localStorage.setItem('huddo_user', JSON.stringify(userData));
-          localStorage.setItem('huddo_role', userData.role?.name || userData.role || 'Founder');
+          localStorage.setItem('huddo_role', displayRole);
           setToken(userToken);
           setUser(userData);
-          setCurrentRole(userData.role?.name || userData.role || 'Founder');
+          setCurrentRole(displayRole);
           showToast(`Logged in successfully as ${userData.name}!`, "success");
         }} 
       />
@@ -326,7 +356,7 @@ export default function App() {
   }
 
   // HUDDO-UPDATE: Retailer & Distributor Panel - Full Screen override
-  if (currentRole.toLowerCase() === 'retailer' || currentRole.toLowerCase() === 'distributor') {
+  if (isRetailerOrDistributor(currentRole)) {
     return (
       <RetailerModule 
         userRole={currentRole} 
@@ -337,7 +367,7 @@ export default function App() {
   }
 
   // CM-MODULE: Country Manager Workspace - Full Screen override
-  if (currentRole.toLowerCase() === 'country manager') {
+  if (isCountryManager(currentRole)) {
     return (
       <CountryManagerModule 
         userRole={currentRole} 
@@ -348,7 +378,7 @@ export default function App() {
   }
 
   // SM-MODULE: State Manager Workspace - Full Screen override
-  if (currentRole.toLowerCase() === 'state manager') {
+  if (isStateManager(currentRole)) {
     return (
       <StateManagerModule 
         userRole={currentRole} 
@@ -359,7 +389,7 @@ export default function App() {
   }
 
   // CTY-MODULE: City Manager Workspace - Full Screen override
-  if (currentRole.toLowerCase() === 'city manager') {
+  if (isCityManager(currentRole)) {
     return (
       <CityManagerModule 
         userRole={currentRole} 
@@ -370,7 +400,7 @@ export default function App() {
   }
 
   // PROMO-MODULE: Promoter Workspace - Full Screen override
-  if (currentRole.toLowerCase() === 'promoter') {
+  if (isPromoter(currentRole)) {
     return (
       <PromoterModule 
         userRole={currentRole} 

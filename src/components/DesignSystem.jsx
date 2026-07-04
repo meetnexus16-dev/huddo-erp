@@ -178,8 +178,18 @@ export function DashboardLayout({
                             <Icon className="w-4 h-4 shrink-0" />
                             {!sidebarCollapsed && <span>{item.label}</span>}
                           </div>
-                          {isActive && !sidebarCollapsed && (
+                          {(!sidebarCollapsed || mobileSidebarOpen) && item.badge > 0 && (
+                            <span className={`px-1.5 py-0.5 text-[9px] font-bold rounded-full ${
+                              isActive ? 'bg-white text-brand-orange' : 'bg-brand-orange text-white'
+                            }`}>
+                              {item.badge}
+                            </span>
+                          )}
+                          {isActive && !sidebarCollapsed && !item.badge && (
                             <span className="absolute right-2 w-1.5 h-1.5 bg-white rounded-full"></span>
+                          )}
+                          {isActive && !sidebarCollapsed && item.badge > 0 && (
+                            <span className="sr-only">Active</span>
                           )}
                         </button>
                       );

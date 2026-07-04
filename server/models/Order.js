@@ -49,7 +49,38 @@ const orderSchema = new mongoose.Schema({
   },
   delivered_at: { type: Date },
   cancelled_reason: { type: String },
-  created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
+  created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  commissions_calculated: { type: Boolean, default: false },
+  commission_snapshot: {
+    calculated_at: { type: Date },
+    structure_version: { type: String },
+    items: [{
+      product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+      product_variant: { type: mongoose.Schema.Types.ObjectId, ref: 'ProductVariant' },
+      product_category: { type: mongoose.Schema.Types.ObjectId, ref: 'ProductCategory' },
+      category_name: { type: String },
+      franchise_points: { type: Number },
+      quantity: { type: Number },
+      rates: {
+        cityManager: { type: Number },
+        stateManager: { type: Number },
+        countryManager: { type: Number },
+        promoterCommissions: { type: mongoose.Schema.Types.Mixed },
+        promoterFallbackByRole: { type: mongoose.Schema.Types.Mixed },
+        /** @deprecated */
+        promoterBase: { type: Number },
+        /** @deprecated */
+        promoterBonusByRole: { type: mongoose.Schema.Types.Mixed }
+      }
+    }],
+    recipients: [{
+      user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      role: { type: String },
+      commission_type: { type: String },
+      total_amount: { type: Number },
+      lines: [{ description: String, amount: Number, percentage: Number }]
+    }]
+  }
 }, { timestamps: true });
 
 orderSchema.plugin(softDeletePlugin);

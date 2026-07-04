@@ -1,48 +1,87 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, Home, Store, DollarSign, Percent, Bell, Shield, ArrowRight, User, AlertCircle, Check } from 'lucide-react';
-import PromoterDetail from './PromoterDetail';
+import { Home, Link2 } from 'lucide-react';
 import { DashboardLayout } from '../../../components/DesignSystem';
 import MyProfile from '../../MyProfile';
+import NetworkWorkspace from '../../network/NetworkWorkspace';
+import OnboardSharePanel from '../../network/OnboardSharePanel';
+import { NETWORK_SIDEBAR_SECTION, getNetworkTab, isNetworkScreen } from '../../network/networkSidebarConfig';
 
 export default function PromoterDashboard({ userRole = 'Promoter', showToast, onSwitchRole }) {
-  const [activeScreen, setActiveScreen] = useState('Overview'); // Overview | Retailers | Revenue | Royalty | Notifications
-
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [pendingAmount, setPendingAmount] = useState(0);
+  const [activeScreen, setActiveScreen] = useState('Dashboard');
   const [profile, setProfile] = useState(null);
 
-  const promoterId = 1; // Suresh Raina
-
-  const fetchDashboardStats = async () => {
-    try {
-      const res = await fetch(`/api/promoters/${promoterId}/dashboard`);
-      if (res.ok) {
-        const data = await res.json();
-        setProfile(data.profile_snapshot);
-        setPendingAmount(data.summary_cards.pending_royalty || 0);
-      }
-
-      const notifRes = await fetch(`/api/promoters/${promoterId}/notifications`);
-      if (notifRes.ok) {
-        const notifData = await notifRes.json();
-        setUnreadCount(notifData.unread_count || 0);
-      }
-    } catch (err) {
-      console.error("Failed to load own dashboard stats", err);
+  const authFetch = (path) => fetch(`/api${path}`, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(localStorage.getItem('huddo_token') ? { Authorization: `Bearer ${localStorage.getItem('huddo_token')}` } : {})
     }
-  };
+  }).then((r) => r.json());
 
   useEffect(() => {
-    fetchDashboardStats();
+    authFetch('/onboarding/referral-info').then((res) => {
+      if (res.success && res.data) {
+        setProfile((prev) => ({
+          ...(prev || {}),
+          user_code: res.data.user_code,
+          approval_status: res.data.approval_status
+        }));
+      }
+    }).catch(() => {});
+
+    authFetch('/profile').then((res) => {
+      if (res.success && res.data) {
+        setProfile((prev) => ({
+          ...(prev || {}),
+          name: res.data.name,
+          profile_photo: res.data.profile_photo
+        }));
+      }
+    }).catch(() => {});
   }, [activeScreen]);
 
   const SIDEBAR_ITEMS = [
-    { id: 'Overview', label: 'My Dashboard', icon: Home },
-    { id: 'Retailers', label: 'My Retailers', icon: Store },
-    { id: 'Revenue', label: 'My Revenue Chain', icon: DollarSign },
-    { id: 'Royalty', label: 'Royalty & Config', icon: Percent },
-    { id: 'Notifications', label: 'Alerts Hub', icon: Bell, badge: unreadCount }
+    {
+      section: 'OVERVIEW',
+      items: [{ id: 'Dashboard', label: 'My Dashboard', icon: Home }]
+    },
+    NETWORK_SIDEBAR_SECTION
   ];
+
+  const renderScreen = () => {
+    if (activeScreen === 'Profile') {
+      return <MyProfile showToast={showToast} userRole={userRole} onSwitchRole={onSwitchRole} />;
+    }
+    if (activeScreen === 'Dashboard') {
+      return (
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-xl font-bold text-slate-900">Promoter Dashboard</h1>
+            <p className="text-sm text-slate-500">Share your referral code, track onboarded users, and view commissions from your network.</p>
+          </div>
+          <OnboardSharePanel
+            showToast={showToast}
+            title="Your Referral Code & Onboarding Link"
+            description="Use this code or link when onboarding retailers and managers on their behalf."
+          />
+          <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 text-sm text-indigo-900">
+            <p className="font-bold flex items-center gap-2"><Link2 size={16} /> Quick tip</p>
+            <p className="mt-1">Open <strong>My Users</strong>, <strong>My Referrals</strong>, <strong>Commissions</strong>, or <strong>Payment History</strong> from the sidebar for live data from your network.</p>
+          </div>
+        </div>
+      );
+    }
+    if (isNetworkScreen(activeScreen)) {
+      return (
+        <NetworkWorkspace
+          showToast={showToast}
+          initialTab={getNetworkTab(activeScreen)}
+          hideTabBar
+          key={activeScreen}
+        />
+      );
+    }
+    return null;
+  };
 
   return (
     <DashboardLayout
@@ -53,57 +92,12 @@ export default function PromoterDashboard({ userRole = 'Promoter', showToast, on
       onSwitchRole={onSwitchRole}
       notifications={[]}
       profile={{
-        name: profile?.name || 'Suresh Raina',
-        subtitle: `Code: ${profile?.promoter_code || 'PRO-2026-001'}`,
-        image: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150"
+        name: profile?.name || 'Promoter',
+        subtitle: `Code: ${profile?.user_code || '—'}`,
+        image: profile?.profile_photo || null
       }}
     >
-      {/* Alert Banner / Payout Status Notification */}
-      {profile && (
-        <div className="mb-6">
-          {profile.payment_status === 'Paid' ? (
-            <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-lg flex items-center gap-2 text-xs font-semibold">
-              <Check className="w-4 h-4 text-emerald-600 font-extrabold" />
-              <span>All settlements are fully settled. Thank you for your partnership!</span>
-            </div>
-          ) : profile.payment_status === 'Partial' ? (
-            <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg flex items-center justify-between text-xs font-semibold">
-              <div className="flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-600" />
-                <span>You have a pending payout of ₹{pendingAmount.toLocaleString('en-IN')}. Settlement batch is partially paid.</span>
-              </div>
-              <button onClick={() => setActiveScreen('Royalty')} className="text-amber-800 font-bold hover:underline flex items-center gap-0.5">
-                <span>View Statements</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          ) : (
-            <div className="bg-rose-50 border border-rose-200 text-rose-800 px-4 py-3 rounded-lg flex items-center justify-between text-xs font-semibold">
-              <div className="flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-rose-600 animate-pulse" />
-                <span>Payout Pending: Outstanding balance is ₹{pendingAmount.toLocaleString('en-IN')}. Finance manager clearance pending.</span>
-              </div>
-              <button onClick={() => setActiveScreen('Royalty')} className="text-rose-800 font-bold hover:underline flex items-center gap-0.5">
-                <span>View Statements</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Dashboard Main Screen */}
-      {activeScreen === 'Profile' ? (
-        <MyProfile showToast={showToast} userRole={userRole} onSwitchRole={onSwitchRole} />
-      ) : (
-        <PromoterDetail 
-          promoterId={promoterId} 
-          userRole={userRole} 
-          showToast={showToast} 
-          onNavigate={() => {}} 
-          initialTab={activeScreen}
-        />
-      )}
+      {renderScreen()}
     </DashboardLayout>
   );
 }

@@ -39,6 +39,12 @@ import TargetManagement from './pages/TargetManagement';
 import MyIncentive from './pages/MyIncentive';
 import Reports from './pages/Reports';
 import Notifications from './pages/Notifications';
+import NetworkWorkspace from '../modules/network/NetworkWorkspace';
+import { NETWORK_SIDEBAR_SECTION, getNetworkTab, isNetworkScreen } from '../modules/network/networkSidebarConfig';
+import OnboardSharePanel from '../modules/network/OnboardSharePanel';
+import ManagerOrdersLive from '../modules/manager/ManagerOrdersLive';
+import ManagerApprovalsLive from '../modules/manager/ManagerApprovalsLive';
+import { fetchPendingOrderCount } from '../modules/manager/pendingOrderUtils';
 
 export default function CityManagerModule({ showToast: parentShowToast, onSwitchRole }) {
   const [activeTab, setActiveTab] = useState('Dashboard');
@@ -55,6 +61,7 @@ export default function CityManagerModule({ showToast: parentShowToast, onSwitch
   const [promoters] = useState(initialPromoters);
   const [cityTargets, setCityTargets] = useState(initialCityTargets);
   const [pendingApprovals, setPendingApprovals] = useState(initialPendingApprovals);
+  const [pendingOrderCount, setPendingOrderCount] = useState(0);
 
   // Prefilled / Deep Link States
   const [prefilledLead, setPrefilledLead] = useState(null);
@@ -97,6 +104,10 @@ export default function CityManagerModule({ showToast: parentShowToast, onSwitch
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    fetchPendingOrderCount().then(setPendingOrderCount);
+  }, [activeTab]);
 
   const showToast = (message, type = 'success') => {
     if (parentShowToast) {
@@ -441,6 +452,16 @@ export default function CityManagerModule({ showToast: parentShowToast, onSwitch
     if (activeTab === 'Profile') {
       return <MyProfile showToast={showToast} userRole="City Manager" onSwitchRole={onSwitchRole} />;
     }
+    if (isNetworkScreen(activeTab)) {
+      return (
+        <NetworkWorkspace
+          showToast={showToast}
+          initialTab={getNetworkTab(activeTab)}
+          hideTabBar
+          key={activeTab}
+        />
+      );
+    }
     switch (activeTab) {
       case 'Dashboard':
         return (
@@ -497,37 +518,26 @@ export default function CityManagerModule({ showToast: parentShowToast, onSwitch
         );
       case 'Onboard Retailer':
         return (
-          <OnboardRetailer
-            key={prefilledLead ? `prefilled-${prefilledLead.id}` : 'onboard-default'}
-            promoters={promoters}
-            onOnboardRetailer={handleOnboardRetailer}
-            onNavigate={handleTabChange}
+          <OnboardSharePanel
             showToast={showToast}
-            prefilledLead={prefilledLead}
+            title="Onboard Retailer or Manager"
+            description="Use the shared onboarding form to register retailers or managers on behalf of your referral. Admin approval is required before they can log in."
           />
         );
       case 'Orders':
         return (
-          <Orders
-            key={initialBookingRetailerId ? `order-${initialBookingRetailerId}` : 'orders-default'}
-            orders={orders}
-            retailers={retailers}
-            onApproveOrder={handleApproveOrder}
-            onRejectOrder={handleRejectOrder}
-            onPlaceOrder={handlePlaceOrder}
+          <ManagerOrdersLive
             showToast={showToast}
-            initialPlaceOrderOpen={initialPlaceOrderOpen}
-            initialBookingRetailerId={initialBookingRetailerId}
+            title="City Orders"
+            onPendingCountChange={setPendingOrderCount}
           />
         );
       case 'Approvals':
         return (
-          <Approvals
-            pendingApprovals={pendingApprovals}
-            approvalHistory={approvalHistory}
-            onApproveApproval={handleApproveApproval}
-            onRejectApproval={handleRejectApproval}
+          <ManagerApprovalsLive
             showToast={showToast}
+            title="Order Approvals"
+            onPendingCountChange={setPendingOrderCount}
           />
         );
       case 'Visit Logs':
@@ -626,7 +636,7 @@ export default function CityManagerModule({ showToast: parentShowToast, onSwitch
     }
   };
 
-  const pendingApprovalsCount = pendingApprovals.length;
+  const pendingApprovalsCount = pendingOrderCount;
   const unreadNotificationsCount = notifications.filter(n => !n.read).length;
   const pendingRetailersCount = retailers.filter(r => r.status === 'Pending Verification').length;
 
@@ -637,6 +647,7 @@ export default function CityManagerModule({ showToast: parentShowToast, onSwitch
         { id: "Dashboard", label: "Dashboard", icon: Home }
       ]
     },
+    NETWORK_SIDEBAR_SECTION,
     {
       section: "RETAILERS",
       items: [
@@ -649,7 +660,7 @@ export default function CityManagerModule({ showToast: parentShowToast, onSwitch
       section: "OPERATIONS",
       items: [
         { id: "Orders", label: "Orders", icon: ShoppingCart },
-        { id: "Approvals", label: "Approvals", icon: CheckSquare, badge: pendingApprovalsCount }
+        { id: "Approvals", label: "Approvals", icon: CheckSquare, badge: pendingApprovalsCount || undefined }
       ]
     },
     {

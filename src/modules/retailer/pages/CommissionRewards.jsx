@@ -13,10 +13,10 @@ export default function CommissionRewards({ showToast }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user?.id) return;
+    const userId = user?.rawUser?._id;
+    if (!userId) return;
     setLoading(true);
-    // Fetch commission records for this user
-    fetch(`/api/commission-records?user=${user.id}`)
+    fetch(`/api/commission-records?user=${userId}`)
       .then(res => res.json())
       .then(res => {
         if (res.success && Array.isArray(res.data)) {
@@ -30,7 +30,7 @@ export default function CommissionRewards({ showToast }) {
       .finally(() => {
         setLoading(false);
       });
-  }, [user?.id]);
+  }, [user?.rawUser?._id]);
 
   // Compute stats
   const lifetimeEarned = commissions.reduce((sum, c) => sum + (c.amount || 0), 0);

@@ -28,6 +28,17 @@ export default function BillingPayments({ showToast, userRole }) {
   const [editingInvoiceId, setEditingInvoiceId] = useState(null);
   const [editingPercentage, setEditingPercentage] = useState(18);
 
+  const [retailersList, setRetailersList] = useState([]);
+  const [retailerPayments, setRetailerPayments] = useState([]);
+  const [isRetailerPayOpen, setIsRetailerPayOpen] = useState(false);
+  const [retailerPayForm, setRetailerPayForm] = useState({
+    retailer_id: '',
+    amount: '',
+    payment_date: new Date().toISOString().split('T')[0],
+    reference: '',
+    notes: ''
+  });
+
   const mapInvoice = (inv) => ({
     id: inv._id,
     invoiceNumber: inv.invoice_number || inv._id,
@@ -89,6 +100,32 @@ export default function BillingPayments({ showToast, userRole }) {
         }
       })
       .catch(err => console.error("Error loading transactions:", err));
+
+    fetch('/api/retailers?limit=100')
+      .then(res => res.json())
+      .then(resData => {
+        if (resData.success && Array.isArray(resData.data)) {
+          setRetailersList(resData.data);
+        }
+      })
+      .catch(() => {});
+
+    fetch('/api/billing/retailer/payments')
+      .then(res => res.json())
+      .then(resData => {
+        if (resData.success && Array.isArray(resData.data)) {
+          setRetailerPayments(resData.data.map(p => ({
+            id: p._id,
+            shopName: p.retailer?.business_name || p.user?.name || 'Retailer',
+            amount: p.amount,
+            date: p.payment_date ? new Date(p.payment_date).toISOString().split('T')[0] : '',
+            reference: p.reference || '—',
+            notes: p.notes || '',
+            recordedBy: p.recorded_by?.name || 'Admin'
+          })));
+        }
+      })
+      .catch(() => {});
   };
 
   useEffect(() => {
@@ -176,6 +213,29 @@ export default function BillingPayments({ showToast, userRole }) {
         }
       })
       .catch(err => console.error(err));
+  };
+
+  const handleRecordRetailerPayment = () => {
+    if (!retailerPayForm.retailer_id || !retailerPayForm.amount || !retailerPayForm.payment_date) {
+      showToast('Retailer, amount, and date are required.', 'error');
+      return;
+    }
+    fetch('/api/billing/retailer/payments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(retailerPayForm)
+    })
+      .then(res => res.json())
+      .then(resData => {
+        if (resData.success) {
+          showToast(resData.message || 'Retailer payment recorded.', 'success');
+          setIsRetailerPayOpen(false);
+          loadBillingData();
+        } else {
+          showToast(resData.message || 'Failed to record payment.', 'error');
+        }
+      })
+      .catch(() => showToast('Error recording payment.', 'error'));
   };
 
   const triggerReminderModal = (row) => {
@@ -354,6 +414,15 @@ export default function BillingPayments({ showToast, userRole }) {
     )}
   ];
 
+  const retailerPaymentColumns = [
+    { header: 'Retailer', accessor: 'shopName', render: (val) => <span className="font-bold text-slate-800">{val}</span> },
+    { header: 'Date', accessor: 'date' },
+    { header: 'Amount (₹)', accessor: 'amount', render: (val) => <span className="font-bold text-emerald-600">₹{Number(val || 0).toLocaleString('en-IN')}</span> },
+    { header: 'Reference', accessor: 'reference' },
+    { header: 'Recorded By', accessor: 'recordedBy' },
+    { header: 'Notes', accessor: 'notes' }
+  ];
+
   const canViewAuditAndOutstanding = ['Founder', 'CEO', 'Admin', 'Finance Manager'].includes(userRole || 'Founder');
 
   useEffect(() => {
@@ -414,6 +483,15 @@ export default function BillingPayments({ showToast, userRole }) {
             <span>Generate GST Invoice</span>
           </button>
         )}
+        {activeTab === 'retailer-settlements' && canViewAuditAndOutstanding && (
+          <button 
+            onClick={() => setIsRetailerPayOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-brand-orange hover:bg-brand-orange-hover text-white text-sm font-semibold rounded-lg shadow-sm transition-colors self-start"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Record Retailer Payment</span>
+          </button>
+        )}
       </div>
 
       {/* Tabs */}
@@ -444,6 +522,12 @@ export default function BillingPayments({ showToast, userRole }) {
             >
               Audit Ledger History
             </button>
+            <button 
+              onClick={() => setActiveTab('retailer-settlements')}
+              className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'retailer-settlements' ? 'border-brand-orange text-brand-orange' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            >
+              Retailer Settlements ({retailerPayments.length})
+            </button>
           </>
         )}
       </div>
@@ -469,6 +553,13 @@ export default function BillingPayments({ showToast, userRole }) {
           data={outstandings} 
           searchKeys={["shopName", "city"]}
           searchPlaceholder="Search outstanding shop balances..."
+        />
+      ) : activeTab === 'retailer-settlements' ? (
+        <DataTable 
+          columns={retailerPaymentColumns} 
+          data={retailerPayments} 
+          searchKeys={["shopName", "reference"]}
+          searchPlaceholder="Search retailer settlements..."
         />
       ) : (
         <DataTable 
@@ -589,6 +680,47 @@ export default function BillingPayments({ showToast, userRole }) {
               <span className="text-slate-900 font-extrabold text-brand-orange">₹{verifyingRecord?.amount.toLocaleString('en-IN')}</span>
             </div>
           </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={isRetailerPayOpen}
+        onClose={() => setIsRetailerPayOpen(false)}
+        title="Record Retailer Payment"
+        onConfirm={handleRecordRetailerPayment}
+        confirmLabel="Save Payment"
+      >
+        <div className="space-y-3 text-left">
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Retailer</label>
+            <select
+              value={retailerPayForm.retailer_id}
+              onChange={(e) => setRetailerPayForm({ ...retailerPayForm, retailer_id: e.target.value })}
+              className="w-full text-sm border border-slate-200 rounded-lg p-2.5"
+            >
+              <option value="">Select retailer</option>
+              {retailersList.map((r) => (
+                <option key={r._id} value={r._id}>{r.business_name} — {r.owner_name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Amount (₹)</label>
+            <input type="number" value={retailerPayForm.amount} onChange={(e) => setRetailerPayForm({ ...retailerPayForm, amount: e.target.value })} className="w-full text-sm border border-slate-200 rounded-lg p-2.5" />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Payment Date</label>
+            <input type="date" value={retailerPayForm.payment_date} onChange={(e) => setRetailerPayForm({ ...retailerPayForm, payment_date: e.target.value })} className="w-full text-sm border border-slate-200 rounded-lg p-2.5" />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Reference / UTR</label>
+            <input type="text" value={retailerPayForm.reference} onChange={(e) => setRetailerPayForm({ ...retailerPayForm, reference: e.target.value })} className="w-full text-sm border border-slate-200 rounded-lg p-2.5" />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Notes</label>
+            <textarea value={retailerPayForm.notes} onChange={(e) => setRetailerPayForm({ ...retailerPayForm, notes: e.target.value })} className="w-full text-sm border border-slate-200 rounded-lg p-2.5" rows={2} />
+          </div>
+          <p className="text-[11px] text-slate-500">Unpaid invoices will be marked paid automatically (oldest first) when payment amount covers them.</p>
         </div>
       </Modal>
 

@@ -7,6 +7,9 @@ import {
 // Import Layout
 import { DashboardLayout } from '../components/DesignSystem';
 import MyProfile from '../modules/MyProfile';
+import NetworkWorkspace from '../modules/network/NetworkWorkspace';
+import { NETWORK_SIDEBAR_SECTION, getNetworkTab, isNetworkScreen } from '../modules/network/networkSidebarConfig';
+import OnboardSharePanel from '../modules/network/OnboardSharePanel';
 import { Toast, SkeletonLoader } from './components/Common';
 import { currentStateManager } from './mockData';
 
@@ -35,6 +38,9 @@ import FieldForce from './pages/FieldForce';
 import MyIncentive from './pages/MyIncentive';
 import Reports from './pages/Reports';
 import NotificationsPage from './pages/NotificationsPage';
+import ManagerOrdersLive from '../modules/manager/ManagerOrdersLive';
+import ManagerApprovalsLive from '../modules/manager/ManagerApprovalsLive';
+import { fetchPendingOrderCount } from '../modules/manager/pendingOrderUtils';
 
 export default function StateManagerModule({ showToast: parentShowToast, onSwitchRole }) {
   // Navigation Routing Tab
@@ -50,6 +56,7 @@ export default function StateManagerModule({ showToast: parentShowToast, onSwitc
   const [retailers, setRetailers] = useState(initialRetailers);
   const [orders, setOrders] = useState(initialOrders);
   const [pendingApprovals, setPendingApprovals] = useState(initialPendingApprovals);
+  const [pendingOrderCount, setPendingOrderCount] = useState(0);
   const [notifications, setNotifications] = useState(initialNotifications);
   const [fieldForceData] = useState(initialFieldForceData);
   
@@ -78,6 +85,10 @@ export default function StateManagerModule({ showToast: parentShowToast, onSwitc
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    fetchPendingOrderCount().then(setPendingOrderCount);
+  }, [activeTab]);
 
   const handleNavigateWithFilter = (targetTab, filterVal) => {
     setCityFilterOverride(filterVal);
@@ -317,7 +328,7 @@ export default function StateManagerModule({ showToast: parentShowToast, onSwitc
   };
 
   // Helper counts for layout badges
-  const pendingApprovalsCount = pendingApprovals.length;
+  const pendingApprovalsCount = pendingOrderCount;
   const unreadNotificationsCount = notifications.filter(n => !n.read).length;
 
   const SIDEBAR_ITEMS = [
@@ -327,6 +338,7 @@ export default function StateManagerModule({ showToast: parentShowToast, onSwitc
         { id: "Dashboard", label: "Dashboard", icon: Home }
       ]
     },
+    NETWORK_SIDEBAR_SECTION,
     {
       section: "MY REGION",
       items: [
@@ -367,7 +379,17 @@ export default function StateManagerModule({ showToast: parentShowToast, onSwitc
   // Render active route components
   const renderActiveTab = () => {
     if (activeTab === 'Profile') {
-      return <MyProfile showToast={showToast} userRole={userRole} onSwitchRole={onSwitchRole} />;
+      return <MyProfile showToast={showToast} userRole="State Manager" onSwitchRole={onSwitchRole} />;
+    }
+    if (isNetworkScreen(activeTab)) {
+      return (
+        <NetworkWorkspace
+          showToast={showToast}
+          initialTab={getNetworkTab(activeTab)}
+          hideTabBar
+          key={activeTab}
+        />
+      );
     }
     switch (activeTab) {
       case 'Dashboard':
@@ -382,7 +404,6 @@ export default function StateManagerModule({ showToast: parentShowToast, onSwitc
             pendingApprovals={pendingApprovals}
             onApprove={(id) => handleApproveApproval(id)}
             onReject={() => {
-              // Trigger reject sequence on approvals tab
               handleTabChange("Approvals");
               showToast("Provide rejection reason in workspace card.", "info");
             }}
@@ -414,22 +435,18 @@ export default function StateManagerModule({ showToast: parentShowToast, onSwitc
 
       case 'Orders':
         return (
-          <Orders 
-            orders={orders}
-            cityManagers={cityManagers}
-            onApproveOrder={handleApproveOrder}
-            onRejectOrder={handleRejectOrder}
+          <ManagerOrdersLive
             showToast={showToast}
+            title="State Orders"
+            onPendingCountChange={setPendingOrderCount}
           />
         );
       case 'Approvals':
         return (
-          <Approvals 
-            pendingApprovals={pendingApprovals}
-            approvalHistory={approvalHistory}
-            onApproveApproval={handleApproveApproval}
-            onRejectApproval={handleRejectApproval}
+          <ManagerApprovalsLive
             showToast={showToast}
+            title="Order Approvals"
+            onPendingCountChange={setPendingOrderCount}
           />
         );
       case 'Sales Monitoring':

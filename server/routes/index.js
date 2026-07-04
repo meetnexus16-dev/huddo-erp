@@ -147,12 +147,26 @@ import Upload from '../models/Upload.js';
 import { saveFileToDisk } from '../utils/fileUpload.js';
 import countryManagerRouter from './countryManagerRouter.js';
 import promoterRouter from './promoterRouter.js';
+import onboardingRouter from './onboardingRouter.js';
+import networkRouter from './networkRouter.js';
+import {
+  listPromoterBonusStructures,
+  upsertPromoterBonusStructure,
+  deletePromoterBonusStructure
+} from '../controllers/promoterBonusController.js';
+import { createManagerPayment, listManagerPayments } from '../controllers/managerPaymentController.js';
+import {
+  getRetailerBillingSummary,
+  recordRetailerPayment,
+  listRetailerPaymentsAdmin
+} from '../controllers/billingController.js';
 
 const router = express.Router();
 
-// Mount Country Manager routes
 router.use('/country-managers', countryManagerRouter);
 router.use('/promoters', promoterRouter);
+router.use('/onboarding', onboardingRouter);
+router.use('/network', networkRouter);
 
 // ==========================================
 // 1. AUTHENTICATION ROUTES
@@ -230,6 +244,16 @@ router.delete('/petty-cash/:id', verifyJWT, checkPermission('petty-cash', 'delet
 // Billing & Payments Customer Sync
 router.post('/billing/retailer/customer-info', verifyJWT, recordBillingCustomerInfo);
 router.patch('/billing/:id/get-percentage', verifyJWT, getBillingPercentage);
+router.get('/billing/retailer/summary', verifyJWT, getRetailerBillingSummary);
+router.post('/billing/retailer/payments', verifyJWT, checkPermission('invoices', 'edit'), recordRetailerPayment);
+router.get('/billing/retailer/payments', verifyJWT, checkPermission('invoices', 'view'), listRetailerPaymentsAdmin);
+
+router.get('/promoter-bonus-structures', verifyJWT, checkPermission('commission-records', 'view'), listPromoterBonusStructures);
+router.post('/promoter-bonus-structures', verifyJWT, checkPermission('commission-records', 'edit'), upsertPromoterBonusStructure);
+router.delete('/promoter-bonus-structures/:id', verifyJWT, checkPermission('commission-records', 'delete'), deletePromoterBonusStructure);
+
+router.get('/manager-payments', verifyJWT, listManagerPayments);
+router.post('/manager-payments', verifyJWT, checkPermission('commission-records', 'create'), createManagerPayment);
 
 // ==========================================
 // 4B. COMMUNICATION SETTINGS ROUTES (Founder Only)

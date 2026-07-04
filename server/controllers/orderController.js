@@ -1,4 +1,5 @@
 import Order from '../models/Order.js';
+import { calculateAndStoreOrderCommissions } from '../utils/commissionEngine.js';
 
 // 1. POST /api/v1/orders/:id/approve
 export const approveOrder = async (req, res, next) => {
@@ -15,20 +16,19 @@ export const approveOrder = async (req, res, next) => {
       });
     }
 
-    const userRole = req.user.role.name; // Founder, CountryManager, StateManager, CityManager
-    const validLevels = ['CityManager', 'StateManager', 'CountryManager', 'Founder'];
+    const userRole = req.user.role.name;
+    const validLevels = ['CityManager', 'StateManager', 'CountryManager', 'Founder', 'Admin'];
 
     if (!validLevels.includes(userRole)) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied: Only managers and founders can approve orders.',
+        message: 'Access denied: Only managers and admins can approve orders.',
         data: null
       });
     }
 
-    // Find if the stage exists in the chain, or append/update it
     let stageIndex = order.approval_chain.findIndex((s) => s.level === userRole);
-    
+
     const stageDetails = {
       level: userRole,
       approver: req.user._id,
@@ -43,20 +43,29 @@ export const approveOrder = async (req, res, next) => {
       order.approval_chain[stageIndex] = stageDetails;
     }
 
-    // Logic: If Founder approves, or if it reaches CountryManager approval, the order is fully 'Approved'.
-    // If approved by City/State Manager, we keep it in 'Submitted' state but update approval chain.
-    if (userRole === 'Founder' || userRole === 'CountryManager') {
+    const wasApproved = order.status === 'Approved';
+    if (userRole === 'Founder' || userRole === 'CountryManager' || userRole === 'Admin') {
       order.status = 'Approved';
     } else {
-      order.status = 'Processing'; // Advance status from Submitted to Processing
+      order.status = 'Processing';
     }
 
     await order.save();
 
+    if (order.status === 'Approved' && !wasApproved && !order.commissions_calculated) {
+      try {
+        await calculateAndStoreOrderCommissions(order._id);
+      } catch (commissionError) {
+        console.error('[CommissionEngine] Failed to calculate commissions:', commissionError.message);
+      }
+    }
+
+    const refreshedOrder = await Order.findById(order._id);
+
     res.status(200).json({
       success: true,
       message: `Order approved successfully at ${userRole} level.`,
-      data: order
+      data: refreshedOrder
     });
   } catch (error) {
     next(error);

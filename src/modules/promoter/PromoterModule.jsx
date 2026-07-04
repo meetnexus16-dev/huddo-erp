@@ -6,6 +6,7 @@ import PromoterForm from './pages/PromoterForm';
 import PromoterDetail from './pages/PromoterDetail';
 import PromoterDashboard from './pages/PromoterDashboard';
 import PromoterAnalytics from './pages/PromoterAnalytics';
+import { isPromoter } from '../../utils/roleRouting';
 
 export default function PromoterModule({ userRole = 'Founder', showToast, onSwitchRole }) {
   const [adminScreen, setAdminScreen] = useState('list'); // list | add | edit | detail | analytics
@@ -36,7 +37,7 @@ export default function PromoterModule({ userRole = 'Founder', showToast, onSwit
   };
 
   // PROMO-MODULE: If user role is Promoter, display own dedicated full-page dashboard workspace
-  if (userRole.toLowerCase() === 'promoter') {
+  if (isPromoter(userRole)) {
     return (
       <PromoterDashboard 
         userRole={userRole} 

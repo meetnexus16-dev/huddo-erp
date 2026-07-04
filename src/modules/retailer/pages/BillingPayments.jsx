@@ -14,38 +14,45 @@ export default function BillingPayments({ showToast }) {
   const [viewingInvoice, setViewingInvoice] = useState(null);
   
   const [invoices, setInvoices] = useState([]);
-  const [orders, setOrders] = useState([]);
+  const [paymentHistory, setPaymentHistory] = useState([]);
+  const [billingSummary, setBillingSummary] = useState({});
   const [variantsMap, setVariantsMap] = useState({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user?.id) return;
+    fetch('/api/product-variants?limit=500')
+      .then(res => res.json())
+      .then(varRes => {
+        const mapping = {};
+        if (varRes.success && Array.isArray(varRes.data)) {
+          varRes.data.forEach(v => { mapping[v._id] = v; });
+        }
+        setVariantsMap(mapping);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!user?.rawUser?._id && !user?.id) return;
     setLoading(true);
-    Promise.all([
-      fetch(`/api/invoices?retailer=${user.id}`).then(res => res.json()).catch(() => ({ success: false, data: [] })),
-      fetch(`/api/orders?retailer=${user.id}`).then(res => res.json()).catch(() => ({ success: false, data: [] })),
-      fetch('/api/product-variants?limit=500').then(res => res.json()).catch(() => ({ success: false, data: [] }))
-    ])
-    .then(([invRes, ordRes, varRes]) => {
-      setInvoices(invRes.success && Array.isArray(invRes.data) ? invRes.data : []);
-      setOrders(ordRes.success && Array.isArray(ordRes.data) ? ordRes.data : []);
-      
-      const mapping = {};
-      if (varRes.success && Array.isArray(varRes.data)) {
-        varRes.data.forEach(v => {
-          mapping[v._id] = v;
-        });
-      }
-      setVariantsMap(mapping);
-    })
-    .catch(err => {
-      console.error(err);
-      showToast("Error loading billing details.", "error");
-    })
-    .finally(() => {
-      setLoading(false);
-    });
-  }, [user?.id]);
+    const userId = user.rawUser?._id || user.id;
+    fetch(`/api/billing/retailer/summary`)
+      .then(res => res.json())
+      .then(resData => {
+        if (!resData.success || !resData.data) {
+          throw new Error(resData.message || 'Failed to load billing');
+        }
+        const { invoices: invList, payment_history: payments, summary } = resData.data;
+        setInvoices(invList || []);
+        setPaymentHistory(payments || []);
+        setBillingSummary(summary || {});
+      })
+      .catch(err => {
+        console.error(err);
+        showToast("Error loading billing details.", "error");
+      })
+      .finally(() => setLoading(false));
+  }, [user?.rawUser?._id, user?.id]);
 
   const resolveItemDetails = (item) => {
     const vId = item.product_variant?._id || item.product_variant;
@@ -61,26 +68,20 @@ export default function BillingPayments({ showToast }) {
     };
   };
 
-  // Outstanding amount calculation
   const outstandingInvoices = invoices.filter(inv => !inv.is_paid);
-  
-  const totalOutstanding = outstandingInvoices.reduce((sum, inv) => sum + (inv.total || 0), 0);
-  
-  const overdueCount = outstandingInvoices.filter(inv => {
+  const totalOutstanding = billingSummary.total_outstanding ?? outstandingInvoices.reduce((sum, inv) => sum + (inv.total || 0), 0);
+  const overdueCount = billingSummary.overdue_count ?? outstandingInvoices.filter(inv => {
     if (!inv.payment_due_date) return false;
     return new Date(inv.payment_due_date) < new Date();
   }).length;
 
-  // Extract payment history list from orders
-  const paymentHistoryList = orders
-    .filter(order => order.utr_number)
-    .map(order => ({
-      date: new Date(order.createdAt).toLocaleDateString(),
-      utr: order.utr_number,
-      amount: order.grand_total,
-      orderId: order.order_number || `ORD-${order._id.substring(18)}`,
-      status: order.payment_status || 'Pending'
-    }));
+  const paymentHistoryList = paymentHistory.map((pay, idx) => ({
+    date: new Date(pay.date).toLocaleDateString(),
+    utr: pay.reference || pay.utr || '—',
+    amount: pay.amount,
+    orderId: pay.order_number || (pay.source === 'admin' ? 'Admin Settlement' : '—'),
+    status: pay.status === 'Verified' || pay.status === 'Recorded' ? (pay.source === 'admin' ? 'Recorded' : pay.status) : pay.status || 'Pending'
+  }));
 
   const handleDownloadInvoice = (invNum) => {
     console.log(`[Invoice Download Triggered: ${invNum}]`);

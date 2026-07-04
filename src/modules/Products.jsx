@@ -995,6 +995,7 @@ export default function Products({ showToast, onNavigate }) {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Franchise Points *</label>
+                <p className="text-[10px] text-slate-400 mb-1">Admin margin per unit — enter manually; not derived from price or MRP. All commissions use this base.</p>
                 <input 
                   type="number" 
                   step="0.01" 
@@ -1205,17 +1206,29 @@ function CategoryCommissionPreview({ categoryId, categories }) {
           <p className="text-[11px] text-slate-500">
             Rates from <span className="font-semibold text-slate-700">{category?.name || 'selected category'}</span>. Edit in Product Categories master.
           </p>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mt-2">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
             {[
-              ['Retailer', commissions.retailer],
               ['City Mgr', commissions.cityManager],
               ['State Mgr', commissions.stateManager],
-              ['Country Mgr', commissions.countryManager],
-              ['Promoter', commissions.promoter]
+              ['Country Mgr', commissions.countryManager]
             ].map(([label, value]) => (
               <div key={label} className="bg-white border border-slate-200 rounded-lg p-2 text-center">
                 <p className="text-[9px] font-bold text-slate-400 uppercase">{label}</p>
                 <p className="text-sm font-bold text-slate-800">{value}%</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] font-bold text-purple-700 uppercase mt-3 mb-1">Referrer Commissions</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {[
+              ['Referred Retailer', commissions.promoterCommissions?.retailer],
+              ['Referred City Mgr', commissions.promoterCommissions?.cityManager],
+              ['Referred State Mgr', commissions.promoterCommissions?.stateManager],
+              ['Referred Country Mgr', commissions.promoterCommissions?.countryManager]
+            ].map(([label, value]) => (
+              <div key={label} className="bg-purple-50 border border-purple-100 rounded-lg p-2 text-center">
+                <p className="text-[9px] font-bold text-purple-500 uppercase">{label}</p>
+                <p className="text-sm font-bold text-purple-900">{value ?? '—'}%</p>
               </div>
             ))}
           </div>
@@ -1239,15 +1252,25 @@ function CategoryCommissionInfo({ product, categories }) {
         </p>
         <div className="grid grid-cols-1 gap-2">
           {[
-            ['Retailer Margin', commissions.retailer],
             ['City Manager Incentive', commissions.cityManager],
             ['State Manager Incentive', commissions.stateManager],
-            ['Country Manager Incentive', commissions.countryManager],
-            ['Promoter Royalty', commissions.promoter]
+            ['Country Manager Incentive', commissions.countryManager]
           ].map(([label, value]) => (
             <div key={label} className="flex justify-between items-center bg-white border border-slate-200 rounded-lg px-3 py-2">
               <span className="font-bold text-slate-600">{label}</span>
               <span className="font-bold text-brand-orange">{value}%</span>
+            </div>
+          ))}
+          <p className="text-[10px] font-bold text-purple-700 uppercase pt-2">Referrer Commissions</p>
+          {[
+            ['Referred Retailer', commissions.promoterCommissions?.retailer],
+            ['Referred City Manager', commissions.promoterCommissions?.cityManager],
+            ['Referred State Manager', commissions.promoterCommissions?.stateManager],
+            ['Referred Country Manager', commissions.promoterCommissions?.countryManager]
+          ].map(([label, value]) => (
+            <div key={label} className="flex justify-between items-center bg-purple-50 border border-purple-100 rounded-lg px-3 py-2">
+              <span className="font-bold text-purple-700">{label}</span>
+              <span className="font-bold text-purple-900">{value ?? '—'}%</span>
             </div>
           ))}
         </div>

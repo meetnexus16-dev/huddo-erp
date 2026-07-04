@@ -1,16 +1,39 @@
 import mongoose from 'mongoose';
 import Product from '../models/Product.js';
-import ProductCategory, { DEFAULT_CATEGORY_COMMISSIONS } from '../models/ProductCategory.js';
+import ProductCategory, {
+  DEFAULT_CATEGORY_COMMISSIONS,
+  DEFAULT_PROMOTER_COMMISSIONS
+} from '../models/ProductCategory.js';
 import {
   normalizeCommissionInput,
+  normalizePromoterCommissionInput,
   resolveCommissionsFromCategory
 } from '../utils/categoryCommission.js';
 
 const parseCommissionPayload = (body = {}) => {
   const commissions = normalizeCommissionInput(body.commissions || body);
-  const result = { ...DEFAULT_CATEGORY_COMMISSIONS, ...commissions };
+  const promoterCommissions = normalizePromoterCommissionInput(
+    body.commissions?.promoterCommissions || body.promoterCommissions || commissions.promoterCommissions || {}
+  );
+
+  const result = {
+    ...DEFAULT_CATEGORY_COMMISSIONS,
+    ...commissions,
+    promoterCommissions: {
+      ...DEFAULT_PROMOTER_COMMISSIONS,
+      ...promoterCommissions
+    }
+  };
 
   for (const [key, value] of Object.entries(result)) {
+    if (key === 'promoterCommissions') {
+      for (const [promoKey, promoValue] of Object.entries(value)) {
+        if (Number.isNaN(promoValue) || promoValue < 0 || promoValue > 100) {
+          throw new Error(`Invalid promoter commission value for ${promoKey}. Must be between 0 and 100.`);
+        }
+      }
+      continue;
+    }
     if (Number.isNaN(value) || value < 0 || value > 100) {
       throw new Error(`Invalid commission value for ${key}. Must be between 0 and 100.`);
     }
@@ -132,7 +155,11 @@ export const updateProductCategory = async (req, res, next) => {
       }
       update.commissions = parseCommissionPayload({
         ...resolveCommissionsFromCategory(existing),
-        ...(req.body.commissions || req.body)
+        ...(req.body.commissions || req.body),
+        promoterCommissions: {
+          ...(resolveCommissionsFromCategory(existing).promoterCommissions || {}),
+          ...(req.body.commissions?.promoterCommissions || req.body.promoterCommissions || {})
+        }
       });
     }
 

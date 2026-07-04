@@ -40,7 +40,32 @@ const userSchema = new mongoose.Schema({
     mobile: { type: String }
   },
   last_login: { type: Date },
-  refresh_token: { type: String }
+  refresh_token: { type: String },
+  approval_status: {
+    type: String,
+    enum: ['Pending', 'Approved', 'Rejected'],
+    default: 'Approved'
+  },
+  approved_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  approved_at: { type: Date },
+  rejection_reason: { type: String },
+  promoted_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  promoter_code_used: { type: String, trim: true },
+  onboarding_source: {
+    type: String,
+    enum: ['admin', 'referral', 'self'],
+    default: 'admin'
+  },
+  onboarding_meta: {
+    requested_country: { type: mongoose.Schema.Types.ObjectId, ref: 'Country' },
+    requested_state: { type: mongoose.Schema.Types.ObjectId, ref: 'State' },
+    requested_city: { type: mongoose.Schema.Types.ObjectId, ref: 'City' },
+    business_name: { type: String },
+    shop_address: { type: String },
+    gst_number: { type: String },
+    pan_number: { type: String },
+    aadhaar_number: { type: String }
+  }
 }, { timestamps: true });
 
 userSchema.plugin(softDeletePlugin);

@@ -48,6 +48,16 @@ export const verifyJWT = async (req, res, next) => {
       });
     }
 
+    if (user.approval_status && user.approval_status !== 'Approved') {
+      return res.status(403).json({
+        success: false,
+        message: user.approval_status === 'Pending'
+          ? 'Access denied: Your account is pending admin approval.'
+          : 'Access denied: Your account registration was rejected.',
+        data: null
+      });
+    }
+
     // Attach user to request
     req.user = user;
     next();
