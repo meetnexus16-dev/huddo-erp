@@ -1,17 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Search, Eye, Clock, Download, XCircle, AlertCircle, FileText, 
   MapPin, CheckCircle, RefreshCw, Calendar, ArrowRight, User
 } from 'lucide-react';
 
-import { mockOrders } from '../mockData/mockOrders';
+import { useRetailerAuth } from '../context/RetailerAuthContext';
 import StatusBadge from '../components/StatusBadge';
 import CustomModal from '../components/CustomModal';
 
 export default function MyOrders({ showToast }) {
-  const [orders, setOrders] = useState(mockOrders);
+  const { user } = useRetailerAuth();
+  const [orders, setOrders] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('All');
+  const [loading, setLoading] = useState(true);
   
   // Date range filters
   const [startDate, setStartDate] = useState('');
@@ -25,57 +27,100 @@ export default function MyOrders({ showToast }) {
     'Packed', 'Shipped', 'Delivered', 'Cancelled', 'Returned'
   ];
 
+  const fetchOrders = () => {
+    if (!user?.id) return;
+    setLoading(true);
+    fetch(`/api/orders?retailer=${user.id}`)
+      .then(res => res.json())
+      .then(res => {
+        if (res.success && Array.isArray(res.data)) {
+          setOrders(res.data);
+        }
+      })
+      .catch(err => {
+        console.error("Error loading orders:", err);
+        showToast("Error loading orders history.", "error");
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  };
+
+  useEffect(() => {
+    fetchOrders();
+  }, [user?.id]);
+
   // Filtering criteria
   const filteredOrders = orders.filter(order => {
-    const matchesSearch = order.id.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = selectedStatus === 'All' || order.orderStatus === selectedStatus;
+    const oId = order.order_number || `ORD-${order._id.substring(18)}`;
+    const matchesSearch = oId.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = selectedStatus === 'All' || order.status === selectedStatus;
     
     let matchesDate = true;
     if (startDate) {
-      matchesDate = matchesDate && (new Date(order.date) >= new Date(startDate));
+      matchesDate = matchesDate && (new Date(order.createdAt) >= new Date(startDate));
     }
     if (endDate) {
-      matchesDate = matchesDate && (new Date(order.date) <= new Date(endDate));
+      matchesDate = matchesDate && (new Date(order.createdAt) <= new Date(endDate));
     }
 
     return matchesSearch && matchesStatus && matchesDate;
   });
 
   const handleCancelOrder = (orderId) => {
-    // Confirm cancel
-    const updatedOrders = orders.map(o => {
-      if (o.id === orderId) {
-        return {
-          ...o,
-          orderStatus: 'Cancelled',
-          timeline: [
-            ...o.timeline,
-            { status: 'Cancelled', timestamp: new Date().toISOString().replace('T', ' ').slice(0, 16), description: 'Order cancelled by Retailer' }
-          ]
-        };
+    fetch(`/api/orders/${orderId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'Cancelled' })
+    })
+    .then(res => res.json())
+    .then(res => {
+      if (res.success) {
+        showToast("Order cancelled successfully.", "success");
+        setViewingOrder(null);
+        fetchOrders();
+      } else {
+        showToast(res.message || "Failed to cancel order.", "error");
       }
-      return o;
-    });
-
-    setOrders(updatedOrders);
-    // Close active modal or update viewing state
-    if (viewingOrder && viewingOrder.id === orderId) {
-      setViewingOrder(updatedOrders.find(o => o.id === orderId));
-    }
-    showToast(`Order ${orderId} has been successfully cancelled.`, "success");
+    })
+    .catch(() => showToast("Network error cancelling order.", "error"));
   };
 
   const handleDownloadInvoice = (orderId) => {
     console.log(`[Invoice Download triggered for Order: ${orderId}]`);
-    showToast(`Downloading invoice for ${orderId}...`, "success");
+    showToast(`Downloading invoice...`, "success");
   };
+
+  const getTimeline = (order) => {
+    const timeline = [];
+    const createdTime = new Date(order.createdAt).toLocaleString();
+    const updatedTime = new Date(order.updatedAt).toLocaleString();
+    
+    timeline.push({ status: "Submitted", timestamp: createdTime, description: "Order submitted with UTR proof by Retailer" });
+    
+    if (order.status !== 'Submitted' && order.status !== 'Draft') {
+      timeline.push({ status: order.status, timestamp: updatedTime, description: `Order status updated to ${order.status}` });
+    }
+    return timeline;
+  };
+
+  if (loading) {
+    return (
+      <div className="w-full bg-white rounded-2xl border border-slate-200 p-6 shadow-xs animate-pulse space-y-4 min-h-[400px] flex flex-col justify-center">
+        <div className="flex items-center justify-center gap-2.5 text-slate-400 text-xs font-bold font-display">
+          <RefreshCw className="w-5 h-5 text-brand-orange animate-spin" />
+          <span>Loading footwear orders history...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       {/* Title */}
       <div>
         <h1 className="text-xl font-bold text-slate-900 font-display">My Footwear Orders</h1>
-        <p className="text-xs text-slate-500 font-medium">Search, filter, and inspect payment UTRs or status progression for all your past store orders.</p>
+        <p className="text-xs text-slate-550 font-medium">Search, filter, and inspect payment UTRs or status progression for all your past store orders.</p>
       </div>
 
       {/* Filters & Control Panel */}
@@ -157,31 +202,32 @@ export default function MyOrders({ showToast }) {
             <tbody className="divide-y divide-slate-100">
               {filteredOrders.length > 0 ? (
                 filteredOrders.map(order => {
-                  const itemsCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
+                  const itemsCount = order.items?.reduce((sum, item) => sum + item.quantity, 0) || 0;
+                  const orderId = order.order_number || `ORD-${order._id.substring(18)}`;
                   return (
-                    <tr key={order.id} className="hover:bg-slate-50/40">
-                      <td className="px-5 py-3.5 font-bold text-slate-900">{order.id}</td>
-                      <td className="px-5 py-3.5 text-slate-400 font-medium">{order.date}</td>
+                    <tr key={order._id} className="hover:bg-slate-50/40">
+                      <td className="px-5 py-3.5 font-bold text-slate-900">{orderId}</td>
+                      <td className="px-5 py-3.5 text-slate-400 font-medium">{new Date(order.createdAt).toLocaleDateString()}</td>
                       <td className="px-5 py-3.5">{itemsCount} pairs</td>
-                      <td className="px-5 py-3.5 font-extrabold text-slate-850">₹{order.totalAmount.toLocaleString('en-IN')}</td>
+                      <td className="px-5 py-3.5 font-extrabold text-slate-850">₹{(order.grand_total || 0).toLocaleString('en-IN')}</td>
                       <td className="px-5 py-3.5">
                         <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-bold ${
-                          order.paymentStatus === 'Verified' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                          order.paymentStatus === 'Pending' ? 'bg-amber-50 text-amber-700 border-amber-100' :
+                          order.payment_status === 'Verified' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                          order.payment_status === 'Pending' ? 'bg-amber-50 text-amber-700 border-amber-100' :
                           'bg-rose-50 text-rose-700 border-rose-100'
                         }`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${
-                            order.paymentStatus === 'Verified' ? 'bg-emerald-500' :
-                            order.paymentStatus === 'Pending' ? 'bg-amber-500' : 'bg-rose-500'
+                            order.payment_status === 'Verified' ? 'bg-emerald-500' :
+                            order.payment_status === 'Pending' ? 'bg-amber-500' : 'bg-rose-500'
                           }`}></span>
-                          {order.paymentStatus}
+                          {order.payment_status || 'Pending'}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5"><StatusBadge status={order.orderStatus} /></td>
+                      <td className="px-5 py-3.5"><StatusBadge status={order.status} /></td>
                       <td className="px-5 py-3.5 text-right">
                         <button
                           onClick={() => setViewingOrder(order)}
-                          className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-slate-800 transition-all"
+                          className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-slate-800 transition-all cursor-pointer"
                           title="View Order Details"
                         >
                           <Eye className="w-4 h-4" />
@@ -195,7 +241,7 @@ export default function MyOrders({ showToast }) {
                   <td colSpan="7" className="px-5 py-12 text-center">
                     <div className="flex flex-col items-center justify-center gap-3">
                       <AlertCircle className="w-10 h-10 text-slate-300" />
-                      <p className="text-slate-500 text-xs font-semibold">No orders found matching criteria.</p>
+                      <p className="text-slate-550 text-xs font-semibold">No orders found matching criteria.</p>
                     </div>
                   </td>
                 </tr>
@@ -210,19 +256,19 @@ export default function MyOrders({ showToast }) {
         <CustomModal
           isOpen={!!viewingOrder}
           onClose={() => setViewingOrder(null)}
-          title={`Order Summary details: ${viewingOrder.id}`}
+          title={`Order Summary details: ${viewingOrder.order_number || `ORD-${viewingOrder._id.substring(18)}`}`}
           size="lg"
           confirmText="Download Invoice"
-          onConfirm={() => handleDownloadInvoice(viewingOrder.id)}
+          onConfirm={() => handleDownloadInvoice(viewingOrder._id)}
         >
-          <div className="space-y-6 text-xs font-semibold text-slate-700">
+          <div className="space-y-6 text-xs font-semibold text-slate-700 animate-fade-in">
             
             {/* Header info */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 bg-slate-50/50 p-4 rounded-xl border border-slate-100">
-              <div><span className="text-slate-400 font-bold">Order Date</span><p className="font-extrabold text-slate-800 mt-0.5">{viewingOrder.date}</p></div>
-              <div><span className="text-slate-400 font-bold">Payment Status</span><p className="font-extrabold text-slate-800 mt-0.5">{viewingOrder.paymentStatus}</p></div>
-              <div><span className="text-slate-400 font-bold">Order Status</span><div className="mt-0.5"><StatusBadge status={viewingOrder.orderStatus} /></div></div>
-              <div><span className="text-slate-400 font-bold">Total Bill</span><p className="font-extrabold text-slate-900 mt-0.5">₹{viewingOrder.totalAmount.toLocaleString('en-IN')}</p></div>
+              <div><span className="text-slate-400 font-bold">Order Date</span><p className="font-extrabold text-slate-800 mt-0.5">{new Date(viewingOrder.createdAt).toLocaleDateString()}</p></div>
+              <div><span className="text-slate-400 font-bold">Payment Status</span><p className="font-extrabold text-slate-800 mt-0.5">{viewingOrder.payment_status || 'Pending'}</p></div>
+              <div><span className="text-slate-400 font-bold">Order Status</span><div className="mt-0.5"><StatusBadge status={viewingOrder.status} /></div></div>
+              <div><span className="text-slate-400 font-bold">Total Bill</span><p className="font-extrabold text-slate-900 mt-0.5">₹{(viewingOrder.grand_total || 0).toLocaleString('en-IN')}</p></div>
             </div>
 
             {/* Items table */}
@@ -240,13 +286,13 @@ export default function MyOrders({ showToast }) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {viewingOrder.items.map((item, index) => (
+                    {viewingOrder.items?.map((item, index) => (
                       <tr key={index}>
-                        <td className="px-4 py-2.5 font-bold text-slate-900">{item.productName}</td>
-                        <td className="px-4 py-2.5 text-slate-450 uppercase">{item.variant}</td>
+                        <td className="px-4 py-2.5 font-bold text-slate-900">{item.product_variant?.product?.name || "Footwear"}</td>
+                        <td className="px-4 py-2.5 text-slate-450 uppercase">Size {item.product_variant?.size || ""} / {item.product_variant?.color || ""}</td>
                         <td className="px-4 py-2.5 text-center">{item.quantity} pairs</td>
-                        <td className="px-4 py-2.5 text-right">₹{item.price.toLocaleString('en-IN')}</td>
-                        <td className="px-4 py-2.5 text-right font-extrabold text-slate-950">₹{(item.price * item.quantity).toLocaleString('en-IN')}</td>
+                        <td className="px-4 py-2.5 text-right">₹{(item.unit_price || 0).toLocaleString('en-IN')}</td>
+                        <td className="px-4 py-2.5 text-right font-extrabold text-slate-950">₹{(item.total_price || 0).toLocaleString('en-IN')}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -261,21 +307,15 @@ export default function MyOrders({ showToast }) {
                 <div className="bg-slate-50 border border-slate-150 rounded-xl p-3.5 space-y-2.5">
                   <div>
                     <span className="text-[10px] text-slate-400 font-bold block">UTR / TRANSACTION NUMBER</span>
-                    <p className="font-mono font-extrabold text-slate-800 tracking-wide text-sm">{viewingOrder.utr || "N/A"}</p>
+                    <p className="font-mono font-extrabold text-slate-800 tracking-wide text-sm">{viewingOrder.utr_number || "N/A"}</p>
                   </div>
-                  {viewingOrder.notes && (
-                    <div>
-                      <span className="text-[10px] text-slate-400 font-bold block">ORDER NOTES</span>
-                      <p className="text-slate-550 font-normal mt-0.5">{viewingOrder.notes}</p>
-                    </div>
-                  )}
                 </div>
 
                 {/* Cancel action */}
-                {['Draft', 'Submitted'].includes(viewingOrder.orderStatus) && (
+                {['Draft', 'Submitted'].includes(viewingOrder.status) && (
                   <div className="pt-2">
                     <button
-                      onClick={() => handleCancelOrder(viewingOrder.id)}
+                      onClick={() => handleCancelOrder(viewingOrder._id)}
                       className="px-4 py-2 bg-rose-50 border border-rose-200 hover:bg-rose-100 text-rose-700 rounded-lg font-bold flex items-center gap-1.5 transition-colors cursor-pointer w-full justify-center"
                     >
                       <XCircle className="w-4 h-4" />
@@ -287,17 +327,17 @@ export default function MyOrders({ showToast }) {
 
               <div className="space-y-2">
                 <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Uploaded Receipt Screenshot</h4>
-                {viewingOrder.paymentScreenshot ? (
+                {viewingOrder.payment_screenshot ? (
                   <div className="border border-slate-200 rounded-lg p-2 bg-white flex justify-center items-center">
                     <img 
-                      src={viewingOrder.paymentScreenshot} 
+                      src={viewingOrder.payment_screenshot} 
                       alt="UTR Receipt Screenshot" 
                       className="max-h-40 object-contain rounded border border-slate-150"
                     />
                   </div>
                 ) : (
                   <div className="border border-slate-200 border-dashed rounded-lg p-6 bg-slate-50 text-center text-slate-450 font-medium">
-                    No payment receipt uploaded for draft.
+                    No payment receipt uploaded.
                   </div>
                 )}
               </div>
@@ -308,9 +348,8 @@ export default function MyOrders({ showToast }) {
               <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Clock className="w-4 h-4 text-slate-300" /> Progression Timeline</h4>
               
               <div className="relative pl-6 border-l border-slate-200 space-y-4 font-sans">
-                {viewingOrder.timeline?.map((step, idx) => (
+                {getTimeline(viewingOrder).map((step, idx) => (
                   <div key={idx} className="relative">
-                    {/* Circle bullet */}
                     <span className={`absolute -left-[29px] top-1 w-3.5 h-3.5 rounded-full border-2 border-white flex items-center justify-center shadow-xs ${
                       step.status === 'Cancelled' ? 'bg-rose-500' :
                       step.status === 'Delivered' ? 'bg-emerald-500' :
@@ -320,7 +359,7 @@ export default function MyOrders({ showToast }) {
                     <div className="text-xs">
                       <span className="text-[10px] text-slate-400 font-bold block">{step.timestamp}</span>
                       <span className="font-extrabold text-slate-800 font-display block mt-0.5">{step.status}</span>
-                      <p className="text-slate-450 font-medium">{step.description}</p>
+                      <p className="text-slate-550 font-medium">{step.description}</p>
                     </div>
                   </div>
                 ))}

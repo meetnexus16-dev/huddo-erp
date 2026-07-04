@@ -1,26 +1,27 @@
 import React, { useState } from 'react';
 import { Tag, Calendar, ShoppingBag, ShieldAlert, Award, Star, CheckCircle, Flame } from 'lucide-react';
 
+import { useRetailerAuth } from '../context/RetailerAuthContext';
 import { mockSchemes } from '../mockData/mockSchemes';
-import { mockRetailer } from '../mockData/mockRetailer';
 
 export default function Schemes() {
+  const { retailer } = useRetailerAuth();
   const [activeTab, setActiveTab] = useState('Active'); // Active | Expired
-  const retailerTier = mockRetailer.category; // e.g. Gold
+  const retailerTier = retailer?.category || 'Standard'; // e.g. Gold
 
   // Filter schemes
   const activeSchemes = mockSchemes.filter(s => s.isActive);
   const expiredSchemes = mockSchemes.filter(s => !s.isActive);
 
   const renderSchemeCard = (scheme, isExpired = false) => {
-    const isApplicable = scheme.applicableTiers.includes(retailerTier);
+    const isApplicable = scheme.applicableTiers.includes(retailerTier) || scheme.applicableTiers.includes('All');
     
     return (
       <div 
         key={scheme.id} 
         className={`bg-white rounded-xl border p-5 shadow-xs flex flex-col justify-between relative overflow-hidden transition-all duration-200 ${
           isExpired 
-            ? 'opacity-60 border-slate-200 bg-slate-50/50' 
+            ? 'opacity-60 border-slate-200 bg-slate-50/55' 
             : isApplicable 
               ? 'border-brand-orange/30 hover:border-brand-orange hover:shadow-md'
               : 'border-slate-200 opacity-80 hover:opacity-100'
@@ -36,7 +37,7 @@ export default function Schemes() {
           <div className="flex justify-between items-start gap-3">
             <div>
               <span className="text-[10px] font-bold text-slate-400 font-mono block">SCHEME ID: {scheme.id}</span>
-              <h3 className={`text-sm font-bold font-display mt-0.5 ${isExpired ? 'text-slate-500 line-through' : 'text-slate-850'}`}>
+              <h3 className={`text-sm font-bold font-display mt-0.5 ${isExpired ? 'text-slate-505 line-through' : 'text-slate-850'}`}>
                 {scheme.name}
               </h3>
             </div>
@@ -53,7 +54,7 @@ export default function Schemes() {
             </span>
           </div>
 
-          <p className="text-[11px] text-slate-500 font-medium font-sans leading-relaxed">
+          <p className="text-[11px] text-slate-550 font-medium font-sans leading-relaxed">
             {scheme.description}
           </p>
 
@@ -85,7 +86,7 @@ export default function Schemes() {
                 className={`px-1.5 py-0.5 rounded text-[8px] font-bold ${
                   t === 'Platinum' ? 'bg-purple-100 text-purple-700' :
                   t === 'Gold' ? 'bg-amber-100 text-amber-700' :
-                  'bg-slate-100 text-slate-600'
+                  'bg-slate-100 text-slate-650'
                 }`}
               >
                 {t}
@@ -97,7 +98,7 @@ export default function Schemes() {
             {isExpired ? (
               <span className="text-[9px] font-bold text-slate-400 uppercase">Expired Scheme</span>
             ) : isApplicable ? (
-              <span className="flex items-center gap-0.5 text-emerald-600 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase animate-pulse">
+              <span className="flex items-center gap-0.5 text-emerald-600 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase">
                 <CheckCircle className="w-3 h-3 fill-emerald-50" />
                 <span>Applicable to you</span>
               </span>
@@ -120,13 +121,13 @@ export default function Schemes() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-slate-900 font-display">Dealer Schemes & Discounts</h1>
-          <p className="text-xs text-slate-500 font-medium">Browse tier-specific volume discounts, point-accrual multipliers, and ongoing clearance programs.</p>
+          <p className="text-xs text-slate-550 font-medium">Browse tier-specific volume discounts, point-accrual multipliers, and ongoing clearance programs.</p>
         </div>
         
         <div className="flex gap-1 bg-slate-100 border border-slate-200 rounded-xl p-1 self-start">
           <button
             onClick={() => setActiveTab('Active')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
               activeTab === 'Active' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-755'
             }`}
           >
@@ -134,7 +135,7 @@ export default function Schemes() {
           </button>
           <button
             onClick={() => setActiveTab('Expired')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
               activeTab === 'Expired' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-755'
             }`}
           >

@@ -39,7 +39,7 @@ import DistributorDashboard from './pages/DistributorDashboard';
 
 // Main Layout Component
 function RetailerPanelLayout({ userRole, showToast, onSwitchRole }) {
-  const { user } = useRetailerAuth();
+  const { user, loading: authLoading } = useRetailerAuth();
   const [activeTab, setActiveTab] = useState('Dashboard');
   const [loading, setLoading] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -52,10 +52,6 @@ function RetailerPanelLayout({ userRole, showToast, onSwitchRole }) {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
-  const unreadCount = notifications.filter(n => !n.read).length;
-
-  const isDistributor = user.role.toLowerCase() === 'distributor';
-
   // Close dropdowns on click outside
   useEffect(() => {
     const handleOutsideClick = () => {
@@ -65,6 +61,23 @@ function RetailerPanelLayout({ userRole, showToast, onSwitchRole }) {
     window.addEventListener('click', handleOutsideClick);
     return () => window.removeEventListener('click', handleOutsideClick);
   }, []);
+
+  if (authLoading || !user) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+        <div className="w-full max-w-md bg-white rounded-2xl border border-slate-200 p-8 shadow-xs animate-pulse space-y-4 text-center">
+          <div className="flex flex-col items-center justify-center gap-3">
+            <RefreshCw className="w-8 h-8 text-brand-orange animate-spin" />
+            <span className="text-sm font-bold text-slate-700 font-display">Initializing Retailer Workspace...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  const isDistributor = user.role.toLowerCase() === 'distributor';
 
   const stopPropagation = (e) => {
     e.stopPropagation();
@@ -187,10 +200,10 @@ function RetailerPanelLayout({ userRole, showToast, onSwitchRole }) {
       onMarkAllNotificationsRead={handleMarkAllAsRead}
       profile={{
         name: isDistributor ? 'Huddo Mega Distributors' : user.name,
-        subtitle: isDistributor ? 'Platinum Tier Distributor' : 'Gold Tier Retailer',
+        subtitle: isDistributor ? 'Platinum Tier Distributor' : `${user.category || 'Standard'} Tier Retailer`,
         image: isDistributor 
           ? "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150" 
-          : "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"
+          : (user.rawUser?.profile_photo || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150")
       }}
     >
       {loading ? (

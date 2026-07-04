@@ -1,28 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ShoppingBag, Trash2, CreditCard, ChevronRight, CheckCircle2, 
-  Upload, Search, Filter, AlertTriangle, AlertCircle, ShoppingCart
+  Upload, Search, Filter, AlertTriangle, AlertCircle, ShoppingCart, RefreshCw
 } from 'lucide-react';
 
-import { mockProducts } from '../mockData/mockProducts';
-import { mockOrders } from '../mockData/mockOrders';
+import { useRetailerAuth } from '../context/RetailerAuthContext';
 import CustomModal from '../components/CustomModal';
 
 export default function PlaceOrder({ showToast, onNavigate }) {
-  const [products, setProducts] = useState(mockProducts);
+  const { user } = useRetailerAuth();
+  const [products, setProducts] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   
   // Selected variant tracking per product (keys: product.id, value: variant.id)
-  const [selectedVariants, setSelectedVariants] = useState(() => {
-    const initial = {};
-    products.forEach(p => {
-      // Pick first in-stock variant if available
-      const inStock = p.variants.find(v => v.stock > 0);
-      initial[p.id] = inStock ? inStock.id : p.variants[0].id;
-    });
-    return initial;
-  });
+  const [selectedVariants, setSelectedVariants] = useState({});
 
   // Shopping Cart state: array of items: { product, variant, quantity }
   const [cart, setCart] = useState([]);
@@ -33,6 +27,62 @@ export default function PlaceOrder({ showToast, onNavigate }) {
   const [orderNotes, setOrderNotes] = useState('');
   const [paymentScreenshot, setPaymentScreenshot] = useState(null);
   const [screenshotPreview, setScreenshotPreview] = useState('');
+
+  // Fetch product variants from the backend
+  useEffect(() => {
+    setLoading(true);
+    fetch('/api/product-variants?limit=500')
+      .then(res => res.json())
+      .then(res => {
+        if (res.success && Array.isArray(res.data)) {
+          const productMap = {};
+          res.data.forEach(variant => {
+            const prod = variant.product;
+            if (!prod) return;
+            const prodId = prod._id || prod.id || prod;
+            const prodName = prod.name || "Unknown Product";
+            
+            if (!productMap[prodId]) {
+              productMap[prodId] = {
+                id: prodId,
+                name: prodName,
+                sku: prod.sku,
+                category: prod.category?.name || (typeof prod.category === 'string' ? prod.category : "Footwear"),
+                description: prod.description || "",
+                image: prod.image || "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400",
+                variants: []
+              };
+            }
+            productMap[prodId].variants.push({
+              id: variant._id || variant.id,
+              size: variant.size,
+              color: variant.color,
+              price: variant.selling_price || 0,
+              stock: variant.stock_quantity || 0,
+              sku: variant.sku_variant
+            });
+          });
+
+          const productList = Object.values(productMap);
+          setProducts(productList);
+
+          // Set default variants
+          const initialVariants = {};
+          productList.forEach(p => {
+            const inStock = p.variants.find(v => v.stock > 0);
+            initialVariants[p.id] = inStock ? inStock.id : p.variants[0]?.id;
+          });
+          setSelectedVariants(initialVariants);
+        }
+      })
+      .catch(err => {
+        console.error("Error loading products:", err);
+        showToast("Error loading catalog.", "error");
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, []);
 
   // Categories extraction
   const categories = ['All', ...new Set(products.map(p => p.category))];
@@ -58,7 +108,6 @@ export default function PlaceOrder({ showToast, onNavigate }) {
       return;
     }
 
-    // Check if variant already exists in cart
     const existingIndex = cart.findIndex(item => item.variant.id === variant.id);
     if (existingIndex > -1) {
       const currentQty = cart[existingIndex].quantity;
@@ -72,7 +121,7 @@ export default function PlaceOrder({ showToast, onNavigate }) {
     } else {
       setCart([...cart, { product, variant, quantity: 1 }]);
     }
-    showToast(`Added ${product.name} (${variant.color} / Size ${variant.size}) to cart.`, "success");
+    showToast(`Added ${product.name} to cart.`, "success");
   };
 
   const updateCartQuantity = (variantId, amount) => {
@@ -83,7 +132,6 @@ export default function PlaceOrder({ showToast, onNavigate }) {
     const newQty = item.quantity + amount;
 
     if (newQty <= 0) {
-      // Remove from cart
       setCart(cart.filter(it => it.variant.id !== variantId));
       showToast("Item removed from cart.", "success");
     } else if (newQty > item.variant.stock) {
@@ -100,10 +148,8 @@ export default function PlaceOrder({ showToast, onNavigate }) {
     showToast("Item removed from cart.", "success");
   };
 
-  // Cart financial summary
   const subtotal = cart.reduce((sum, item) => sum + (item.variant.price * item.quantity), 0);
 
-  // Screenshot handler
   const handleScreenshotChange = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -127,63 +173,71 @@ export default function PlaceOrder({ showToast, onNavigate }) {
       return;
     }
 
-    // Submit new order simulation
-    const newOrderId = `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
-    const today = new Date().toISOString().split('T')[0];
-    const newOrderObj = {
-      id: newOrderId,
-      date: today,
+    setSubmitting(true);
+
+    const payload = {
+      retailer: user.id,
       items: cart.map(item => ({
-        productId: item.product.id,
-        productName: item.product.name,
-        variant: `Size ${item.variant.size} / ${item.variant.color}`,
+        product_variant: item.variant.id,
         quantity: item.quantity,
-        price: item.variant.price
+        unit_price: item.variant.price,
+        total_price: item.variant.price * item.quantity
       })),
-      totalAmount: subtotal,
-      paymentStatus: "Pending", // Pending verification
-      orderStatus: "Submitted",
-      utr: utrNumber,
-      paymentScreenshot: screenshotPreview,
-      notes: orderNotes,
-      timeline: [
-        { status: "Submitted", timestamp: `${today} 09:00 PM`, description: "Order submitted with UTR proof by Retailer" }
-      ]
+      subtotal: subtotal,
+      tax_amount: 0,
+      discount_amount: 0,
+      grand_total: subtotal,
+      utr_number: utrNumber,
+      payment_screenshot: screenshotPreview,
+      payment_status: "Pending",
+      status: "Submitted"
     };
 
-    // Prepend to mockOrders
-    mockOrders.unshift(newOrderObj);
-
-    // Deduct stock in local mock memory
-    cart.forEach(cartItem => {
-      const prod = products.find(p => p.id === cartItem.product.id);
-      if (prod) {
-        const vr = prod.variants.find(v => v.id === cartItem.variant.id);
-        if (vr) {
-          vr.stock -= cartItem.quantity;
-        }
+    fetch('/api/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        showToast(`Order submitted successfully! Pending approval.`, "success");
+        setCart([]);
+        setIsCheckoutOpen(false);
+        setUtrNumber('');
+        setOrderNotes('');
+        setPaymentScreenshot(null);
+        setScreenshotPreview('');
+        onNavigate('My Orders');
+      } else {
+        showToast(data.message || "Failed to place order.", "error");
       }
+    })
+    .catch(err => {
+      console.error(err);
+      showToast("Error submitting order.", "error");
+    })
+    .finally(() => {
+      setSubmitting(false);
     });
-
-    // Reset cart and checkout states
-    setCart([]);
-    setIsCheckoutOpen(false);
-    setUtrNumber('');
-    setOrderNotes('');
-    setPaymentScreenshot(null);
-    setScreenshotPreview('');
-
-    showToast(`Order ${newOrderId} submitted successfully! Pending CM approval.`, "success");
-    // Redirect to orders page
-    onNavigate('My Orders');
   };
+
+  if (loading) {
+    return (
+      <div className="w-full bg-white rounded-2xl border border-slate-200 p-6 shadow-xs animate-pulse space-y-4 min-h-[400px] flex flex-col justify-center">
+        <div className="flex items-center justify-center gap-2.5 text-slate-400 text-xs font-bold font-display">
+          <RefreshCw className="w-5 h-5 text-brand-orange animate-spin" />
+          <span>Loading footwear catalog...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* Title */}
       <div>
         <h1 className="text-xl font-bold text-slate-900 font-display">Place New Bulk Order</h1>
-        <p className="text-xs text-slate-500 font-medium font-sans">Browse catalog variants, add products, review subtotals, and submit transaction confirmation.</p>
+        <p className="text-xs text-slate-550 font-medium font-sans">Browse catalog variants, add products, review subtotals, and submit transaction confirmation.</p>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
@@ -231,12 +285,10 @@ export default function PlaceOrder({ showToast, onNavigate }) {
 
                 return (
                   <div key={product.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col justify-between hover:shadow-md transition-shadow">
-                    
-                    {/* Upper content */}
                     <div>
                       <div className="relative h-44 bg-slate-100 overflow-hidden">
                         <img 
-                          src={product.image} 
+                          src={product.image.startsWith('uploads/') ? `/${product.image}` : product.image} 
                           alt={product.name} 
                           className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" 
                         />
@@ -277,21 +329,21 @@ export default function PlaceOrder({ showToast, onNavigate }) {
                     <div className="p-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/50">
                       <div>
                         <span className="text-xs text-slate-400 font-bold">Dealer Price</span>
-                        <p className="text-base font-extrabold text-slate-850 font-display">₹{activeVariant.price.toLocaleString('en-IN')}</p>
+                        <p className="text-base font-extrabold text-slate-850 font-display">₹{(activeVariant?.price || 0).toLocaleString('en-IN')}</p>
                       </div>
 
                       <div className="text-right">
                         <span className={`block text-[9px] font-bold ${
-                          activeVariant.stock === 0 ? 'text-rose-500' :
+                          !activeVariant || activeVariant.stock === 0 ? 'text-rose-500' :
                           activeVariant.stock <= 5 ? 'text-amber-500' : 'text-slate-400'
                         }`}>
-                          {activeVariant.stock === 0 ? 'Out of Stock' :
+                          {!activeVariant || activeVariant.stock === 0 ? 'Out of Stock' :
                            activeVariant.stock <= 5 ? `Only ${activeVariant.stock} left` : `Stock: ${activeVariant.stock} pairs`}
                         </span>
                         
                         <button
                           onClick={() => handleAddToCart(product, activeVariant)}
-                          disabled={activeVariant.stock === 0}
+                          disabled={!activeVariant || activeVariant.stock === 0}
                           className="mt-1 px-3 py-1.5 bg-brand-orange hover:bg-brand-orange-hover text-white text-[11px] font-bold rounded-lg transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50 disabled:bg-slate-300 disabled:cursor-not-allowed"
                         >
                           <ShoppingCart className="w-3.5 h-3.5" />
@@ -316,7 +368,6 @@ export default function PlaceOrder({ showToast, onNavigate }) {
         {/* Right Col: Cart Summary */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-xs flex flex-col overflow-hidden">
           
-          {/* Header */}
           <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
             <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
               <ShoppingBag className="w-4 h-4 text-brand-orange" />
@@ -332,7 +383,6 @@ export default function PlaceOrder({ showToast, onNavigate }) {
             )}
           </div>
 
-          {/* Cart items list */}
           <div className="flex-1 divide-y divide-slate-100 max-h-[360px] overflow-y-auto min-h-[150px]">
             {cart.length > 0 ? (
               cart.map((item, idx) => (
@@ -344,7 +394,6 @@ export default function PlaceOrder({ showToast, onNavigate }) {
                   </div>
 
                   <div className="flex flex-col items-end gap-2.5">
-                    {/* Quantity selectors */}
                     <div className="flex items-center border border-slate-200 rounded bg-slate-50">
                       <button 
                         onClick={() => updateCartQuantity(item.variant.id, -1)}
@@ -378,8 +427,7 @@ export default function PlaceOrder({ showToast, onNavigate }) {
             )}
           </div>
 
-          {/* Subtotal & Checkout */}
-          <div className="p-4 border-t border-slate-150 bg-slate-50">
+          <div className="p-4 border-t border-slate-155 bg-slate-50">
             <div className="flex items-center justify-between text-xs font-bold text-slate-800 mb-4">
               <span>Order Subtotal</span>
               <span className="text-base text-slate-900 font-display">₹{subtotal.toLocaleString('en-IN')}</span>
@@ -406,11 +454,10 @@ export default function PlaceOrder({ showToast, onNavigate }) {
         onClose={() => setIsCheckoutOpen(false)}
         title="Submit Payment Reference"
         onConfirm={handleCheckoutSubmit}
-        confirmText="Submit Order"
+        confirmText={submitting ? "Submitting..." : "Submit Order"}
       >
-        <form className="space-y-4">
+        <form className="space-y-4" onSubmit={handleCheckoutSubmit}>
           
-          {/* Summary */}
           <div className="bg-orange-50/20 border border-orange-100 rounded-lg p-3 text-xs text-slate-700">
             <span className="font-bold text-brand-orange uppercase block mb-1">Payment Instructions</span>
             <p className="font-semibold text-slate-600">

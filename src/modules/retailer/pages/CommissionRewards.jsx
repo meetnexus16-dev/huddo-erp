@@ -1,13 +1,74 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Percent, Award, Landmark, TrendingUp, HelpCircle, 
-  ArrowRight, ShieldCheck, AlertCircle, Clock, Calendar
+  ArrowRight, ShieldCheck, AlertCircle, Clock, Calendar, RefreshCw
 } from 'lucide-react';
 
-import { mockCommissionSummary, mockCommissions, mockRewardsHistory } from '../mockData/mockCommissions';
+import { useRetailerAuth } from '../context/RetailerAuthContext';
 
-export default function CommissionRewards() {
+export default function CommissionRewards({ showToast }) {
+  const { user, retailer } = useRetailerAuth();
   const [activeSubTab, setActiveSubTab] = useState('Commission'); // Commission | Rewards
+  const [commissions, setCommissions] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    setLoading(true);
+    // Fetch commission records for this user
+    fetch(`/api/commission-records?user=${user.id}`)
+      .then(res => res.json())
+      .then(res => {
+        if (res.success && Array.isArray(res.data)) {
+          setCommissions(res.data);
+        }
+      })
+      .catch(err => {
+        console.error("Error loading commissions:", err);
+        if (showToast) showToast("Error loading commissions history.", "error");
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [user?.id]);
+
+  // Compute stats
+  const lifetimeEarned = commissions.reduce((sum, c) => sum + (c.amount || 0), 0);
+  
+  const thisMonthEarned = commissions
+    .filter(c => {
+      const date = new Date(c.createdAt);
+      const now = new Date();
+      return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+    })
+    .reduce((sum, c) => sum + (c.amount || 0), 0);
+
+  const pendingSettlement = commissions
+    .filter(c => c.status === 'Pending')
+    .reduce((sum, c) => sum + (c.amount || 0), 0);
+
+  const loyaltyPoints = Math.floor(lifetimeEarned / 10);
+
+  // Generate dynamic loyalty points history from settled commissions
+  const loyaltyHistory = commissions
+    .filter(c => c.status === 'Paid')
+    .map(c => ({
+      date: new Date(c.updatedAt || c.createdAt).toLocaleDateString(),
+      description: `Points credited for Order ${c.order?.order_number || `ORD-${c.order?._id?.substring(18) || c.order?.substring(18) || ''}`}`,
+      type: 'credit',
+      points: Math.floor((c.amount || 0) / 10)
+    }));
+
+  if (loading) {
+    return (
+      <div className="w-full bg-white rounded-2xl border border-slate-200 p-6 shadow-xs animate-pulse space-y-4 min-h-[400px] flex flex-col justify-center">
+        <div className="flex items-center justify-center gap-2.5 text-slate-400 text-xs font-bold font-display">
+          <RefreshCw className="w-5 h-5 text-brand-orange animate-spin" />
+          <span>Loading commissions and loyalty rewards...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -15,14 +76,14 @@ export default function CommissionRewards() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-slate-900 font-display">Commissions & Loyalty Rewards</h1>
-          <p className="text-xs text-slate-500 font-medium">Track your shop commission settlements and loyalty point ledgers in real-time.</p>
+          <p className="text-xs text-slate-550 font-medium">Track your shop commission settlements and loyalty point ledgers in real-time.</p>
         </div>
 
         {/* Tab Controls */}
         <div className="flex gap-1 bg-slate-100 border border-slate-200 rounded-xl p-1 self-start">
           <button
             onClick={() => setActiveSubTab('Commission')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
               activeSubTab === 'Commission' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-755'
             }`}
           >
@@ -30,7 +91,7 @@ export default function CommissionRewards() {
           </button>
           <button
             onClick={() => setActiveSubTab('Rewards')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
               activeSubTab === 'Rewards' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-755'
             }`}
           >
@@ -48,7 +109,7 @@ export default function CommissionRewards() {
           </div>
           <div className="text-xs">
             <span className="text-[10px] text-slate-400 font-bold uppercase block">Lifetime Earnings</span>
-            <p className="text-lg font-extrabold text-slate-900 font-display mt-0.5">₹{mockCommissionSummary.lifetimeEarned.toLocaleString('en-IN')}</p>
+            <p className="text-lg font-extrabold text-slate-900 font-display mt-0.5">₹{lifetimeEarned.toLocaleString('en-IN')}</p>
           </div>
         </div>
 
@@ -58,7 +119,7 @@ export default function CommissionRewards() {
           </div>
           <div className="text-xs">
             <span className="text-[10px] text-slate-400 font-bold uppercase block">This Month's Earnings</span>
-            <p className="text-lg font-extrabold text-slate-900 font-display mt-0.5">₹{mockCommissionSummary.thisMonthEarned.toLocaleString('en-IN')}</p>
+            <p className="text-lg font-extrabold text-slate-900 font-display mt-0.5">₹{thisMonthEarned.toLocaleString('en-IN')}</p>
           </div>
         </div>
 
@@ -68,7 +129,7 @@ export default function CommissionRewards() {
           </div>
           <div className="text-xs">
             <span className="text-[10px] text-slate-400 font-bold uppercase block">Pending Settlement</span>
-            <p className="text-lg font-extrabold text-slate-900 font-display mt-0.5">₹{mockCommissionSummary.pendingSettlement.toLocaleString('en-IN')}</p>
+            <p className="text-lg font-extrabold text-slate-900 font-display mt-0.5">₹{pendingSettlement.toLocaleString('en-IN')}</p>
           </div>
         </div>
 
@@ -78,7 +139,7 @@ export default function CommissionRewards() {
           </div>
           <div className="text-xs">
             <span className="text-[10px] text-slate-400 font-bold uppercase block">Loyalty Points Balance</span>
-            <p className="text-lg font-extrabold text-purple-700 font-display mt-0.5">{mockCommissionSummary.loyaltyPoints} PTS</p>
+            <p className="text-lg font-extrabold text-purple-700 font-display mt-0.5">{loyaltyPoints} PTS</p>
           </div>
         </div>
 
@@ -86,9 +147,9 @@ export default function CommissionRewards() {
 
       {/* Informative description banner */}
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex items-center gap-3 text-xs text-slate-650">
-        <HelpCircle className="w-5 h-5 text-slate-450 shrink-0" />
+        <HelpCircle className="w-5 h-5 text-slate-400 shrink-0" />
         <p className="font-semibold text-slate-650">
-          Commission payout percentages are determined by your dealer status. As a <span className="font-bold text-amber-600">Gold Dealer</span>, you receive a flat <span className="font-bold text-slate-800">5% commission</span> on all eligible stock purchases, settled directly into your billing account upon successful order delivery.
+          Commission payout percentages are determined by your dealer status. As a <span className="font-bold text-amber-600">{retailer?.category || "Standard"} Dealer</span>, you receive settled commissions directly into your billing account upon successful order delivery.
         </p>
       </div>
 
@@ -112,27 +173,39 @@ export default function CommissionRewards() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {mockCommissions.map((comm) => (
-                  <tr key={comm.id} className="hover:bg-slate-50/40">
-                    <td className="px-4 py-3 text-slate-400 font-medium">{comm.date}</td>
-                    <td className="px-4 py-3 font-bold text-slate-900">{comm.orderId}</td>
-                    <td className="px-4 py-3 text-slate-550 font-medium line-clamp-1 max-w-[200px]">{comm.productName}</td>
-                    <td className="px-4 py-3 text-right">₹{comm.saleAmount.toLocaleString('en-IN')}</td>
-                    <td className="px-4 py-3 text-center">{comm.commissionRate}%</td>
-                    <td className="px-4 py-3 text-right font-extrabold text-slate-900">₹{comm.commissionAmount.toLocaleString('en-IN')}</td>
-                    <td className="px-4 py-3 text-right">
-                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-bold ${
-                        comm.status === 'Settled' ? 'bg-emerald-50 text-emerald-705 border-emerald-200' :
-                        'bg-amber-50 text-amber-705 border-amber-200'
-                      }`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${
-                          comm.status === 'Settled' ? 'bg-emerald-500' : 'bg-amber-500'
-                        }`}></span>
-                        {comm.status}
-                      </span>
+                {commissions.length > 0 ? (
+                  commissions.map((comm) => {
+                    const orderNo = comm.order?.order_number || `ORD-${comm.order?._id?.substring(18) || comm.order?.substring(18) || ''}`;
+                    const saleVal = comm.order?.grand_total || (comm.amount * 100 / (comm.percentage || 1));
+                    return (
+                      <tr key={comm._id} className="hover:bg-slate-50/40">
+                        <td className="px-4 py-3 text-slate-400 font-medium">{new Date(comm.createdAt).toLocaleDateString()}</td>
+                        <td className="px-4 py-3 font-bold text-slate-900">{orderNo}</td>
+                        <td className="px-4 py-3 text-slate-550 font-medium line-clamp-1 max-w-[200px]">Footwear Bulk Purchase</td>
+                        <td className="px-4 py-3 text-right">₹{saleVal.toLocaleString('en-IN')}</td>
+                        <td className="px-4 py-3 text-center">{comm.percentage}%</td>
+                        <td className="px-4 py-3 text-right font-extrabold text-slate-900">₹{(comm.amount || 0).toLocaleString('en-IN')}</td>
+                        <td className="px-4 py-3 text-right">
+                          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-bold ${
+                            comm.status === 'Paid' ? 'bg-emerald-50 text-emerald-705 border-emerald-200' :
+                            'bg-amber-50 text-amber-705 border-amber-200'
+                          }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${
+                              comm.status === 'Paid' ? 'bg-emerald-500' : 'bg-amber-500'
+                            }`}></span>
+                            {comm.status === 'Paid' ? 'Settled' : comm.status}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan="7" className="px-4 py-12 text-center text-slate-500 font-medium">
+                      No commission records logged.
                     </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
@@ -144,7 +217,7 @@ export default function CommissionRewards() {
         <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-4">
           <h3 className="text-sm font-bold text-slate-800 font-display">Points Transaction History</h3>
           <div className="border border-slate-200 rounded-lg overflow-x-auto">
-            <table className="w-full text-left text-xs font-semibold text-slate-700 border-collapse">
+            <table className="w-full text-left text-xs font-semibold text-slate-750 border-collapse">
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[10px]">
                 <tr>
                   <th className="px-4 py-2.5">Transaction Date</th>
@@ -154,25 +227,28 @@ export default function CommissionRewards() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {mockRewardsHistory.map((rew, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50/40">
-                    <td className="px-4 py-3 text-slate-400 font-medium">{rew.date}</td>
-                    <td className="px-4 py-3 text-slate-750 font-bold">{rew.description}</td>
-                    <td className="px-4 py-3 text-right">
-                      <span className={`inline-block text-[9px] font-bold px-2 py-0.5 rounded-full ${
-                        rew.type === 'credit' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
-                        'bg-rose-50 text-rose-700 border border-rose-100'
-                      }`}>
-                        {rew.type === 'credit' ? 'CREDIT' : 'DEBIT'}
-                      </span>
-                    </td>
-                    <td className={`px-4 py-3 text-right font-extrabold text-sm ${
-                      rew.points > 0 ? 'text-emerald-600' : 'text-rose-600'
-                    }`}>
-                      {rew.points > 0 ? `+${rew.points}` : rew.points} PTS
+                {loyaltyHistory.length > 0 ? (
+                  loyaltyHistory.map((rew, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50/40">
+                      <td className="px-4 py-3 text-slate-400 font-medium">{rew.date}</td>
+                      <td className="px-4 py-3 text-slate-750 font-bold">{rew.description}</td>
+                      <td className="px-4 py-3 text-right">
+                        <span className={`inline-block text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100`}>
+                          CREDIT
+                        </span>
+                      </td>
+                      <td className={`px-4 py-3 text-right font-extrabold text-sm text-emerald-600`}>
+                        +{rew.points} PTS
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="4" className="px-4 py-12 text-center text-slate-500 font-medium">
+                      No loyalty points history logged.
                     </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>

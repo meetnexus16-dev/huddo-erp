@@ -1,7 +1,5 @@
-import React, { useState } from 'react';
-import { Search, Archive, AlertCircle, HelpCircle } from 'lucide-react';
-
-import { mockInventory } from '../mockData/mockInventory';
+import React, { useState, useEffect } from 'react';
+import { Search, Archive, AlertCircle, HelpCircle, RefreshCw } from 'lucide-react';
 import StatusBadge from '../components/StatusBadge';
 
 export default function InventoryView() {
@@ -9,14 +7,47 @@ export default function InventoryView() {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedSize, setSelectedSize] = useState('All');
   const [selectedColor, setSelectedColor] = useState('All');
+  
+  const [stockList, setStockList] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch('/api/product-variants?limit=500')
+      .then(res => res.json())
+      .then(res => {
+        if (res.success && Array.isArray(res.data)) {
+          const formatted = res.data.map(v => {
+            const prod = v.product || {};
+            const stockQty = v.stock_quantity || 0;
+            return {
+              sku: v.sku_variant || "SKU-UNKNOWN",
+              name: prod.name || "Footwear",
+              category: prod.category?.name || (typeof prod.category === 'string' ? prod.category : "Footwear"),
+              size: v.size || "",
+              color: v.color || "",
+              stock: stockQty,
+              status: stockQty === 0 ? "Out of Stock" : stockQty <= 5 ? "Low Stock" : "In Stock"
+            };
+          });
+          setStockList(formatted);
+        }
+      })
+      .catch(err => {
+        console.error("Error loading inventory stock:", err);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, []);
 
   // Extracts lists for filter dropdowns
-  const categories = ['All', ...new Set(mockInventory.map(item => item.category))];
-  const sizes = ['All', ...new Set(mockInventory.map(item => item.size))].sort((a,b) => a - b);
-  const colors = ['All', ...new Set(mockInventory.map(item => item.color))];
+  const categories = ['All', ...new Set(stockList.map(item => item.category))];
+  const sizes = ['All', ...new Set(stockList.map(item => item.size))].sort((a,b) => a - b);
+  const colors = ['All', ...new Set(stockList.map(item => item.color))];
 
   // Filtering stock ledger
-  const filteredStock = mockInventory.filter(item => {
+  const filteredStock = stockList.filter(item => {
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           item.sku.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCat = selectedCategory === 'All' || item.category === selectedCategory;
@@ -26,12 +57,23 @@ export default function InventoryView() {
     return matchesSearch && matchesCat && matchesSize && matchesColor;
   });
 
+  if (loading) {
+    return (
+      <div className="w-full bg-white rounded-2xl border border-slate-200 p-6 shadow-xs animate-pulse space-y-4 min-h-[400px] flex flex-col justify-center">
+        <div className="flex items-center justify-center gap-2.5 text-slate-400 text-xs font-bold font-display">
+          <RefreshCw className="w-5 h-5 text-brand-orange animate-spin" />
+          <span>Loading inventory stock availability...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Title */}
       <div>
         <h1 className="text-xl font-bold text-slate-900 font-display">Inventory Stock Availability</h1>
-        <p className="text-xs text-slate-500 font-medium font-sans">View-only real-time SKU stock levels, size allocations, and warehouse status codes.</p>
+        <p className="text-xs text-slate-550 font-medium font-sans">View-only real-time SKU stock levels, size allocations, and warehouse status codes.</p>
       </div>
 
       {/* Filter panel */}
@@ -56,7 +98,7 @@ export default function InventoryView() {
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              className="w-full border border-slate-200 rounded-lg p-2 bg-white text-slate-700 focus:outline-none"
+              className="w-full border border-slate-200 rounded-lg p-2 bg-white text-slate-705 focus:outline-none"
             >
               {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
             </select>
@@ -67,7 +109,7 @@ export default function InventoryView() {
             <select
               value={selectedSize}
               onChange={(e) => setSelectedSize(e.target.value)}
-              className="w-full border border-slate-200 rounded-lg p-2 bg-white text-slate-700 focus:outline-none"
+              className="w-full border border-slate-200 rounded-lg p-2 bg-white text-slate-705 focus:outline-none"
             >
               {sizes.map(size => <option key={size} value={size}>{size === 'All' ? 'All Sizes' : `Size ${size}`}</option>)}
             </select>
@@ -78,7 +120,7 @@ export default function InventoryView() {
             <select
               value={selectedColor}
               onChange={(e) => setSelectedColor(e.target.value)}
-              className="w-full border border-slate-200 rounded-lg p-2 bg-white text-slate-700 focus:outline-none"
+              className="w-full border border-slate-200 rounded-lg p-2 bg-white text-slate-705 focus:outline-none"
             >
               {colors.map(col => <option key={col} value={col}>{col === 'All' ? 'All Colors' : col}</option>)}
             </select>
@@ -89,7 +131,7 @@ export default function InventoryView() {
 
       {/* Info Notice card */}
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex items-center gap-3 text-xs text-slate-650">
-        <HelpCircle className="w-5 h-5 text-slate-450 shrink-0" />
+        <AlertCircle className="w-5 h-5 text-slate-400 shrink-0" />
         <p className="font-semibold text-slate-600">
           <span className="font-bold text-slate-800">Notice:</span> Stock levels are synchronized in real-time with our distribution centers. Invoices will deduct stock counts instantly. As a dealer/retailer, this dashboard is <span className="font-bold text-brand-orange">Read-Only</span>.
         </p>
@@ -128,7 +170,7 @@ export default function InventoryView() {
                   <td colSpan="7" className="px-5 py-12 text-center">
                     <div className="flex flex-col items-center justify-center gap-3">
                       <Archive className="w-9 h-9 text-slate-300" />
-                      <p className="text-slate-500 text-xs font-semibold">No stock records found matching filters.</p>
+                      <p className="text-slate-550 text-xs font-semibold">No stock records found matching filters.</p>
                     </div>
                   </td>
                 </tr>

@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ShoppingBag, CreditCard, Tag, Landmark, Phone, Star, 
-  ArrowRight, CheckCircle2, AlertTriangle, Truck, FileText
+  ArrowRight, CheckCircle2, AlertTriangle, Truck, FileText, RefreshCw
 } from 'lucide-react';
 import { 
   StatWidget, 
@@ -10,71 +10,127 @@ import {
   DashboardAreaChart 
 } from '../../../components/DesignSystem';
 
-import { mockRetailer } from '../mockData/mockRetailer';
-import { mockOrders } from '../mockData/mockOrders';
-import { mockInvoices } from '../mockData/mockInvoices';
+import { useRetailerAuth } from '../context/RetailerAuthContext';
 import { mockSchemes } from '../mockData/mockSchemes';
-import { mockCommissionSummary } from '../mockData/mockCommissions';
 import StatusBadge from '../components/StatusBadge';
 
 export default function Dashboard({ onNavigate }) {
-  // Calculations based on mock data
-  const totalOrdersCount = mockOrders.length;
+  const { user, retailer } = useRetailerAuth();
+  const [orders, setOrders] = useState([]);
+  const [invoices, setInvoices] = useState([]);
+  const [commissions, setCommissions] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    setLoading(true);
+    Promise.all([
+      fetch(`/api/orders?retailer=${user.id}`).then(res => res.json()).catch(() => ({ success: false, data: [] })),
+      fetch(`/api/invoices?retailer=${user.id}`).then(res => res.json()).catch(() => ({ success: false, data: [] })),
+      fetch(`/api/commission-records?user=${user.rawUser?._id || user.id}`).then(res => res.json()).catch(() => ({ success: false, data: [] }))
+    ])
+    .then(([ordersRes, invoicesRes, commsRes]) => {
+      setOrders(ordersRes.success && Array.isArray(ordersRes.data) ? ordersRes.data : []);
+      setInvoices(invoicesRes.success && Array.isArray(invoicesRes.data) ? invoicesRes.data : []);
+      setCommissions(commsRes.success && Array.isArray(commsRes.data) ? commsRes.data : []);
+    })
+    .catch(err => console.error("Error fetching dashboard data:", err))
+    .finally(() => setLoading(false));
+  }, [user?.id]);
+
+  if (loading) {
+    return (
+      <div className="w-full bg-white rounded-2xl border border-slate-200 p-6 shadow-xs animate-pulse space-y-4 min-h-[400px] flex flex-col justify-center">
+        <div className="flex items-center justify-center gap-2.5 text-slate-400 text-xs font-bold font-display">
+          <RefreshCw className="w-5 h-5 text-brand-orange animate-spin" />
+          <span>Fetching retailer dashboard statistics...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Calculations based on real fetched data
+  const totalOrdersCount = orders.length;
   
-  const orderBreakdown = mockOrders.reduce((acc, curr) => {
-    if (['Pending', 'Submitted'].includes(curr.paymentStatus) && curr.orderStatus !== 'Cancelled') {
+  const orderBreakdown = orders.reduce((acc, curr) => {
+    if (['Draft', 'Submitted'].includes(curr.status)) {
       acc.pending += 1;
-    } else if (['Approved', 'Processing', 'Packed', 'Shipped'].includes(curr.orderStatus)) {
+    } else if (['Approved', 'Processing', 'Packed', 'Shipped'].includes(curr.status)) {
       acc.approved += 1;
-    } else if (curr.orderStatus === 'Delivered') {
+    } else if (curr.status === 'Delivered') {
       acc.delivered += 1;
     }
     return acc;
   }, { pending: 0, approved: 0, delivered: 0 });
 
   // Total Outstanding Payments
-  const outstandingAmount = mockInvoices
-    .filter(inv => inv.status === 'Pending' || inv.status === 'Overdue')
-    .reduce((sum, inv) => sum + inv.total, 0);
+  const outstandingAmount = invoices
+    .filter(inv => !inv.is_paid)
+    .reduce((sum, inv) => sum + (inv.total || 0), 0);
 
-  // Count active schemes applicable to Gold tier
+  // Count active schemes applicable to retailer's category
+  const rCategory = retailer?.category || user?.category || 'Standard';
   const activeSchemesCount = mockSchemes.filter(s => 
-    s.isActive && s.applicableTiers.includes(mockRetailer.category)
+    s.isActive && s.applicableTiers.includes(rCategory)
   ).length;
 
   // Recent 5 orders
-  const recentOrders = mockOrders
-    .sort((a, b) => new Date(b.date) - new Date(a.date))
+  const recentOrders = [...orders]
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .slice(0, 5);
 
-  // Mock chart data representing purchase history
-  const purchaseChartData = [
-    { month: 'Jan', amount: 45000 },
-    { month: 'Feb', amount: 62000 },
-    { month: 'Mar', amount: 55000 },
-    { month: 'Apr', amount: 84000 },
-    { month: 'May', amount: 73000 },
-    { month: 'Jun', amount: 96000 }
-  ];
+  // Dynamic chart data based on order history
+  const purchaseChartData = (() => {
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthlySum = {};
+    orders.forEach(order => {
+      if (['Approved', 'Processing', 'Packed', 'Shipped', 'Delivered'].includes(order.status)) {
+        const date = new Date(order.createdAt);
+        const mName = monthNames[date.getMonth()];
+        monthlySum[mName] = (monthlySum[mName] || 0) + (order.grand_total || 0);
+      }
+    });
+
+    const chartData = [];
+    const today = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      const mName = monthNames[d.getMonth()];
+      chartData.push({
+        month: mName,
+        amount: monthlySum[mName] || 0
+      });
+    }
+    return chartData;
+  })();
+
+  const thisMonthEarned = commissions
+    .filter(c => {
+      const date = new Date(c.createdAt);
+      const now = new Date();
+      return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+    })
+    .reduce((sum, c) => sum + (c.amount || 0), 0);
+  
+  const loyaltyPoints = commissions.reduce((sum, c) => sum + Math.floor(c.amount || 0) * 10, 0);
 
   const tableColumns = [
-    { header: "Order ID", accessor: "id", render: (val) => <span className="font-bold text-slate-900">{val}</span> },
-    { header: "Order Date", accessor: "date", render: (val) => <span className="text-slate-400 font-semibold">{val}</span> },
+    { header: "Order ID", accessor: "order_number", render: (val, row) => <span className="font-bold text-slate-900">{val || `ORD-${row._id.substring(18)}`}</span> },
+    { header: "Order Date", accessor: "createdAt", render: (val) => <span className="text-slate-400 font-semibold">{new Date(val).toLocaleDateString()}</span> },
     { header: "Items Purchased", accessor: "items", render: (val, row) => {
-      const totalItemsQty = row.items.reduce((sum, it) => sum + it.quantity, 0);
+      const totalItemsQty = row.items?.reduce((sum, it) => sum + it.quantity, 0) || 0;
       return <span>{totalItemsQty} pairs</span>;
     }},
-    { header: "Amount Total", accessor: "totalAmount", render: (val) => <span className="font-bold text-slate-800">₹{val.toLocaleString('en-IN')}</span> },
-    { header: "Payment Verification", accessor: "paymentStatus", render: (val) => (
+    { header: "Amount Total", accessor: "grand_total", render: (val) => <span className="font-bold text-slate-800">₹{(val || 0).toLocaleString('en-IN')}</span> },
+    { header: "Payment Status", accessor: "payment_status", render: (val) => (
       <span className="flex items-center gap-1.5">
         <span className={`inline-block w-2 h-2 rounded-full ${
-          val === 'Verified' ? 'bg-emerald-500' :
-          val === 'Pending' ? 'bg-amber-400' : 'bg-rose-500'
+          val === 'Paid' || val === 'Verified' ? 'bg-emerald-500' : 'bg-amber-400'
         }`}></span>
-        <span>{val}</span>
+        <span>{val || 'Pending'}</span>
       </span>
     )},
-    { header: "Tracking Status", accessor: "orderStatus", render: (val) => <StatusBadge status={val} /> }
+    { header: "Tracking Status", accessor: "status", render: (val) => <StatusBadge status={val} /> }
   ];
 
   return (
@@ -88,11 +144,11 @@ export default function Dashboard({ onNavigate }) {
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-white flex items-center gap-1 shadow-sm">
               <Star className="w-3 h-3 fill-white" />
-              {mockRetailer.category} Member
+              {rCategory} Member
             </span>
-            <span className="text-xs text-slate-400 font-bold">Code: {mockRetailer.retailerCode}</span>
+            <span className="text-xs text-slate-400 font-bold">Code: {retailer?.gst_number || "RTL-GOLD-001"}</span>
           </div>
-          <h1 className="text-xl md:text-2xl font-bold tracking-tight font-display">Welcome back, {mockRetailer.businessName}!</h1>
+          <h1 className="text-xl md:text-2xl font-bold tracking-tight font-display">Welcome back, {retailer?.business_name || user?.name}!</h1>
           <p className="text-xs text-slate-400 font-medium">Manage your shoe inventory orders, check pending invoices, and review loyalty commissions.</p>
         </div>
 
@@ -142,7 +198,7 @@ export default function Dashboard({ onNavigate }) {
           value={activeSchemesCount}
           delta={
             <div className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded mt-1.5 inline-flex items-center gap-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); onNavigate('Schemes & Discounts'); }}>
-              <span>Available for Gold</span>
+              <span>Available for {rCategory}</span>
               <ArrowRight className="w-3 h-3" />
             </div>
           }
@@ -152,10 +208,10 @@ export default function Dashboard({ onNavigate }) {
         />
         <StatWidget 
           title="Monthly Rewards" 
-          value={`₹${mockCommissionSummary.thisMonthEarned.toLocaleString('en-IN')}`}
+          value={`₹${thisMonthEarned.toLocaleString('en-IN')}`}
           delta={
             <div className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded mt-1.5 inline-block">
-              Points: {mockCommissionSummary.loyaltyPoints} PTS
+              Points: {loyaltyPoints} PTS
             </div>
           }
           icon={Landmark}
@@ -194,9 +250,9 @@ export default function Dashboard({ onNavigate }) {
               </div>
               <div className="text-xs">
                 <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">City Manager</span>
-                <h4 className="font-extrabold text-slate-850 font-display">{mockRetailer.assignedCityManager}</h4>
+                <h4 className="font-extrabold text-slate-850 font-display">{retailer?.assigned_city_manager?.name || "Not Assigned"}</h4>
                 <div className="flex items-center gap-3 text-slate-500 font-medium mt-1">
-                  <span className="flex items-center gap-1"><Phone className="w-3 h-3 text-slate-450" /> +91 9912837492</span>
+                  <span className="flex items-center gap-1"><Phone className="w-3 h-3 text-slate-450" /> {retailer?.assigned_city_manager?.mobile || "Not Provided"}</span>
                 </div>
               </div>
             </div>
@@ -208,9 +264,9 @@ export default function Dashboard({ onNavigate }) {
               </div>
               <div className="text-xs">
                 <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Field Promoter</span>
-                <h4 className="font-extrabold text-slate-850 font-display">{mockRetailer.assignedPromoter}</h4>
+                <h4 className="font-extrabold text-slate-850 font-display">{retailer?.assigned_promoter?.name || "Not Assigned"}</h4>
                 <div className="flex items-center gap-3 text-slate-500 font-medium mt-1">
-                  <span className="flex items-center gap-1"><Phone className="w-3 h-3 text-slate-455" /> +91 9882938401</span>
+                  <span className="flex items-center gap-1"><Phone className="w-3 h-3 text-slate-455" /> {retailer?.assigned_promoter?.mobile || "Not Provided"}</span>
                 </div>
               </div>
             </div>
