@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Store, Plus, Eye, CheckCircle, XCircle, AlertCircle, FileText, ChevronRight, X, PhoneCall } from 'lucide-react';
+import { Store, Plus, Eye, CheckCircle, XCircle, AlertCircle, FileText, ChevronRight, X, PhoneCall, CreditCard } from 'lucide-react';
 import { initialRetailers } from '../mockData';
 import { DataTable, Modal } from '../components/Common';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
@@ -110,6 +110,76 @@ export default function Retailers({ showToast }) {
   const [bulkCategory, setBulkCategory] = useState('Gold');
   const [isBulkAssignOpen, setIsBulkAssignOpen] = useState(false);
   const [bulkManager, setBulkManager] = useState('');
+
+  const [drawerData, setDrawerData] = useState({
+    dashboard: null,
+    orders: [],
+    visits: [],
+    loading: false
+  });
+
+  React.useEffect(() => {
+    if (!viewingRetailer?.id) {
+      setDrawerData({ dashboard: null, orders: [], visits: [], loading: false });
+      return;
+    }
+
+    setDrawerData(prev => ({ ...prev, loading: true }));
+
+    Promise.all([
+      fetch(`/api/dashboard/retailer/${viewingRetailer.id}`).then(res => res.json()).catch(err => ({ success: false, data: null })),
+      fetch(`/api/orders?retailer=${viewingRetailer.id}&limit=500`).then(res => res.json()).catch(err => ({ success: false, data: [] })),
+      fetch(`/api/retailer-visits?retailer=${viewingRetailer.id}&limit=500`).then(res => res.json()).catch(err => ({ success: false, data: [] }))
+    ])
+    .then(([dashRes, ordersRes, visitsRes]) => {
+      setDrawerData({
+        dashboard: dashRes.success ? dashRes.data : null,
+        orders: ordersRes.success && Array.isArray(ordersRes.data) ? ordersRes.data : [],
+        visits: visitsRes.success && Array.isArray(visitsRes.data) ? visitsRes.data : [],
+        loading: false
+      });
+    })
+    .catch(err => {
+      console.error("Error loading retailer details:", err);
+      setDrawerData(prev => ({ ...prev, loading: false }));
+    });
+  }, [viewingRetailer?.id]);
+
+  const getMonthlySalesChartData = () => {
+    if (!drawerData.orders || drawerData.orders.length === 0) {
+      return [
+        { month: 'Jan', sales: 0 },
+        { month: 'Feb', sales: 0 },
+        { month: 'Mar', sales: 0 },
+        { month: 'Apr', sales: 0 },
+        { month: 'May', sales: 0 },
+        { month: 'Jun', sales: 0 },
+      ];
+    }
+
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const monthlySum = {};
+    drawerData.orders.forEach(order => {
+      if (['Approved', 'Processing', 'Packed', 'Shipped', 'Delivered'].includes(order.status)) {
+        const date = new Date(order.createdAt);
+        const mName = monthNames[date.getMonth()];
+        monthlySum[mName] = (monthlySum[mName] || 0) + (order.grand_total || 0);
+      }
+    });
+
+    const chartData = [];
+    const today = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      const mName = monthNames[d.getMonth()];
+      chartData.push({
+        month: mName,
+        sales: monthlySum[mName] || 0
+      });
+    }
+
+    return chartData;
+  };
 
   const handleStateChange = (stateId) => {
     const matchedCities = citiesList.filter(c => c.stateId === stateId);
@@ -596,86 +666,131 @@ export default function Retailers({ showToast }) {
 
             {/* Profile contents */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {/* Profile specifications */}
-              <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 space-y-3">
-                <h4 className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1.5"><FileText className="w-3.5 h-3.5 text-slate-400" /> Business Profile & Documents</h4>
-                <div className="grid grid-cols-2 gap-3 text-xs font-semibold text-slate-700">
-                  <div><span className="text-slate-400 font-medium">GST Identification No</span><p className="font-bold text-slate-800">{viewingRetailer.gstNo || "27ABCDE1234F1Z0"}</p></div>
-                  <div><span className="text-slate-400 font-medium">PAN Number</span><p className="font-bold text-slate-800">{viewingRetailer.panNo || "ABCDE1234F"}</p></div>
-                  <div><span className="text-slate-400 font-medium">Aadhaar Card No</span><p className="font-bold text-slate-800">{viewingRetailer.aadhaarNo || "xxxx-xxxx-xxxx"}</p></div>
-                  <div><span className="text-slate-400 font-medium">Mobile Contact</span><p className="font-bold text-slate-800">{viewingRetailer.mobile}</p></div>
+              {drawerData.loading ? (
+                <div className="flex flex-col items-center justify-center h-64 space-y-3">
+                  <div className="w-8 h-8 border-4 border-brand-orange border-t-transparent rounded-full animate-spin"></div>
+                  <p className="text-xs text-slate-500 font-medium animate-pulse">Loading retailer details...</p>
                 </div>
-                <div className="text-xs border-t border-slate-200/50 pt-2 text-slate-600">
-                  <span className="text-slate-400 font-medium">Registered Outlet Address: </span>
-                  <p className="font-semibold text-slate-800 mt-0.5">{viewingRetailer.address}, {viewingRetailer.city}</p>
-                </div>
-              </div>
-
-              {/* Sales growth line chart */}
-              <div className="space-y-3">
-                <h4 className="text-xs font-bold text-slate-500 uppercase">Outlet Monthly Sales Performance (₹)</h4>
-                <div className="h-44">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={mockRetailerChartData} margin={{ top: 5, right: 5, left: 20, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                      <XAxis dataKey="month" fontSize={10} stroke="#94a3b8" />
-                      <YAxis fontSize={10} stroke="#94a3b8" />
-                      <Tooltip />
-                      <Line type="monotone" dataKey="sales" stroke="#f97316" strokeWidth={2} activeDot={{ r: 6 }} name="Sales (₹)" />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              {/* Order History */}
-              <div className="space-y-3">
-                <h4 className="text-xs font-bold text-slate-500 uppercase">Order History Preview</h4>
-                <div className="border border-slate-200 rounded-lg overflow-x-auto">
-                  <table className="w-full text-left text-xs font-semibold text-slate-700">
-                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
-                      <tr>
-                        <th className="px-4 py-2.5">Order ID</th>
-                        <th className="px-4 py-2.5">Date</th>
-                        <th className="px-4 py-2.5">Status</th>
-                        <th className="px-4 py-2.5 text-right">Invoice Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      <tr>
-                        <td className="px-4 py-2.5 text-slate-900 font-bold">ORD-9281</td>
-                        <td className="px-4 py-2.5 text-slate-400">2026-06-01</td>
-                        <td className="px-4 py-2.5"><span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded text-[9px]">Delivered</span></td>
-                        <td className="px-4 py-2.5 text-right font-bold text-slate-900">₹85,000</td>
-                      </tr>
-                      <tr>
-                        <td className="px-4 py-2.5 text-slate-900 font-bold">ORD-5509</td>
-                        <td className="px-4 py-2.5 text-slate-400">2026-06-08</td>
-                        <td className="px-4 py-2.5"><span className="px-1.5 py-0.5 bg-orange-50 text-orange-700 border border-orange-100 rounded text-[9px]">Submitted</span></td>
-                        <td className="px-4 py-2.5 text-right font-bold text-slate-900">₹1,50,000</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Communication timeline */}
-              <div className="space-y-3 bg-slate-50 border border-slate-100 p-4 rounded-xl">
-                <h4 className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1.5"><PhoneCall className="w-3.5 h-3.5 text-slate-400" /> Communication Log</h4>
-                <div className="relative border-l-2 border-slate-200 pl-4 space-y-4 text-xs font-semibold text-slate-700">
-                  <div className="relative">
-                    <span className="absolute -left-[22px] top-1 w-2.5 h-2.5 bg-brand-orange border-2 border-white rounded-full"></span>
-                    <span className="text-[10px] text-slate-400">2026-06-08 11:30 AM</span>
-                    <p className="text-slate-800 font-bold">Sales rep visit by Amit Kumar</p>
-                    <p className="text-slate-500 font-normal">Collected cheque for outstanding invoice INV-2026-001. Shop owner requested catalogues for new sports shoes.</p>
+              ) : (
+                <>
+                  {/* Profile specifications */}
+                  <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 space-y-3">
+                    <h4 className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1.5"><FileText className="w-3.5 h-3.5 text-slate-400" /> Business Profile & Documents</h4>
+                    <div className="grid grid-cols-2 gap-3 text-xs font-semibold text-slate-700">
+                      <div><span className="text-slate-400 font-medium">GST Identification No</span><p className="font-bold text-slate-800">{viewingRetailer.gstNo || "Not Provided"}</p></div>
+                      <div><span className="text-slate-400 font-medium">PAN Number</span><p className="font-bold text-slate-800">{viewingRetailer.panNo || "Not Provided"}</p></div>
+                      <div><span className="text-slate-400 font-medium">Aadhaar Card No</span><p className="font-bold text-slate-800">{viewingRetailer.aadhaarNo || "Not Provided"}</p></div>
+                      <div><span className="text-slate-400 font-medium">Mobile Contact</span><p className="font-bold text-slate-800">{viewingRetailer.mobile || "Not Provided"}</p></div>
+                    </div>
+                    <div className="text-xs border-t border-slate-200/50 pt-2 text-slate-600">
+                      <span className="text-slate-400 font-medium">Registered Outlet Address: </span>
+                      <p className="font-semibold text-slate-800 mt-0.5">{viewingRetailer.address || "Not Provided"}, {viewingRetailer.city || "Not Provided"}</p>
+                    </div>
                   </div>
-                  <div className="relative">
-                    <span className="absolute -left-[22px] top-1 w-2.5 h-2.5 bg-slate-300 border-2 border-white rounded-full"></span>
-                    <span className="text-[10px] text-slate-400">2026-06-05 03:00 PM</span>
-                    <p className="text-slate-800 font-bold">Outstanding Payment Reminder Sent</p>
-                    <p className="text-slate-500 font-normal">System generated auto-whatsapp alert sent regarding pending invoice amount ₹97,960.</p>
+
+                  {/* Financial Summary */}
+                  {drawerData.dashboard && (
+                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 space-y-3">
+                      <h4 className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5 text-slate-400" /> Financial Summary</h4>
+                      <div className="grid grid-cols-3 gap-3 text-xs font-semibold text-slate-700">
+                        <div>
+                          <span className="text-slate-400 font-medium">Credit Limit</span>
+                          <p className="font-bold text-slate-800">
+                            ₹{((typeof drawerData.dashboard.credit_limit === 'object' && drawerData.dashboard.credit_limit !== null
+                              ? drawerData.dashboard.credit_limit.amount 
+                              : drawerData.dashboard.credit_limit) || 0).toLocaleString()}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 font-medium">Total Spent</span>
+                          <p className="font-bold text-emerald-700">₹{(drawerData.dashboard.totalSpent || 0).toLocaleString()}</p>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 font-medium">Outstanding</span>
+                          <p className="font-bold text-rose-600">₹{(drawerData.dashboard.pendingPaymentAmount || 0).toLocaleString()}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sales growth line chart */}
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-bold text-slate-500 uppercase">Outlet Monthly Sales Performance (₹)</h4>
+                    <div className="h-44">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={getMonthlySalesChartData()} margin={{ top: 5, right: 5, left: 20, bottom: 5 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="month" fontSize={10} stroke="#94a3b8" />
+                          <YAxis fontSize={10} stroke="#94a3b8" />
+                          <Tooltip />
+                          <Line type="monotone" dataKey="sales" stroke="#f97316" strokeWidth={2} activeDot={{ r: 6 }} name="Sales (₹)" />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
                   </div>
-                </div>
-              </div>
+
+                  {/* Order History */}
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-bold text-slate-500 uppercase">Order History Preview</h4>
+                    <div className="border border-slate-200 rounded-lg overflow-x-auto">
+                      <table className="w-full text-left text-xs font-semibold text-slate-700">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
+                          <tr>
+                            <th className="px-4 py-2.5">Order ID</th>
+                            <th className="px-4 py-2.5">Date</th>
+                            <th className="px-4 py-2.5">Status</th>
+                            <th className="px-4 py-2.5 text-right">Invoice Amount</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {drawerData.orders.length === 0 ? (
+                            <tr>
+                              <td colSpan="4" className="px-4 py-4 text-center text-slate-400">No orders placed yet.</td>
+                            </tr>
+                          ) : (
+                            drawerData.orders.map(order => (
+                              <tr key={order._id}>
+                                <td className="px-4 py-2.5 text-slate-900 font-bold">{order.order_number || `ORD-${order._id.substring(0, 6)}`}</td>
+                                <td className="px-4 py-2.5 text-slate-400">{new Date(order.createdAt).toLocaleDateString()}</td>
+                                <td className="px-4 py-2.5">
+                                  <span className={`px-1.5 py-0.5 border rounded text-[9px] ${
+                                    order.status === 'Delivered' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                                    order.status === 'Approved' || order.status === 'Processing' ? 'bg-blue-50 text-blue-700 border-blue-100' :
+                                    order.status === 'Cancelled' || order.status === 'Returned' ? 'bg-rose-50 text-rose-700 border-rose-100' :
+                                    'bg-orange-50 text-orange-700 border-orange-100'
+                                  }`}>
+                                    {order.status}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-2.5 text-right font-bold text-slate-900">₹{(order.grand_total || 0).toLocaleString()}</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Communication timeline */}
+                  <div className="space-y-3 bg-slate-50 border border-slate-100 p-4 rounded-xl">
+                    <h4 className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1.5"><PhoneCall className="w-3.5 h-3.5 text-slate-400" /> Communication Log</h4>
+                    {drawerData.visits.length === 0 ? (
+                      <p className="text-xs text-slate-400 font-normal">No visits logged for this retailer yet.</p>
+                    ) : (
+                      <div className="relative border-l-2 border-slate-200 pl-4 space-y-4 text-xs font-semibold text-slate-700">
+                        {drawerData.visits.map(visit => (
+                          <div className="relative" key={visit._id}>
+                            <span className="absolute -left-[22px] top-1 w-2.5 h-2.5 bg-brand-orange border-2 border-white rounded-full"></span>
+                            <span className="text-[10px] text-slate-400">{new Date(visit.visited_at).toLocaleString()}</span>
+                            <p className="text-slate-800 font-bold">Field Visit by {visit.employee?.full_name || 'Representative'}</p>
+                            <p className="text-slate-500 font-normal">{visit.notes || 'No notes recorded.'}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
 
             </div>
           </div>
