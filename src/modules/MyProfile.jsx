@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { 
   User, MapPin, Camera, Trash2, Key, ShieldCheck, Clock, UserCheck
 } from 'lucide-react';
@@ -25,6 +26,7 @@ const normalizeProfile = (data) => ({
 
 export default function MyProfile({ showToast, userRole = 'Founder', onSwitchRole }) {
   const toast = showToast || ((msg, type) => console.log(`[Toast] ${type}: ${msg}`));
+  const location = useLocation();
   const [activeSubTab, setActiveSubTab] = useState('overview'); // overview | edit | password
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -59,11 +61,10 @@ export default function MyProfile({ showToast, userRole = 'Founder', onSwitchRol
   // Load profile data on mount
   useEffect(() => {
     fetchProfile();
-    if (window.location.hash === '#change-password') {
+    if (location.pathname.endsWith('/profile/password')) {
       setActiveSubTab('password');
-      window.location.hash = ''; // Clear it
     }
-  }, []);
+  }, [location.pathname]);
 
   const fetchProfile = () => {
     setLoading(true);

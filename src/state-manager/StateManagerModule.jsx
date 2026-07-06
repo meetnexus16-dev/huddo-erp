@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { Navigate } from 'react-router-dom';
 import { 
   Home, Users, Store, ShoppingCart, CheckSquare, 
   TrendingUp, Target, MapPin, Percent, BarChart3, Bell
@@ -6,6 +7,8 @@ import {
 
 // Import Layout
 import { DashboardLayout } from '../components/DesignSystem';
+import { useWorkspaceNav } from '../hooks/useWorkspaceNav';
+import { ROUTES, STATE_MANAGER_ROUTES, buildPath } from '../routes/routePaths';
 import MyProfile from '../modules/MyProfile';
 import NetworkWorkspace from '../modules/network/NetworkWorkspace';
 import { NETWORK_SIDEBAR_SECTION, getNetworkTab, isNetworkScreen } from '../modules/network/networkSidebarConfig';
@@ -43,8 +46,15 @@ import ManagerApprovalsLive from '../modules/manager/ManagerApprovalsLive';
 import { fetchPendingOrderCount } from '../modules/manager/pendingOrderUtils';
 
 export default function StateManagerModule({ showToast: parentShowToast, onSwitchRole }) {
-  // Navigation Routing Tab
-  const [activeTab, setActiveTab] = useState('Dashboard');
+  const {
+    activeTab,
+    goToTab,
+    attachPaths,
+    profilePath,
+    passwordPath,
+    portalSettingsPath,
+    location
+  } = useWorkspaceNav(ROUTES.STATE_MANAGER, STATE_MANAGER_ROUTES);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
   
@@ -72,8 +82,8 @@ export default function StateManagerModule({ showToast: parentShowToast, onSwitc
   const timerRef = useRef(null);
 
   const handleTabChange = (tab) => {
+    goToTab(tab);
     setLoading(true);
-    setActiveTab(tab);
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       setLoading(false);
@@ -81,10 +91,13 @@ export default function StateManagerModule({ showToast: parentShowToast, onSwitc
   };
 
   useEffect(() => {
+    setLoading(true);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setLoading(false), 300);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, []);
+  }, [location.pathname]);
 
   useEffect(() => {
     fetchPendingOrderCount().then(setPendingOrderCount);
@@ -331,7 +344,7 @@ export default function StateManagerModule({ showToast: parentShowToast, onSwitc
   const pendingApprovalsCount = pendingOrderCount;
   const unreadNotificationsCount = notifications.filter(n => !n.read).length;
 
-  const SIDEBAR_ITEMS = [
+  const SIDEBAR_ITEMS = attachPaths([
     {
       section: "OVERVIEW",
       items: [
@@ -374,24 +387,35 @@ export default function StateManagerModule({ showToast: parentShowToast, onSwitc
         { id: "Notifications", label: "Notifications", icon: Bell, badge: unreadNotificationsCount }
       ]
     }
-  ];
+  ]);
+
+  const isPasswordRoute = location.pathname.endsWith('/profile/password');
+  const currentTab = isPasswordRoute ? 'Profile' : activeTab;
+
+  if (location.pathname === ROUTES.STATE_MANAGER || location.pathname === `${ROUTES.STATE_MANAGER}/`) {
+    return <Navigate to={buildPath(ROUTES.STATE_MANAGER, 'Dashboard', STATE_MANAGER_ROUTES)} replace />;
+  }
+
+  if (!currentTab) {
+    return <Navigate to={buildPath(ROUTES.STATE_MANAGER, 'Dashboard', STATE_MANAGER_ROUTES)} replace />;
+  }
 
   // Render active route components
   const renderActiveTab = () => {
-    if (activeTab === 'Profile') {
+    if (currentTab === 'Profile') {
       return <MyProfile showToast={showToast} userRole="State Manager" onSwitchRole={onSwitchRole} />;
     }
-    if (isNetworkScreen(activeTab)) {
+    if (isNetworkScreen(currentTab)) {
       return (
         <NetworkWorkspace
           showToast={showToast}
-          initialTab={getNetworkTab(activeTab)}
+          initialTab={getNetworkTab(currentTab)}
           hideTabBar
-          key={activeTab}
+          key={currentTab}
         />
       );
     }
-    switch (activeTab) {
+    switch (currentTab) {
       case 'Dashboard':
         return (
           <Dashboard
@@ -506,10 +530,13 @@ export default function StateManagerModule({ showToast: parentShowToast, onSwitc
   return (
     <DashboardLayout
       userRole="State Manager"
-      activeTab={activeTab}
-      setActiveTab={handleTabChange}
+      activeTab={currentTab}
+      goToTab={handleTabChange}
       sidebarItems={SIDEBAR_ITEMS}
       onSwitchRole={onSwitchRole}
+      profilePath={profilePath}
+      passwordPath={passwordPath}
+      portalSettingsPath={portalSettingsPath}
       notifications={notifications.map(n => ({ id: n.id, title: n.title || 'System Alert', message: n.message, read: n.read, date: n.date }))}
       onMarkAllNotificationsRead={handleMarkAllRead}
       profile={{
@@ -519,7 +546,7 @@ export default function StateManagerModule({ showToast: parentShowToast, onSwitc
       }}
     >
       {loading ? (
-        <SkeletonLoader type={activeTab === 'Dashboard' ? 'dashboard' : activeTab === 'City Managers' || activeTab === 'Retailers' || activeTab === 'Orders' ? 'table' : 'cards'} />
+        <SkeletonLoader type={currentTab === 'Dashboard' ? 'dashboard' : currentTab === 'City Managers' || currentTab === 'Retailers' || currentTab === 'Orders' ? 'table' : 'cards'} />
       ) : (
         renderActiveTab()
       )}

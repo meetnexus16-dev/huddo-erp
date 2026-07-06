@@ -4,13 +4,14 @@ import Role from '../models/Role.js';
 import generateOTP from '../utils/generateOTP.js';
 import { logAuditEvent } from '../utils/auditLogger.js';
 import { triggerNotification } from '../utils/triggerNotification.js';
+import { JWT_ACCESS_EXPIRY, JWT_REFRESH_EXPIRY } from '../constants/authConfig.js';
 
 // Helper to generate access and refresh tokens
 const generateAccessToken = (userId, email, roleName) => {
   return jwt.sign(
     { id: userId, email, role: roleName },
     process.env.JWT_ACCESS_SECRET || 'your_jwt_access_secret_key_change_me_in_production',
-    { expiresIn: process.env.JWT_ACCESS_EXPIRY || '15m' }
+    { expiresIn: JWT_ACCESS_EXPIRY }
   );
 };
 
@@ -18,7 +19,7 @@ const generateRefreshToken = (userId) => {
   return jwt.sign(
     { id: userId },
     process.env.JWT_REFRESH_SECRET || 'your_jwt_refresh_secret_key_change_me_in_production',
-    { expiresIn: process.env.JWT_REFRESH_EXPIRY || '7d' }
+    { expiresIn: JWT_REFRESH_EXPIRY }
   );
 };
 

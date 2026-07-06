@@ -58,8 +58,8 @@ export default function Login({ onLoginSuccess }) {
       const resData = await response.json();
 
       if (resData.success && resData.data) {
-        const { user, access_token } = resData.data;
-        onLoginSuccess(user, access_token);
+        const { user, access_token, refresh_token } = resData.data;
+        onLoginSuccess(user, access_token, refresh_token);
       } else {
         setError(resData.message || 'Login failed. Please check your credentials.');
       }

@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
+import { Navigate } from 'react-router-dom';
 import { 
   Home, User, Clock, Calendar, Bell, ShoppingCart, 
   MapPin, Target, Percent, Users, Landmark, Award, 
   CreditCard, TrendingUp, Archive, RefreshCw, AlertTriangle, 
-  BarChart3, CheckSquare, ShoppingBag, Menu, X, ChevronLeft, ChevronRight, Settings, LogOut
+  BarChart3, CheckSquare, ShoppingBag
 } from 'lucide-react';
 import { DashboardLayout } from '../../components/DesignSystem';
+import { useWorkspaceNav } from '../../hooks/useWorkspaceNav';
+import { EMPLOYEE_ROUTES, ROUTES, buildPath } from '../../routes/routePaths';
 
 // Import Context
 import { EmployeeAuthProvider, useEmployeeAuth } from './context/EmployeeAuthContext';
@@ -45,10 +48,15 @@ import { mockNotifications as initialNotifications } from './mockData/mockNotifi
 
 function EmployeeWorkspace({ userRole, showToast, onSwitchRole }) {
   const { currentEmployee, activeRole, switchRole } = useEmployeeAuth();
-  
-  const [activeTab, setActiveTab] = useState("Dashboard");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const {
+    activeTab,
+    goToTab,
+    attachPaths,
+    profilePath,
+    passwordPath,
+    portalSettingsPath,
+    location
+  } = useWorkspaceNav(ROUTES.EMPLOYEE, EMPLOYEE_ROUTES);
   
   // Notification States
   const [notifications, setNotifications] = useState(initialNotifications);
@@ -56,7 +64,7 @@ function EmployeeWorkspace({ userRole, showToast, onSwitchRole }) {
 
   // Sync state if activeRole changes via dev tools
   useEffect(() => {
-    setActiveTab("Dashboard");
+    goToTab('Dashboard');
   }, [activeRole]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -164,10 +172,32 @@ function EmployeeWorkspace({ userRole, showToast, onSwitchRole }) {
     }
   };
 
+  const navItems = attachPaths(getNavItems());
+  const currentRoleLabel = {
+    sales_executive: "Sales Executive",
+    sales_manager: "Sales Manager",
+    hr_manager: "HR Manager",
+    finance_manager: "Finance Manager",
+    inventory_manager: "Inventory Manager",
+    purchase_manager: "Purchase Manager",
+    team_member: "Team Member"
+  }[activeRole] || "Sales Executive";
+
+  const isPasswordRoute = location.pathname.endsWith('/profile/password');
+  const currentTab = isPasswordRoute ? 'Profile' : activeTab;
+
+  if (location.pathname === ROUTES.EMPLOYEE || location.pathname === `${ROUTES.EMPLOYEE}/`) {
+    return <Navigate to={buildPath(ROUTES.EMPLOYEE, 'Dashboard', EMPLOYEE_ROUTES)} replace />;
+  }
+
+  if (!currentTab) {
+    return <Navigate to={buildPath(ROUTES.EMPLOYEE, 'Dashboard', EMPLOYEE_ROUTES)} replace />;
+  }
+
   const renderActiveScreen = () => {
-    switch (activeTab) {
+    switch (currentTab) {
       case 'Dashboard':
-        return <Dashboard onNavigate={setActiveTab} showToast={showToast} />;
+        return <Dashboard onNavigate={goToTab} showToast={showToast} />;
       case 'Profile':
         return <Profile showToast={showToast} userRole={userRole} onSwitchRole={onSwitchRole} />;
       case 'Attendance':
@@ -208,7 +238,7 @@ function EmployeeWorkspace({ userRole, showToast, onSwitchRole }) {
       case 'GST Management':
         return <GstManagement showToast={showToast} />;
       case 'Payroll View':
-        return <Payroll showToast={showToast} />; // Render payroll page (which hides process PO for finance)
+        return <Payroll showToast={showToast} />;
 
       // Inventory manager
       case 'Stock Management':
@@ -239,28 +269,20 @@ function EmployeeWorkspace({ userRole, showToast, onSwitchRole }) {
         return <Tasks showToast={showToast} />;
 
       default:
-        return <Dashboard onNavigate={setActiveTab} showToast={showToast} />;
+        return <Dashboard onNavigate={goToTab} showToast={showToast} />;
     }
   };
-
-  const navItems = getNavItems();
-  const currentRoleLabel = {
-    sales_executive: "Sales Executive",
-    sales_manager: "Sales Manager",
-    hr_manager: "HR Manager",
-    finance_manager: "Finance Manager",
-    inventory_manager: "Inventory Manager",
-    purchase_manager: "Purchase Manager",
-    team_member: "Team Member"
-  }[activeRole] || "Sales Executive";
 
   return (
     <DashboardLayout
       userRole={currentRoleLabel}
-      activeTab={activeTab}
-      setActiveTab={setActiveTab}
+      activeTab={currentTab}
+      goToTab={goToTab}
       sidebarItems={navItems}
       onSwitchRole={onSwitchRole}
+      profilePath={profilePath}
+      passwordPath={passwordPath}
+      portalSettingsPath={portalSettingsPath}
       notifications={notifications.map(n => ({ id: n.id, title: n.title, message: n.message, read: n.read, date: `${n.date} ${n.time}` }))}
       onMarkAllNotificationsRead={handleMarkAllRead}
       profile={{

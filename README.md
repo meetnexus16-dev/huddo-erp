@@ -73,6 +73,8 @@ cd huddo-erp
     MONGODB_URI=mongodb://localhost:27017/huddo-erp
     JWT_ACCESS_SECRET=change_me_to_something_secure_in_production
     JWT_REFRESH_SECRET=change_me_to_something_secure_in_production
+    JWT_ACCESS_EXPIRY=15d
+    JWT_REFRESH_EXPIRY=30d
     ```
 5.  Seed default database records (creates roles, permissions, geography zones, and seed users):
     ```bash

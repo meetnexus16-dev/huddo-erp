@@ -1,5 +1,6 @@
 // CM-MODULE: Frontend entry point and router for the Country Manager Module
 import React, { useState, useEffect } from 'react';
+import { Navigate } from 'react-router-dom';
 import { 
   Home, Layers, CheckSquare, Target, Users, BarChart3, Bell, 
   TrendingUp, ShoppingCart
@@ -18,6 +19,8 @@ import ManagerOrdersLive from '../manager/ManagerOrdersLive';
 import ManagerApprovalsLive from '../manager/ManagerApprovalsLive';
 import { fetchPendingOrderCount } from '../manager/pendingOrderUtils';
 import { isCountryManager } from '../../utils/roleRouting';
+import { useWorkspaceNav } from '../../hooks/useWorkspaceNav';
+import { COUNTRY_MANAGER_ROUTES, ROUTES, buildPath } from '../../routes/routePaths';
 
 export default function CountryManagerModule({ userRole = 'Founder', showToast, onSwitchRole }) {
   const safeShowToast = showToast || ((msg, type) => console.log(`[Toast] type: ${type}, msg: ${msg}`));
@@ -28,7 +31,15 @@ export default function CountryManagerModule({ userRole = 'Founder', showToast, 
   const [listVersion, setListVersion] = useState(0);
 
   // Own Workspace state (for Country Manager role)
-  const [activeTab, setActiveTab] = useState('Dashboard');
+  const {
+    activeTab,
+    goToTab,
+    attachPaths,
+    profilePath,
+    passwordPath,
+    portalSettingsPath,
+    location
+  } = useWorkspaceNav(ROUTES.COUNTRY_MANAGER, COUNTRY_MANAGER_ROUTES);
 
   // Stats / Badges for Own Workspace
   const [stats, setStats] = useState({ pendingApprovals: 0, unreadNotifications: 0 });
@@ -110,7 +121,7 @@ export default function CountryManagerModule({ userRole = 'Founder', showToast, 
     setStats((prev) => ({ ...prev, pendingApprovals: count }));
   };
 
-  const SIDEBAR_ITEMS = [
+  const SIDEBAR_ITEMS = attachPaths([
     {
       section: 'OVERVIEW',
       items: [{ id: 'Dashboard', label: 'My Dashboard', icon: Home }]
@@ -138,25 +149,36 @@ export default function CountryManagerModule({ userRole = 'Founder', showToast, 
         { id: 'Notifications', label: 'Notifications Hub', icon: Bell, badge: notifications.filter(n => !n.read).length }
       ]
     }
-  ];
+  ]);
+
+  const isPasswordRoute = location.pathname.endsWith('/profile/password');
+  const currentTab = isPasswordRoute ? 'Profile' : activeTab;
+
+  if (location.pathname === ROUTES.COUNTRY_MANAGER || location.pathname === `${ROUTES.COUNTRY_MANAGER}/`) {
+    return <Navigate to={buildPath(ROUTES.COUNTRY_MANAGER, 'Dashboard', COUNTRY_MANAGER_ROUTES)} replace />;
+  }
+
+  if (!currentTab) {
+    return <Navigate to={buildPath(ROUTES.COUNTRY_MANAGER, 'Dashboard', COUNTRY_MANAGER_ROUTES)} replace />;
+  }
 
   const renderActiveScreen = () => {
-    if (activeTab === 'Profile') {
+    if (currentTab === 'Profile') {
       return <MyProfile showToast={safeShowToast} userRole={userRole} onSwitchRole={onSwitchRole} />;
     }
-    if (isNetworkScreen(activeTab)) {
+    if (isNetworkScreen(currentTab)) {
       return (
         <NetworkWorkspace
           showToast={safeShowToast}
-          initialTab={getNetworkTab(activeTab)}
+          initialTab={getNetworkTab(currentTab)}
           hideTabBar
-          key={activeTab}
+          key={currentTab}
         />
       );
     }
-    switch (activeTab) {
+    switch (currentTab) {
       case 'Dashboard':
-        return <CountryManagerDashboard isTab={true} onNavigate={setActiveTab} showToast={safeShowToast} />;
+        return <CountryManagerDashboard isTab={true} onNavigate={goToTab} showToast={safeShowToast} />;
       case 'Orders':
         return (
           <ManagerOrdersLive
@@ -184,17 +206,20 @@ export default function CountryManagerModule({ userRole = 'Founder', showToast, 
       case 'Notifications':
         return <CountryManagerDetail cmId={1} onNavigate={() => {}} showToast={safeShowToast} userRole={userRole} initialTab="Notifications" />;
       default:
-        return <CountryManagerDashboard cmId={1} isTab={true} onNavigate={setActiveTab} showToast={safeShowToast} />;
+        return <CountryManagerDashboard cmId={1} isTab={true} onNavigate={goToTab} showToast={safeShowToast} />;
     }
   };
 
   return (
     <DashboardLayout
       userRole="Country Manager"
-      activeTab={activeTab}
-      setActiveTab={setActiveTab}
+      activeTab={currentTab}
+      goToTab={goToTab}
       sidebarItems={SIDEBAR_ITEMS}
       onSwitchRole={onSwitchRole}
+      profilePath={profilePath}
+      passwordPath={passwordPath}
+      portalSettingsPath={portalSettingsPath}
       notifications={notifications}
       onMarkAllNotificationsRead={handleMarkAllNotificationsRead}
       profile={{

@@ -1,4 +1,5 @@
 // HUDDO-UPDATE: Core — Mock API engine intercepting fetch globally
+import { refreshAccessToken, forceLoginRedirect } from './utils/authSession';
 import { GEOGRAPHY, initialOrders, initialInvoices, initialEmployees, initialRetailers, initialInventory, initialDepartmentsDetails } from './mockData';
 // CM-MODULE: Import simulated Country Manager endpoints
 import { handleCountryManagerApi } from './modules/country-manager/mockApiCM';
@@ -279,11 +280,23 @@ window.fetch = async function (input, init) {
     });
 
     if (response.status === 401) {
-      console.warn("[Mock API Bridge] Token expired or invalid. Logging out...");
-      localStorage.removeItem('huddo_token');
-      localStorage.removeItem('huddo_user');
-      localStorage.removeItem('huddo_role');
-      window.location.reload();
+      const isAuthEndpoint = backendUrl.includes('/auth/login')
+        || backendUrl.includes('/auth/refresh-token')
+        || backendUrl.includes('/auth/register');
+
+      if (!isAuthEndpoint) {
+        const refreshed = await refreshAccessToken();
+        if (refreshed) {
+          const newToken = localStorage.getItem('huddo_token');
+          if (newToken) {
+            headers.Authorization = `Bearer ${newToken}`;
+          }
+          return originalFetch(backendUrl, { ...init, headers });
+        }
+      }
+
+      console.warn('[Mock API Bridge] Session expired. Redirecting to login...');
+      forceLoginRedirect();
       return response;
     }
 

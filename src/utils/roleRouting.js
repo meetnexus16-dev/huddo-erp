@@ -62,6 +62,14 @@ export function isRetailerOrDistributor(role) {
   return key === 'retailer' || key === 'distributor';
 }
 
+export function isEmployeeRole(role) {
+  const key = normalizeRoleKey(role);
+  return [
+    'salesexecutive', 'salesmanager', 'hrmanager', 'financemanager',
+    'inventorymanager', 'purchasemanager', 'teammember'
+  ].includes(key);
+}
+
 export function resolveUserRole(user) {
   if (!user) return '';
   return user.role?.name || user.roleName || user.role || '';

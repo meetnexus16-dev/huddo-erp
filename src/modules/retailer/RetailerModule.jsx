@@ -14,12 +14,14 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { Navigate } from 'react-router-dom';
 import { 
   Home, ShoppingCart, FileText, CreditCard, Archive, 
-  Tag, Award, User, Bell, ShieldAlert, Lock, RefreshCw, Menu, X,
-  ChevronLeft, ChevronRight
+  Tag, Award, User, Bell, Lock, RefreshCw
 } from 'lucide-react';
 import { DashboardLayout } from '../../components/DesignSystem';
+import { useWorkspaceNav } from '../../hooks/useWorkspaceNav';
+import { RETAILER_ROUTES, ROUTES, buildPath } from '../../routes/routePaths';
 
 // Context & Mock Data
 import { RetailerAuthProvider, useRetailerAuth } from './context/RetailerAuthContext';
@@ -40,27 +42,40 @@ import DistributorDashboard from './pages/DistributorDashboard';
 // Main Layout Component
 function RetailerPanelLayout({ userRole, showToast, onSwitchRole }) {
   const { user, loading: authLoading } = useRetailerAuth();
-  const [activeTab, setActiveTab] = useState('Dashboard');
+  const {
+    activeTab,
+    goToTab,
+    attachPaths,
+    profilePath,
+    passwordPath,
+    portalSettingsPath,
+    location
+  } = useWorkspaceNav(ROUTES.RETAILER, RETAILER_ROUTES);
   const [loading, setLoading] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   // Central Notification State to keep Bell and Page synchronized
   const [notifications, setNotifications] = useState(initialNotifications);
 
-  // Header Dropdowns State
-  const [isNotifOpen, setIsNotifOpen] = useState(false);
-  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  useEffect(() => {
+    setLoading(true);
+    const timer = setTimeout(() => setLoading(false), 300);
+    return () => clearTimeout(timer);
+  }, [location.pathname]);
 
   // Close dropdowns on click outside
   useEffect(() => {
-    const handleOutsideClick = () => {
-      setIsNotifOpen(false);
-      setIsProfileOpen(false);
-    };
+    const handleOutsideClick = () => {};
     window.addEventListener('click', handleOutsideClick);
     return () => window.removeEventListener('click', handleOutsideClick);
   }, []);
+
+  if (location.pathname === ROUTES.RETAILER || location.pathname === `${ROUTES.RETAILER}/`) {
+    return <Navigate to={buildPath(ROUTES.RETAILER, 'Dashboard', RETAILER_ROUTES)} replace />;
+  }
+
+  if (!activeTab) {
+    return <Navigate to={buildPath(ROUTES.RETAILER, 'Dashboard', RETAILER_ROUTES)} replace />;
+  }
 
   if (authLoading || !user) {
     return (
@@ -79,19 +94,7 @@ function RetailerPanelLayout({ userRole, showToast, onSwitchRole }) {
 
   const isDistributor = user.role.toLowerCase() === 'distributor';
 
-  const stopPropagation = (e) => {
-    e.stopPropagation();
-  };
-
-  // Simulate async load when switching tabs
-  const handleTabChange = (tabId) => {
-    setLoading(true);
-    setActiveTab(tabId);
-    setMobileSidebarOpen(false);
-    setTimeout(() => {
-      setLoading(false);
-    }, 500);
-  };
+  const handleTabChange = (tabId) => goToTab(tabId);
 
   // Notification management handlers
   const handleMarkAsRead = (id) => {
@@ -130,7 +133,7 @@ function RetailerPanelLayout({ userRole, showToast, onSwitchRole }) {
   }
 
   // Sidebar navigation schema
-  const SIDEBAR_ITEMS = isDistributor ? [
+  const SIDEBAR_ITEMS = attachPaths(isDistributor ? [
     { id: 'Dashboard', label: 'Wholesale Dashboard', icon: Home },
     { id: 'Place Order', label: 'Bulk Purchase', icon: ShoppingCart },
     { id: 'My Orders', label: 'Bulk Orders', icon: FileText },
@@ -150,11 +153,14 @@ function RetailerPanelLayout({ userRole, showToast, onSwitchRole }) {
     { id: 'Commission & Rewards', label: 'Commission & Rewards', icon: Award },
     { id: 'Profile', label: 'Profile', icon: User },
     { id: 'Notifications', label: 'Notifications', icon: Bell, badge: unreadCount }
-  ];
+  ]);
+
+  const isPasswordRoute = location.pathname.endsWith('/profile/password');
+  const currentTab = isPasswordRoute ? 'Profile' : activeTab;
 
   // Helper to render active component
   const renderActiveScreen = () => {
-    switch (activeTab) {
+    switch (currentTab) {
       case 'Dashboard':
         return isDistributor 
           ? <DistributorDashboard onNavigate={handleTabChange} /> 
@@ -192,10 +198,13 @@ function RetailerPanelLayout({ userRole, showToast, onSwitchRole }) {
   return (
     <DashboardLayout
       userRole={isDistributor ? 'Distributor' : 'Retailer'}
-      activeTab={activeTab}
-      setActiveTab={handleTabChange}
+      activeTab={currentTab}
+      goToTab={goToTab}
       sidebarItems={SIDEBAR_ITEMS}
       onSwitchRole={onSwitchRole}
+      profilePath={profilePath}
+      passwordPath={passwordPath}
+      portalSettingsPath={portalSettingsPath}
       notifications={notifications.map(n => ({ id: n.id, title: n.title, message: n.message, read: n.read, date: n.timestamp }))}
       onMarkAllNotificationsRead={handleMarkAllAsRead}
       profile={{

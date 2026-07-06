@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Search, Bell, User, Settings, LogOut, Lock, ChevronLeft, ChevronRight, X, Menu, Home,
   ArrowUpRight, ShoppingCart, Store, Award, AlertCircle, Users
@@ -39,13 +40,18 @@ export function DashboardLayout({
   userRole = 'Founder',
   activeTab = 'Dashboard',
   setActiveTab,
+  goToTab,
   sidebarItems = [],
   onSwitchRole,
   notifications = [],
   onMarkAllNotificationsRead,
   profile,
+  profilePath,
+  passwordPath,
+  portalSettingsPath,
   children
 }) {
+  const navigate = useNavigate();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -110,6 +116,38 @@ export function DashboardLayout({
     return matched ? matched.label : activeTab;
   }, [flatSidebarItems, activeTab]);
 
+  const navigateToItem = useCallback((item) => {
+    if (item.path) {
+      navigate(item.path);
+    } else if (goToTab) {
+      goToTab(item.id);
+    } else if (setActiveTab) {
+      setActiveTab(item.id);
+    }
+    setMobileSidebarOpen(false);
+  }, [navigate, goToTab, setActiveTab]);
+
+  const navigateToProfile = useCallback(() => {
+    setIsProfileOpen(false);
+    if (profilePath) navigate(profilePath);
+    else if (goToTab) goToTab('Profile');
+    else if (setActiveTab) setActiveTab('Profile');
+  }, [navigate, profilePath, goToTab, setActiveTab]);
+
+  const navigateToPassword = useCallback(() => {
+    setIsProfileOpen(false);
+    if (passwordPath) navigate(passwordPath);
+    else if (goToTab) goToTab('Profile');
+    else if (setActiveTab) setActiveTab('Profile');
+  }, [navigate, passwordPath, goToTab, setActiveTab]);
+
+  const navigateToPortalSettings = useCallback(() => {
+    setIsProfileOpen(false);
+    if (portalSettingsPath) navigate(portalSettingsPath);
+    else if (goToTab) goToTab('Portal Settings');
+    else if (setActiveTab) setActiveTab('Portal Settings');
+  }, [navigate, portalSettingsPath, goToTab, setActiveTab]);
+
   return (
     <div className="min-h-screen flex bg-slate-50 relative font-sans antialiased text-slate-800 w-full">
       {/* Mobile Sidebar Backdrop */}
@@ -163,10 +201,7 @@ export function DashboardLayout({
                       return (
                         <button
                           key={item.id}
-                          onClick={() => {
-                            setActiveTab(item.id);
-                            setMobileSidebarOpen(false);
-                          }}
+                          onClick={() => navigateToItem(item)}
                           title={sidebarCollapsed ? item.label : undefined}
                           className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-bold transition-all relative cursor-pointer ${
                             isActive 
@@ -202,10 +237,7 @@ export function DashboardLayout({
                 return (
                   <button
                     key={section.id}
-                    onClick={() => {
-                      setActiveTab(section.id);
-                      setMobileSidebarOpen(false);
-                    }}
+                    onClick={() => navigateToItem(section)}
                     title={sidebarCollapsed ? section.label : undefined}
                     className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-bold transition-all relative cursor-pointer ${
                       isActive 
@@ -365,25 +397,21 @@ export function DashboardLayout({
                   )}
 
                   <button 
-                    onClick={() => { setIsProfileOpen(false); setActiveTab('Profile'); }}
+                    onClick={navigateToProfile}
                     className="w-full text-left px-4 py-2 font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
                   >
                     <User className="w-3.5 h-3.5" />
                     <span>My Profile</span>
                   </button>
                   <button 
-                    onClick={() => { 
-                      setIsProfileOpen(false); 
-                      window.location.hash = 'change-password';
-                      setActiveTab('Profile'); 
-                    }}
+                    onClick={navigateToPassword}
                     className="w-full text-left px-4 py-2 font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
                   >
                     <Lock className="w-3.5 h-3.5" />
                     <span>Change Password</span>
                   </button>
                   <button 
-                    onClick={() => { setIsProfileOpen(false); setActiveTab('Portal Settings'); }}
+                    onClick={navigateToPortalSettings}
                     className="w-full text-left px-4 py-2 font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
                   >
                     <Settings className="w-3.5 h-3.5" />
@@ -443,7 +471,7 @@ export function DashboardLayout({
                   <button
                     key={item.id}
                     onClick={() => {
-                      setActiveTab(item.id);
+                      navigateToItem(item);
                       setIsSearchOpen(false);
                       setSearchQuery('');
                     }}

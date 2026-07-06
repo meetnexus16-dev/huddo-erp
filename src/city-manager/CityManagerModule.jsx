@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { Navigate } from 'react-router-dom';
 import { 
   Home, Store, UserPlus, Clock, ShoppingCart, CheckSquare, 
   MapPin, Lightbulb, Award, TrendingUp, Target, Percent, BarChart3, Bell
@@ -6,6 +7,8 @@ import {
 
 // Import Layout
 import { DashboardLayout } from '../components/DesignSystem';
+import { useWorkspaceNav } from '../hooks/useWorkspaceNav';
+import { CITY_MANAGER_ROUTES, ROUTES, buildPath } from '../routes/routePaths';
 import MyProfile from '../modules/MyProfile';
 import { Toast, SkeletonLoader } from './components/Common';
 import { formatCurrency } from './cityManagerUtils';
@@ -46,7 +49,15 @@ import ManagerApprovalsLive from '../modules/manager/ManagerApprovalsLive';
 import { fetchPendingOrderCount } from '../modules/manager/pendingOrderUtils';
 
 export default function CityManagerModule({ showToast: parentShowToast, onSwitchRole }) {
-  const [activeTab, setActiveTab] = useState('Dashboard');
+  const {
+    activeTab,
+    goToTab,
+    attachPaths,
+    profilePath,
+    passwordPath,
+    portalSettingsPath,
+    location
+  } = useWorkspaceNav(ROUTES.CITY_MANAGER, CITY_MANAGER_ROUTES);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -79,7 +90,7 @@ export default function CityManagerModule({ showToast: parentShowToast, onSwitch
 
   const handleTabChange = (tab) => {
     setLoading(true);
-    setActiveTab(tab);
+    goToTab(tab);
 
     // Clear deep link configs unless they match the tab being navigated to
     if (tab !== 'Orders') {
@@ -99,10 +110,13 @@ export default function CityManagerModule({ showToast: parentShowToast, onSwitch
   };
 
   useEffect(() => {
+    setLoading(true);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setLoading(false), 300);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, []);
+  }, [location.pathname]);
 
   useEffect(() => {
     fetchPendingOrderCount().then(setPendingOrderCount);
@@ -402,22 +416,33 @@ export default function CityManagerModule({ showToast: parentShowToast, onSwitch
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   };
 
+  const isPasswordRoute = location.pathname.endsWith('/profile/password');
+  const currentTab = isPasswordRoute ? 'Profile' : activeTab;
+
+  if (location.pathname === ROUTES.CITY_MANAGER || location.pathname === `${ROUTES.CITY_MANAGER}/`) {
+    return <Navigate to={buildPath(ROUTES.CITY_MANAGER, 'Dashboard', CITY_MANAGER_ROUTES)} replace />;
+  }
+
+  if (!currentTab) {
+    return <Navigate to={buildPath(ROUTES.CITY_MANAGER, 'Dashboard', CITY_MANAGER_ROUTES)} replace />;
+  }
+
   // Render tab contents
   const renderActiveTab = () => {
-    if (activeTab === 'Profile') {
+    if (currentTab === 'Profile') {
       return <MyProfile showToast={showToast} userRole="City Manager" onSwitchRole={onSwitchRole} />;
     }
-    if (isNetworkScreen(activeTab)) {
+    if (isNetworkScreen(currentTab)) {
       return (
         <NetworkWorkspace
           showToast={showToast}
-          initialTab={getNetworkTab(activeTab)}
+          initialTab={getNetworkTab(currentTab)}
           hideTabBar
-          key={activeTab}
+          key={currentTab}
         />
       );
     }
-    switch (activeTab) {
+    switch (currentTab) {
       case 'Dashboard':
         return (
           <Dashboard
@@ -584,7 +609,7 @@ export default function CityManagerModule({ showToast: parentShowToast, onSwitch
   const unreadNotificationsCount = notifications.filter(n => !n.read).length;
   const pendingRetailersCount = retailers.filter(r => r.status === 'Pending Verification').length;
 
-  const SIDEBAR_ITEMS = [
+  const SIDEBAR_ITEMS = attachPaths([
     {
       section: "OVERVIEW",
       items: [
@@ -635,15 +660,18 @@ export default function CityManagerModule({ showToast: parentShowToast, onSwitch
         { id: "Notifications", label: "Notifications", icon: Bell, badge: unreadNotificationsCount }
       ]
     }
-  ];
+  ]);
 
   return (
     <DashboardLayout
       userRole="City Manager"
-      activeTab={activeTab}
-      setActiveTab={handleTabChange}
+      activeTab={currentTab}
+      goToTab={handleTabChange}
       sidebarItems={SIDEBAR_ITEMS}
       onSwitchRole={onSwitchRole}
+      profilePath={profilePath}
+      passwordPath={passwordPath}
+      portalSettingsPath={portalSettingsPath}
       notifications={notifications.map(n => ({ id: n.id, title: n.type || 'Alert', message: n.message, read: n.read, date: n.time }))}
       onMarkAllNotificationsRead={handleMarkAllRead}
       profile={{
@@ -653,7 +681,7 @@ export default function CityManagerModule({ showToast: parentShowToast, onSwitch
       }}
     >
       {loading ? (
-        <SkeletonLoader type={activeTab === 'Dashboard' ? 'dashboard' : ['My Retailers', 'Pending Verification', 'Orders', 'Approvals', 'Visit Logs', 'Market Leads'].includes(activeTab) ? 'table' : 'cards'} />
+        <SkeletonLoader type={currentTab === 'Dashboard' ? 'dashboard' : ['My Retailers', 'Pending Verification', 'Orders', 'Approvals', 'Visit Logs', 'Market Leads'].includes(currentTab) ? 'table' : 'cards'} />
       ) : (
         renderActiveTab()
       )}

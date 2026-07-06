@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Navigate } from 'react-router-dom';
 import { Home, Link2, Users, Percent, CreditCard, RefreshCw } from 'lucide-react';
 import { DashboardLayout } from '../../../components/DesignSystem';
 import MyProfile from '../../MyProfile';
@@ -6,9 +7,19 @@ import NetworkWorkspace from '../../network/NetworkWorkspace';
 import OnboardSharePanel from '../../network/OnboardSharePanel';
 import { NETWORK_SIDEBAR_SECTION, getNetworkTab, isNetworkScreen } from '../../network/networkSidebarConfig';
 import { authFetch, formatInr } from '../../../utils/authFetch';
+import { useWorkspaceNav } from '../../../hooks/useWorkspaceNav';
+import { PROMOTER_ROUTES, ROUTES, buildPath } from '../../../routes/routePaths';
 
 export default function PromoterDashboard({ userRole = 'Promoter', showToast, onSwitchRole }) {
-  const [activeScreen, setActiveScreen] = useState('Dashboard');
+  const {
+    activeTab: activeScreen,
+    goToTab,
+    attachPaths,
+    profilePath,
+    passwordPath,
+    portalSettingsPath,
+    location
+  } = useWorkspaceNav(ROUTES.PROMOTER, PROMOTER_ROUTES);
   const [profile, setProfile] = useState(null);
   const [dashStats, setDashStats] = useState(null);
   const [dashLoading, setDashLoading] = useState(true);
@@ -46,20 +57,30 @@ export default function PromoterDashboard({ userRole = 'Promoter', showToast, on
     }
   }, [activeScreen]);
 
-  const SIDEBAR_ITEMS = [
+  const SIDEBAR_ITEMS = attachPaths([
     {
       section: 'OVERVIEW',
       items: [{ id: 'Dashboard', label: 'My Dashboard', icon: Home }]
     },
     NETWORK_SIDEBAR_SECTION
-  ];
+  ]);
+
+  const isPasswordRoute = location.pathname.endsWith('/profile/password');
+  const currentScreen = isPasswordRoute ? 'Profile' : activeScreen;
+
+  if (location.pathname === ROUTES.PROMOTER || location.pathname === `${ROUTES.PROMOTER}/`) {
+    return <Navigate to={buildPath(ROUTES.PROMOTER, 'Dashboard', PROMOTER_ROUTES)} replace />;
+  }
+
+  if (!currentScreen) {
+    return <Navigate to={buildPath(ROUTES.PROMOTER, 'Dashboard', PROMOTER_ROUTES)} replace />;
+  }
 
   const renderScreen = () => {
-    if (activeScreen === 'Profile') {
+    if (currentScreen === 'Profile') {
       return <MyProfile showToast={showToast} userRole={userRole} onSwitchRole={onSwitchRole} />;
     }
-    if (activeScreen === 'Dashboard') {
-      return (
+    if (currentScreen === 'Dashboard') {      return (
         <div className="space-y-6">
           <div>
             <h1 className="text-xl font-bold text-slate-900">Promoter Dashboard</h1>
@@ -102,13 +123,13 @@ export default function PromoterDashboard({ userRole = 'Promoter', showToast, on
         </div>
       );
     }
-    if (isNetworkScreen(activeScreen)) {
+    if (isNetworkScreen(currentScreen)) {
       return (
         <NetworkWorkspace
           showToast={showToast}
-          initialTab={getNetworkTab(activeScreen)}
+          initialTab={getNetworkTab(currentScreen)}
           hideTabBar
-          key={activeScreen}
+          key={currentScreen}
         />
       );
     }
@@ -118,10 +139,13 @@ export default function PromoterDashboard({ userRole = 'Promoter', showToast, on
   return (
     <DashboardLayout
       userRole="Promoter"
-      activeTab={activeScreen}
-      setActiveTab={setActiveScreen}
+      activeTab={currentScreen}
+      goToTab={goToTab}
       sidebarItems={SIDEBAR_ITEMS}
       onSwitchRole={onSwitchRole}
+      profilePath={profilePath}
+      passwordPath={passwordPath}
+      portalSettingsPath={portalSettingsPath}
       notifications={[]}
       profile={{
         name: profile?.name || 'Promoter',

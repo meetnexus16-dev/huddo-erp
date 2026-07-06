@@ -1,5 +1,11 @@
-export function authFetch(path, options = {}) {
-  const token = localStorage.getItem('huddo_token');
+import {
+  ensureValidAccessToken,
+  getAccessToken
+} from './authSession';
+
+export async function authFetch(path, options = {}) {
+  await ensureValidAccessToken();
+  const token = getAccessToken();
   return fetch(`/api${path}`, {
     headers: {
       'Content-Type': 'application/json',
