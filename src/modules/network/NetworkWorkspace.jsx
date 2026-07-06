@@ -67,6 +67,8 @@ export default function NetworkWorkspace({ showToast, initialTab = 'referral', h
   const [isAdmin, setIsAdmin] = useState(false);
   const [payoutModal, setPayoutModal] = useState(false);
   const [payoutForm, setPayoutForm] = useState({ user_id: '', amount: '', payment_date: '', reference: '', notes: '' });
+  const [unpaidCommissions, setUnpaidCommissions] = useState([]);
+  const [selectedCommissionIds, setSelectedCommissionIds] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
 
   const loadUsers = () => {
@@ -210,18 +212,72 @@ export default function NetworkWorkspace({ showToast, initialTab = 'referral', h
     }
   }, [isAdmin, payoutModal]);
 
+  useEffect(() => {
+    if (!payoutForm.user_id) {
+      setUnpaidCommissions([]);
+      setSelectedCommissionIds([]);
+      return;
+    }
+    const token = localStorage.getItem('huddo_token');
+    fetch(`/api/commission-records?user=${payoutForm.user_id}&status=Approved&limit=500`, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      }
+    })
+      .then((r) => r.json())
+      .then((res) => {
+        const rows = res.success && Array.isArray(res.data) ? res.data : [];
+        setUnpaidCommissions(rows);
+        setSelectedCommissionIds(rows.map((row) => row._id));
+        const total = rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+        setPayoutForm((prev) => ({
+          ...prev,
+          amount: total > 0 ? String(Math.round(total * 100) / 100) : prev.amount
+        }));
+      })
+      .catch(() => {
+        setUnpaidCommissions([]);
+        setSelectedCommissionIds([]);
+      });
+  }, [payoutForm.user_id]);
+
+  const toggleCommissionSelection = (id) => {
+    setSelectedCommissionIds((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      const total = unpaidCommissions
+        .filter((row) => next.includes(row._id))
+        .reduce((sum, row) => sum + Number(row.amount || 0), 0);
+      setPayoutForm((form) => ({ ...form, amount: total > 0 ? String(Math.round(total * 100) / 100) : '' }));
+      return next;
+    });
+  };
+
+  const openPayoutModal = () => {
+    setPayoutForm({ user_id: '', amount: '', payment_date: new Date().toISOString().split('T')[0], reference: '', notes: '' });
+    setUnpaidCommissions([]);
+    setSelectedCommissionIds([]);
+    setPayoutModal(true);
+  };
+
   const submitPayout = async () => {
+    if (!payoutForm.user_id || !payoutForm.amount || !payoutForm.payment_date) {
+      showToast?.('User, amount, and payment date are required.', 'error');
+      return;
+    }
     const res = await authFetch('/manager-payments', {
       method: 'POST',
       body: JSON.stringify({
         ...payoutForm,
-        payment_type: 'CommissionSettlement'
+        payment_type: 'CommissionSettlement',
+        commission_record_ids: selectedCommissionIds
       })
     });
     if (res.success) {
-      showToast?.('Commission payment recorded.', 'success');
+      showToast?.('Commission payment recorded and linked records marked as paid.', 'success');
       setPayoutModal(false);
       loadPayments();
+      if (activeTab === 'commissions') loadCommissions();
     } else {
       showToast?.(res.message || 'Failed to record payment.', 'error');
     }
@@ -571,7 +627,7 @@ export default function NetworkWorkspace({ showToast, initialTab = 'referral', h
         <div className="space-y-4">
           {isAdmin && (
             <div className="flex justify-end">
-              <button onClick={() => setPayoutModal(true)} className="inline-flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-bold">
+              <button onClick={openPayoutModal} className="inline-flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-bold">
                 <Plus size={16} /> Record Commission Payment
               </button>
             </div>
@@ -616,6 +672,32 @@ export default function NetworkWorkspace({ showToast, initialTab = 'referral', h
             <label className="text-sm font-semibold text-slate-700">Notes</label>
             <textarea value={payoutForm.notes} onChange={(e) => setPayoutForm({ ...payoutForm, notes: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm" rows={2} />
           </div>
+          {payoutForm.user_id && (
+            <div>
+              <label className="text-sm font-semibold text-slate-700">Unpaid Commission Records</label>
+              <div className="mt-2 max-h-40 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+                {unpaidCommissions.length === 0 ? (
+                  <p className="px-3 py-4 text-xs text-slate-400">No approved (unpaid) commission records for this user.</p>
+                ) : (
+                  unpaidCommissions.map((row) => (
+                    <label key={row._id} className="flex items-center gap-3 px-3 py-2 text-sm hover:bg-slate-50 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedCommissionIds.includes(row._id)}
+                        onChange={() => toggleCommissionSelection(row._id)}
+                        className="rounded border-slate-300 text-orange-500 focus:ring-orange-200"
+                      />
+                      <span className="flex-1 text-slate-700 truncate">{row.description || row.commission_type}</span>
+                      <span className="font-bold text-slate-900 shrink-0">₹{Number(row.amount || 0).toFixed(2)}</span>
+                    </label>
+                  ))
+                )}
+              </div>
+              {selectedCommissionIds.length > 0 && (
+                <p className="text-xs text-slate-500 mt-1">{selectedCommissionIds.length} record(s) will be marked Paid.</p>
+              )}
+            </div>
+          )}
           <button onClick={submitPayout} className="w-full bg-orange-500 text-white font-bold py-2.5 rounded-lg">Save Payment</button>
         </div>
       </Modal>

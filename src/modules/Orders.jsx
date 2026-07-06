@@ -30,10 +30,10 @@ export default function Orders({ showToast }) {
               price: item.unit_price
             })) || [],
             workflow: {
-              cityApproved: o.approval_chain?.find(c => c.level === 'CityManager')?.status === 'Approved',
-              stateApproved: o.approval_chain?.find(c => c.level === 'StateManager')?.status === 'Approved',
-              countryApproved: o.approval_chain?.find(c => c.level === 'CountryManager')?.status === 'Approved',
-              adminApproved: o.status === 'Approved' || o.status === 'Processing' || o.status === 'Delivered'
+              cityApproved: o.status === 'Approved' || o.status === 'Processing' || o.status === 'Delivered',
+              stateApproved: o.status === 'Approved' || o.status === 'Processing' || o.status === 'Delivered',
+              countryApproved: o.status === 'Approved' || o.status === 'Delivered',
+              adminApproved: o.status === 'Approved' || o.status === 'Delivered'
             },
             proofImage: o.payment_screenshot || ''
           }));

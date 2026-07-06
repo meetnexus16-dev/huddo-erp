@@ -28,7 +28,6 @@ import {
 // Import Pages
 import Dashboard from './pages/Dashboard';
 import Retailers from './pages/Retailers';
-import OnboardRetailer from './pages/OnboardRetailer';
 import Orders from './pages/Orders';
 import Approvals from './pages/Approvals';
 import VisitLogs from './pages/VisitLogs';
@@ -120,50 +119,6 @@ export default function CityManagerModule({ showToast: parentShowToast, onSwitch
   // ────────────────────────────────────────────────────────────────────────
   // BUSINESS OPERATIONS & MUTATIONS
   // ────────────────────────────────────────────────────────────────────────
-
-  // 1. Onboard Retailer Wizard submit handler
-  const handleOnboardRetailer = (retailerData) => {
-    const newId = `R00${retailers.length + 1}`;
-    const newRetailer = {
-      id: newId,
-      ...retailerData,
-      status: 'Pending Verification',
-      totalOrders: 0,
-      totalRevenue: 0,
-      pendingPayment: 0,
-      joinedDate: new Date().toISOString().split('T')[0],
-      lastOrderDate: null,
-      lastVisitDate: null,
-      communicationHistory: [
-        { date: new Date().toISOString().split('T')[0], type: 'Visit', note: retailerData.notes || 'Onboarded' }
-      ]
-    };
-    setRetailers(prev => [...prev, newRetailer]);
-
-    // Create pending approval item
-    const newApproval = {
-      id: `APR00${pendingApprovals.length + 1}`,
-      type: 'Retailer Registration',
-      retailer: retailerData.businessName,
-      city: 'Ahmedabad',
-      date: new Date().toISOString().split('T')[0],
-      urgency: 'Medium'
-    };
-    setPendingApprovals(prev => [newApproval, ...prev]);
-
-    // Create notification alert
-    const newNotif = {
-      id: `N00${notifications.length + 1}`,
-      type: 'system',
-      message: `New retailer ${retailerData.businessName} registration submitted — pending your verification`,
-      time: 'Just now',
-      read: false
-    };
-    setNotifications(prev => [newNotif, ...prev]);
-
-    // Reset prefilled lead config
-    setPrefilledLead(null);
-  };
 
   // 2. Base Approvals Actions
   const handleApproveApproval = (approvalId) => {

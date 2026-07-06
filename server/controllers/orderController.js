@@ -1,7 +1,9 @@
 import Order from '../models/Order.js';
 import { calculateAndStoreOrderCommissions } from '../utils/commissionEngine.js';
 
-// 1. POST /api/v1/orders/:id/approve
+const APPROVER_ROLES = ['CityManager', 'StateManager', 'CountryManager', 'Founder', 'Admin'];
+
+// POST /api/v1/orders/:id/approve — single-step approval (no multi-level chain)
 export const approveOrder = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -17,9 +19,7 @@ export const approveOrder = async (req, res, next) => {
     }
 
     const userRole = req.user.role.name;
-    const validLevels = ['CityManager', 'StateManager', 'CountryManager', 'Founder', 'Admin'];
-
-    if (!validLevels.includes(userRole)) {
+    if (!APPROVER_ROLES.includes(userRole)) {
       return res.status(403).json({
         success: false,
         message: 'Access denied: Only managers and admins can approve orders.',
@@ -27,32 +27,28 @@ export const approveOrder = async (req, res, next) => {
       });
     }
 
-    let stageIndex = order.approval_chain.findIndex((s) => s.level === userRole);
+    if (order.status === 'Approved') {
+      return res.status(400).json({
+        success: false,
+        message: 'Order is already approved.',
+        data: null
+      });
+    }
 
-    const stageDetails = {
-      level: userRole,
-      approver: req.user._id,
-      status: 'Approved',
-      remarks: remarks || `Approved by ${userRole}`,
-      actioned_at: new Date()
-    };
-
-    if (stageIndex === -1) {
-      order.approval_chain.push(stageDetails);
-    } else {
-      order.approval_chain[stageIndex] = stageDetails;
+    if (order.status === 'Cancelled') {
+      return res.status(400).json({
+        success: false,
+        message: 'Order is cancelled and cannot be approved.',
+        data: null
+      });
     }
 
     const wasApproved = order.status === 'Approved';
-    if (userRole === 'Founder' || userRole === 'CountryManager' || userRole === 'Admin') {
-      order.status = 'Approved';
-    } else {
-      order.status = 'Processing';
-    }
-
+    order.status = 'Approved';
+    order.cancelled_reason = undefined;
     await order.save();
 
-    if (order.status === 'Approved' && !wasApproved && !order.commissions_calculated) {
+    if (!wasApproved && !order.commissions_calculated) {
       try {
         await calculateAndStoreOrderCommissions(order._id);
       } catch (commissionError) {
@@ -64,7 +60,7 @@ export const approveOrder = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      message: `Order approved successfully at ${userRole} level.`,
+      message: remarks ? `Order approved. ${remarks}` : 'Order approved successfully.',
       data: refreshedOrder
     });
   } catch (error) {
@@ -72,7 +68,7 @@ export const approveOrder = async (req, res, next) => {
   }
 };
 
-// 2. POST /api/v1/orders/:id/reject
+// POST /api/v1/orders/:id/reject
 export const rejectOrder = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -96,42 +92,22 @@ export const rejectOrder = async (req, res, next) => {
     }
 
     const userRole = req.user.role.name;
-    const validLevels = ['CityManager', 'StateManager', 'CountryManager', 'Founder'];
-
-    if (!validLevels.includes(userRole)) {
+    if (!APPROVER_ROLES.includes(userRole)) {
       return res.status(403).json({
         success: false,
-        message: 'Access denied: Only managers and founders can reject orders.',
+        message: 'Access denied: Only managers and admins can reject orders.',
         data: null
       });
     }
 
-    // Update approval chain stage
-    let stageIndex = order.approval_chain.findIndex((s) => s.level === userRole);
-    
-    const stageDetails = {
-      level: userRole,
-      approver: req.user._id,
-      status: 'Rejected',
-      remarks,
-      actioned_at: new Date()
-    };
-
-    if (stageIndex === -1) {
-      order.approval_chain.push(stageDetails);
-    } else {
-      order.approval_chain[stageIndex] = stageDetails;
-    }
-
-    // If rejected at any stage, the entire order is marked as 'Cancelled'
     order.status = 'Cancelled';
-    order.cancelled_reason = `Rejected at ${userRole} level: ${remarks}`;
+    order.cancelled_reason = remarks;
 
     await order.save();
 
     res.status(200).json({
       success: true,
-      message: `Order rejected and cancelled at ${userRole} level.`,
+      message: 'Order rejected and cancelled.',
       data: order
     });
   } catch (error) {
