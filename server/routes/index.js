@@ -152,6 +152,8 @@ import promoterRouter from './promoterRouter.js';
 import onboardingRouter from './onboardingRouter.js';
 import geoRouter from './geoRouter.js';
 import networkRouter from './networkRouter.js';
+import stateManagerRouter from './stateManagerRouter.js';
+import managerRouter from './managerRouter.js';
 import {
   listPromoterBonusStructures,
   upsertPromoterBonusStructure,
@@ -171,6 +173,8 @@ router.use('/promoters', promoterRouter);
 router.use('/onboarding', onboardingRouter);
 router.use('/geo', geoRouter);
 router.use('/network', networkRouter);
+router.use('/state-managers', stateManagerRouter);
+router.use('/manager', managerRouter);
 
 // ==========================================
 // 1. AUTHENTICATION ROUTES

@@ -6,33 +6,7 @@ import ProductCategory from '../models/ProductCategory.js';
 import City from '../models/City.js';
 import State from '../models/State.js';
 import Country from '../models/Country.js';
-
-async function getManagedGeoIds(user) {
-  const roleName = user.roleName || user.role?.name;
-  const result = { cityIds: [], stateIds: [], countryIds: [] };
-
-  if (roleName === 'CityManager' && user.city) {
-    result.cityIds = [user.city.toString()];
-    return result;
-  }
-
-  if (roleName === 'StateManager' && user.state) {
-    result.stateIds = [user.state.toString()];
-    const cities = await City.find({ state: user.state, is_deleted: { $ne: true } }).select('_id');
-    result.cityIds = cities.map((c) => c._id.toString());
-    return result;
-  }
-
-  if (roleName === 'CountryManager' && user.country) {
-    result.countryIds = [user.country.toString()];
-    const states = await State.find({ country: user.country, is_deleted: { $ne: true } }).select('_id');
-    result.stateIds = states.map((s) => s._id.toString());
-    const cities = await City.find({ state: { $in: result.stateIds }, is_deleted: { $ne: true } }).select('_id');
-    result.cityIds = cities.map((c) => c._id.toString());
-  }
-
-  return result;
-}
+import { getManagedGeoIds, getUsersUnderTerritory } from '../utils/managerTerritoryService.js';
 
 async function getRetailerIdsUnderUser(user) {
   const geo = await getManagedGeoIds(user);
@@ -78,45 +52,7 @@ async function getRetailerIdsForCommissionFilter(user, { cityId, stateId, countr
 }
 
 async function getUsersUnderHierarchy(user) {
-  const roleName = user.roleName || user.role?.name;
-  const geo = await getManagedGeoIds(user);
-  const userIds = new Set();
-
-  if (roleName === 'CountryManager' && geo.stateIds.length) {
-    const stateManagers = await User.find({
-      state: { $in: geo.stateIds },
-      roleName: 'StateManager',
-      is_deleted: { $ne: true }
-    }).select('_id');
-    stateManagers.forEach((u) => userIds.add(u._id.toString()));
-  }
-
-  if (geo.cityIds.length) {
-    const cityManagers = await User.find({
-      city: { $in: geo.cityIds },
-      roleName: 'CityManager',
-      is_deleted: { $ne: true }
-    }).select('_id');
-    cityManagers.forEach((u) => userIds.add(u._id.toString()));
-  }
-
-  const retailers = await getRetailerIdsUnderUser(user);
-  retailers.forEach((r) => {
-    if (r.user) userIds.add(r.user.toString());
-  });
-
-  if (userIds.size === 0) return [];
-
-  return User.find({
-    _id: { $in: Array.from(userIds) },
-    is_deleted: { $ne: true }
-  })
-    .populate('role')
-    .populate('promoted_by', 'name user_code')
-    .populate('country', 'name')
-    .populate('state', 'name')
-    .populate('city', 'name')
-    .sort({ createdAt: -1 });
+  return getUsersUnderTerritory(user);
 }
 
 export const getNetworkUsers = async (req, res, next) => {

@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { 
   Home, Layers, CheckSquare, Target, Users, BarChart3, Bell, 
-  TrendingUp, ShoppingCart
+  TrendingUp, ShoppingCart, Store
 } from 'lucide-react';
 
 import CountryManagerList from './pages/CountryManagerList';
@@ -17,6 +17,9 @@ import NetworkWorkspace from '../network/NetworkWorkspace';
 import { NETWORK_SIDEBAR_SECTION, getNetworkTab, isNetworkScreen } from '../network/networkSidebarConfig';
 import ManagerOrdersLive from '../manager/ManagerOrdersLive';
 import ManagerApprovalsLive from '../manager/ManagerApprovalsLive';
+import ManagerCityManagersView from '../manager/ManagerCityManagersView';
+import ManagerRetailersView from '../manager/ManagerRetailersView';
+import ManagerStateManagersView from '../manager/ManagerStateManagersView';
 import { fetchPendingOrderCount } from '../manager/pendingOrderUtils';
 import { isCountryManager } from '../../utils/roleRouting';
 import { useWorkspaceNav } from '../../hooks/useWorkspaceNav';
@@ -44,6 +47,7 @@ export default function CountryManagerModule({ userRole = 'Founder', showToast, 
   // Stats / Badges for Own Workspace
   const [stats, setStats] = useState({ pendingApprovals: 0, unreadNotifications: 0 });
   const [profile, setProfile] = useState(null);
+  const [resolvedCmId, setResolvedCmId] = useState(null);
 
   // Mock notifications state for Country Manager
   const [notifications, setNotifications] = useState([
@@ -72,6 +76,9 @@ export default function CountryManagerModule({ userRole = 'Founder', showToast, 
               full_name: data.data.name,
               profile_photo_url: data.data.profile_photo
             });
+            if (data.data._id) {
+              setResolvedCmId(data.data._id);
+            }
           }
         })
         .catch((err) => console.error(err));
@@ -139,6 +146,8 @@ export default function CountryManagerModule({ userRole = 'Founder', showToast, 
       items: [
         { id: 'States', label: 'States Management', icon: Layers },
         { id: 'State Managers', label: 'State Managers', icon: Users },
+        { id: 'City Managers', label: 'City Managers', icon: Users },
+        { id: 'Retailers', label: 'Retailers', icon: Store },
         { id: 'Targets', label: 'My Targets', icon: Target },
         { id: 'Analytics', label: 'Analytics Deep-Dive', icon: TrendingUp }
       ]
@@ -188,7 +197,9 @@ export default function CountryManagerModule({ userRole = 'Founder', showToast, 
           />
         );
       case 'States':
-        return <CountryManagerDetail cmId={1} onNavigate={() => {}} showToast={safeShowToast} userRole={userRole} initialTab="States" />;
+        return resolvedCmId
+          ? <CountryManagerDetail cmId={resolvedCmId} onNavigate={() => {}} showToast={safeShowToast} userRole={userRole} initialTab="States" />
+          : null;
       case 'Approvals':
         return (
           <ManagerApprovalsLive
@@ -198,15 +209,25 @@ export default function CountryManagerModule({ userRole = 'Founder', showToast, 
           />
         );
       case 'Targets':
-        return <CountryManagerDetail cmId={1} onNavigate={() => {}} showToast={safeShowToast} userRole={userRole} initialTab="Targets" />;
+        return resolvedCmId
+          ? <CountryManagerDetail cmId={resolvedCmId} onNavigate={() => {}} showToast={safeShowToast} userRole={userRole} initialTab="Targets" />
+          : null;
       case 'State Managers':
-        return <CountryManagerDetail cmId={1} onNavigate={() => {}} showToast={safeShowToast} userRole={userRole} initialTab="State Managers" />;
+        return <ManagerStateManagersView showToast={safeShowToast} />;
+      case 'City Managers':
+        return <ManagerCityManagersView showToast={safeShowToast} onNavigate={goToTab} title="City Managers" />;
+      case 'Retailers':
+        return <ManagerRetailersView showToast={safeShowToast} />;
       case 'Analytics':
-        return <AnalyticsDeepDive cmId={1} showToast={safeShowToast} />;
+        return resolvedCmId
+          ? <AnalyticsDeepDive cmId={resolvedCmId} showToast={safeShowToast} />
+          : null;
       case 'Notifications':
-        return <CountryManagerDetail cmId={1} onNavigate={() => {}} showToast={safeShowToast} userRole={userRole} initialTab="Notifications" />;
+        return resolvedCmId
+          ? <CountryManagerDetail cmId={resolvedCmId} onNavigate={() => {}} showToast={safeShowToast} userRole={userRole} initialTab="Notifications" />
+          : null;
       default:
-        return <CountryManagerDashboard cmId={1} isTab={true} onNavigate={goToTab} showToast={safeShowToast} />;
+        return <CountryManagerDashboard isTab={true} onNavigate={goToTab} showToast={safeShowToast} />;
     }
   };
 

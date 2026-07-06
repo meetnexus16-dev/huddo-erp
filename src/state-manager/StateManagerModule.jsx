@@ -14,12 +14,9 @@ import NetworkWorkspace from '../modules/network/NetworkWorkspace';
 import { NETWORK_SIDEBAR_SECTION, getNetworkTab, isNetworkScreen } from '../modules/network/networkSidebarConfig';
 import OnboardSharePanel from '../modules/network/OnboardSharePanel';
 import { Toast, SkeletonLoader } from './components/Common';
-import { currentStateManager } from './mockData';
 
-// Import Mock Data
+// Import Mock Data (fallback for pages not yet wired to API)
 import { 
-  cityManagers as initialCityManagers, 
-  retailers as initialRetailers, 
   orders as initialOrders, 
   monthlyRevenueData, 
   cityPerformanceData, 
@@ -44,6 +41,8 @@ import NotificationsPage from './pages/NotificationsPage';
 import ManagerOrdersLive from '../modules/manager/ManagerOrdersLive';
 import ManagerApprovalsLive from '../modules/manager/ManagerApprovalsLive';
 import { fetchPendingOrderCount } from '../modules/manager/pendingOrderUtils';
+import { authFetch } from '../utils/authFetch';
+import { fetchTerritoryRetailers } from '../modules/manager/territoryTeamApi';
 
 export default function StateManagerModule({ showToast: parentShowToast, onSwitchRole }) {
   const {
@@ -62,8 +61,12 @@ export default function StateManagerModule({ showToast: parentShowToast, onSwitc
   const [searchQuery, setSearchQuery] = useState('');
 
   // Global Collections State (enabling mutations)
-  const [cityManagers, setCityManagers] = useState(initialCityManagers);
-  const [retailers, setRetailers] = useState(initialRetailers);
+  const [cityManagers, setCityManagers] = useState([]);
+  const [territoryLabel, setTerritoryLabel] = useState('');
+  const [teamDataLoading, setTeamDataLoading] = useState(true);
+  const [managerProfile, setManagerProfile] = useState({ name: 'State Manager', subtitle: 'State Manager' });
+  const [retailers, setRetailers] = useState([]);
+  const [retailersLoading, setRetailersLoading] = useState(true);
   const [orders, setOrders] = useState(initialOrders);
   const [pendingApprovals, setPendingApprovals] = useState(initialPendingApprovals);
   const [pendingOrderCount, setPendingOrderCount] = useState(0);
@@ -116,6 +119,54 @@ export default function StateManagerModule({ showToast: parentShowToast, onSwitc
       setToast({ message, type });
     }
   };
+
+  const loadCityManagers = () => {
+    setTeamDataLoading(true);
+    authFetch('/manager/me/city-managers')
+      .then((res) => {
+        if (res.success && res.data) {
+          setCityManagers(res.data.cityManagers || []);
+          setTerritoryLabel(res.data.territoryLabel || '');
+        } else {
+          showToast(res.message || 'Failed to load city managers.', 'error');
+        }
+      })
+      .catch(() => showToast('Failed to load city managers.', 'error'))
+      .finally(() => setTeamDataLoading(false));
+  };
+
+  const loadRetailers = () => {
+    setRetailersLoading(true);
+    fetchTerritoryRetailers()
+      .then((data) => setRetailers(data.retailers || []))
+      .catch(() => showToast('Failed to load retailers.', 'error'))
+      .finally(() => setRetailersLoading(false));
+  };
+
+  useEffect(() => {
+    loadCityManagers();
+    loadRetailers();
+    authFetch('/profile')
+      .then((res) => {
+        if (res.success && res.data) {
+          setManagerProfile({
+            name: res.data.name || 'State Manager',
+            subtitle: territoryLabel ? `${territoryLabel} State Manager` : 'State Manager',
+            image: res.data.profile_photo || ''
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (territoryLabel) {
+      setManagerProfile((prev) => ({
+        ...prev,
+        subtitle: `${territoryLabel} State Manager`
+      }));
+    }
+  }, [territoryLabel]);
 
   // ────────────────────────────────────────────────────────────────────────
   // CORE BUSINESS MUTATORS (State management across components)
@@ -298,21 +349,6 @@ export default function StateManagerModule({ showToast: parentShowToast, onSwitc
     setApprovalHistory(prev => [histItem, ...prev]);
   };
 
-  // 4. Assign City Manager to a new city area
-  const handleAssignCity = (cmId, cityName, date) => {
-    setCityManagers(prev => prev.map(cm => {
-      if (cm.id === cmId) {
-        return {
-          ...cm,
-          city: cityName,
-          retailersCount: cm.retailersCount + 2, // Mock incremental count
-          lastActive: date
-        };
-      }
-      return cm;
-    }));
-  };
-
   // 5. Targets inline save
   const handleSaveTargets = (newTargets) => {
     setCityManagers(prev => prev.map(cm => {
@@ -428,7 +464,9 @@ export default function StateManagerModule({ showToast: parentShowToast, onSwitc
           <CityManagers 
             cityManagers={cityManagers}
             retailers={retailers}
-            onAssignCity={handleAssignCity}
+            territoryLabel={territoryLabel}
+            loading={teamDataLoading}
+            onRefresh={loadCityManagers}
             onNavigate={handleTabChange}
             showToast={showToast}
             initialCityFilter={cityFilterOverride}
@@ -443,6 +481,8 @@ export default function StateManagerModule({ showToast: parentShowToast, onSwitc
             onApproveRetailer={handleApproveRetailer}
             onRejectRetailer={handleRejectRetailer}
             showToast={showToast}
+            territoryLabel={territoryLabel}
+            loading={retailersLoading}
           />
         );
 
@@ -540,9 +580,9 @@ export default function StateManagerModule({ showToast: parentShowToast, onSwitc
       notifications={notifications.map(n => ({ id: n.id, title: n.title || 'System Alert', message: n.message, read: n.read, date: n.date }))}
       onMarkAllNotificationsRead={handleMarkAllRead}
       profile={{
-        name: currentStateManager.name,
-        subtitle: `${currentStateManager.state} State Manager`,
-        image: null
+        name: managerProfile.name,
+        subtitle: managerProfile.subtitle,
+        image: managerProfile.image || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150"
       }}
     >
       {loading ? (

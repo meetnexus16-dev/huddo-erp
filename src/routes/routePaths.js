@@ -65,6 +65,8 @@ export const COUNTRY_MANAGER_ROUTES = {
   Approvals: 'approvals',
   States: 'states',
   'State Managers': 'state-managers',
+  'City Managers': 'city-managers',
+  Retailers: 'retailers',
   Targets: 'targets',
   Analytics: 'analytics',
   Notifications: 'notifications',

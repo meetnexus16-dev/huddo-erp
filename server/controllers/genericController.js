@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { DEFAULT_USER_PASSWORD } from '../constants/defaultCredentials.js';
+import { isAdminUser } from '../utils/adminRole.js';
 
 export const genericController = (Model, populateOptions = []) => {
   return {
@@ -423,6 +424,18 @@ export const genericController = (Model, populateOptions = []) => {
           });
         }
 
+        const touchesManagerAssignment =
+          req.body.manager !== undefined ||
+          req.body.assigned_city_manager !== undefined;
+
+        if (touchesManagerAssignment && !isAdminUser(req.user)) {
+          return res.status(403).json({
+            success: false,
+            message: 'Only administrators can reassign managers or retailers.',
+            data: null
+          });
+        }
+
         if (req.body.manager !== undefined) {
           const {
             assignCountryManager,
@@ -487,6 +500,28 @@ export const genericController = (Model, populateOptions = []) => {
         const assignedCountryId = req.body.assigned_country_id || req.body.country_id || req.body.country || null;
         const assignedStateId = req.body.assigned_state_id || req.body.state_id || req.body.state || null;
         const assignedCityId = req.body.assigned_city_id || req.body.city_id || req.body.city || null;
+
+        if (
+          Model.modelName === 'User' &&
+          (assignedCountryId || assignedStateId || assignedCityId) &&
+          !isAdminUser(req.user)
+        ) {
+          const nextRoleName = req.body.roleName;
+          if (nextRoleName && ['CountryManager', 'StateManager', 'CityManager'].includes(nextRoleName)) {
+            return res.status(403).json({
+              success: false,
+              message: 'Only administrators can reassign manager territories.',
+              data: null
+            });
+          }
+          if (!nextRoleName && oldDoc && ['CountryManager', 'StateManager', 'CityManager'].includes(oldDoc.roleName)) {
+            return res.status(403).json({
+              success: false,
+              message: 'Only administrators can reassign manager territories.',
+              data: null
+            });
+          }
+        }
 
         if (Model.modelName === 'User') {
           delete req.body.assigned_country_id;

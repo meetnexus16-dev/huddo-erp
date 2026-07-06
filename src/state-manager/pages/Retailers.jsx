@@ -13,7 +13,9 @@ export default function Retailers({
   orders, 
   onApproveRetailer, 
   onRejectRetailer, 
-  showToast 
+  showToast,
+  territoryLabel = '',
+  loading = false
 }) {
   const [activeTab, setActiveTab] = useState('All'); // All | Platinum | Gold | Silver | Standard | Pending Verification
   const [searchQuery, setSearchQuery] = useState('');
@@ -23,7 +25,8 @@ export default function Retailers({
   const [selectedRetailer, setSelectedRetailer] = useState(null);
 
   // Filter handlers
-  const getCityManagerName = (cmId) => {
+  const getCityManagerName = (cmId, retailer) => {
+    if (retailer?.cityManagerName) return retailer.cityManagerName;
     return cityManagers.find(cm => cm.id === cmId)?.name || "Not Assigned";
   };
 
@@ -75,13 +78,23 @@ export default function Retailers({
     { month: "Jun'26", added: 3 },
   ];
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20 text-slate-500 text-sm">
+        Loading retailers...
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-black text-slate-800 uppercase tracking-wider">Retailers — Gujarat</h1>
+          <h1 className="text-xl font-black text-slate-800 uppercase tracking-wider">
+            Retailers{territoryLabel ? ` — ${territoryLabel}` : ''}
+          </h1>
           <p className="text-xs text-slate-500 font-semibold mt-1">Supervise channel partners, verify shop registrations, and monitor outstanding payments</p>
         </div>
         <button 
@@ -180,7 +193,7 @@ export default function Retailers({
                     <td className="py-3 px-4 font-bold text-slate-800">{ret.businessName}</td>
                     <td className="py-3 px-4">{ret.ownerName}</td>
                     <td className="py-3 px-4">{ret.city}</td>
-                    <td className="py-3 px-4">{getCityManagerName(ret.cityManagerId)}</td>
+                    <td className="py-3 px-4">{getCityManagerName(ret.cityManagerId, ret)}</td>
                     <td className="py-3 px-4">
                       <span className={`px-2 py-0.5 text-[9px] font-extrabold rounded-full ${
                         ret.category === 'Platinum' ? 'bg-indigo-50 text-indigo-700' :
@@ -345,7 +358,7 @@ export default function Retailers({
                   </div>
                   <div className="space-y-0.5">
                     <span className="text-[9px] text-slate-400 uppercase block">City Manager</span>
-                    <span className="text-slate-800 font-bold block">{getCityManagerName(selectedRetailer.cityManagerId)}</span>
+                    <span className="text-slate-800 font-bold block">{getCityManagerName(selectedRetailer.cityManagerId, selectedRetailer)}</span>
                   </div>
                 </div>
                 

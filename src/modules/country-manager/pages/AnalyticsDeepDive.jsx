@@ -10,8 +10,22 @@ import {
 } from 'lucide-react';
 
 export default function AnalyticsDeepDive({ cmId, showToast }) {
-  const resolvedCmId = cmId || 1;
+  const [resolvedCmId, setResolvedCmId] = useState(cmId || null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (cmId) {
+      setResolvedCmId(cmId);
+      return;
+    }
+    const token = localStorage.getItem('huddo_token');
+    fetch('/api/profile', { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && res.data?._id) setResolvedCmId(res.data._id);
+      })
+      .catch(() => {});
+  }, [cmId]);
 
   // Filters State
   const [filters, setFilters] = useState({
@@ -29,6 +43,7 @@ export default function AnalyticsDeepDive({ cmId, showToast }) {
 
   // Fetch all analytics data
   const fetchAnalytics = async () => {
+    if (!resolvedCmId) return;
     setLoading(true);
     try {
       // 1. Fetch State Performance
@@ -67,8 +82,8 @@ export default function AnalyticsDeepDive({ cmId, showToast }) {
   };
 
   useEffect(() => {
-    fetchAnalytics();
-  }, [filters]);
+    if (resolvedCmId) fetchAnalytics();
+  }, [filters, resolvedCmId]);
 
   const handleExport = (section) => {
     if (showToast) showToast(`Exporting analytics for ${section} as CSV...`, "success");

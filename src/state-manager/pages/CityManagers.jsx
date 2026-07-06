@@ -1,9 +1,9 @@
 // src/state-manager/pages/CityManagers.jsx
 import { useState } from 'react';
 import { 
-  Users, UserCheck, Percent, Search, SlidersHorizontal, Plus, 
+  Users, UserCheck, Percent, Search, SlidersHorizontal, 
   X, Phone, Mail, Calendar, MapPin, TrendingUp,
-  MessageSquare, ShoppingBag
+  MessageSquare, ShoppingBag, RefreshCw
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, Tooltip } from 'recharts';
 import { formatCurrency, formatDate } from '../utils';
@@ -11,24 +11,19 @@ import { formatCurrency, formatDate } from '../utils';
 export default function CityManagers({ 
   cityManagers, 
   retailers, 
-  onAssignCity, 
+  territoryLabel = '',
+  loading = false,
+  onRefresh,
   onNavigate,
   showToast,
-  initialCityFilter = ''
+  initialCityFilter = '',
+  pageTitle = 'City Managers'
 }) {
   const [searchQuery, setSearchQuery] = useState(initialCityFilter);
   const [statusFilter, setStatusFilter] = useState('All');
   
   // Drawer state
   const [selectedCM, setSelectedCM] = useState(null);
-  
-  // Modal state
-  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
-  const [assignForm, setAssignForm] = useState({
-    cmId: '',
-    city: '',
-    effectiveDate: new Date().toISOString().split('T')[0]
-  });
 
   // Calculate dynamic stats
   const totalCMs = cityManagers.length;
@@ -50,33 +45,6 @@ export default function CityManagers({
       
     return matchesSearch && matchesStatus;
   });
-
-  const handleOpenAssignModal = () => {
-    setAssignForm({
-      cmId: cityManagers[0]?.id || '',
-      city: '',
-      effectiveDate: new Date().toISOString().split('T')[0]
-    });
-    setIsAssignModalOpen(true);
-  };
-
-  const handleAssignSubmit = (e) => {
-    e.preventDefault();
-    if (!assignForm.city.trim()) {
-      showToast("Please enter a valid city name.", "error");
-      return;
-    }
-    
-    const targetCM = cityManagers.find(cm => cm.id === assignForm.cmId);
-    if (!targetCM) {
-      showToast("Selected City Manager not found.", "error");
-      return;
-    }
-
-    onAssignCity(assignForm.cmId, assignForm.city, assignForm.effectiveDate);
-    setIsAssignModalOpen(false);
-    showToast(`Assigned ${targetCM.name} to ${assignForm.city} successfully!`, "success");
-  };
 
   // Get retailers for selected city manager
   const getCMRetailers = (cmId) => {
@@ -106,21 +74,39 @@ export default function CityManagers({
     { month: 'Jun', value: 95 }
   ];
 
+  const showStateColumn = cityManagers.some((cm) => cm.state && cm.state !== '—');
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20 text-slate-500 gap-2">
+        <RefreshCw className="animate-spin" size={20} />
+        Loading city managers...
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 relative">
       
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-black text-slate-800 uppercase tracking-wider">City Managers — Gujarat</h1>
+          <h1 className="text-xl font-black text-slate-800 uppercase tracking-wider">
+            {pageTitle}{territoryLabel ? ` — ${territoryLabel}` : ''}
+          </h1>
           <p className="text-xs text-slate-500 font-semibold mt-1">Supervise city leads, allocate locations, and review monthly target achievements</p>
         </div>
-        <button 
-          onClick={handleOpenAssignModal}
-          className="flex items-center justify-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold shadow-md shadow-orange-100 transition-all self-start sm:self-center"
-        >
-          <Plus className="w-4 h-4" /> Assign New City
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-center">
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={loading}
+            className="flex items-center justify-center gap-2 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-all disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -203,6 +189,7 @@ export default function CityManagers({
             <thead>
               <tr className="border-b border-slate-100 text-[10px] text-slate-400 font-bold tracking-wider uppercase bg-slate-50/20">
                 <th className="py-3 px-4">Name</th>
+                {showStateColumn && <th className="py-3 px-4">State</th>}
                 <th className="py-3 px-4">City</th>
                 <th className="py-3 px-4">Mobile</th>
                 <th className="py-3 px-4 text-center">Retailers Count</th>
@@ -220,6 +207,7 @@ export default function CityManagers({
                   return (
                     <tr key={cm.id} className="hover:bg-slate-50/50 transition-colors">
                       <td className="py-3 px-4 font-bold text-slate-800">{cm.name}</td>
+                      {showStateColumn && <td className="py-3 px-4">{cm.state || '—'}</td>}
                       <td className="py-3 px-4">{cm.city}</td>
                       <td className="py-3 px-4 font-semibold">{cm.mobile}</td>
                       <td className="py-3 px-4 text-center font-bold text-slate-700">{cm.retailersCount}</td>
@@ -281,83 +269,6 @@ export default function CityManagers({
         </div>
 
       </div>
-
-      {/* Modal: Assign City */}
-      {isAssignModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4">
-          <form 
-            onSubmit={handleAssignSubmit}
-            className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-zoom-in"
-          >
-            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="font-black text-sm text-slate-800 uppercase tracking-wider">Assign City Manager</h3>
-              <button 
-                type="button" 
-                onClick={() => setIsAssignModalOpen(false)} 
-                className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-all"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-5 space-y-4 text-xs font-semibold text-slate-700">
-              
-              <div className="flex flex-col gap-1.5">
-                <label className="text-slate-400 block uppercase text-[10px] tracking-wide">Select City Manager</label>
-                <select 
-                  value={assignForm.cmId}
-                  onChange={(e) => setAssignForm({...assignForm, cmId: e.target.value})}
-                  className="p-2 border border-slate-200 rounded-xl focus:outline-none focus:border-slate-300 text-xs text-slate-800 bg-white"
-                >
-                  {cityManagers.map((cm) => (
-                    <option key={cm.id} value={cm.id}>{cm.name} ({cm.city || 'No City'})</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label className="text-slate-400 block uppercase text-[10px] tracking-wide">Target City</label>
-                <input 
-                  type="text"
-                  placeholder="e.g. Anand, Bharuch, Navsari..."
-                  value={assignForm.city}
-                  onChange={(e) => setAssignForm({...assignForm, city: e.target.value})}
-                  className="p-2 border border-slate-200 rounded-xl focus:outline-none focus:border-slate-300 text-xs text-slate-800"
-                  required
-                />
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label className="text-slate-400 block uppercase text-[10px] tracking-wide">Effective Date</label>
-                <input 
-                  type="date"
-                  value={assignForm.effectiveDate}
-                  onChange={(e) => setAssignForm({...assignForm, effectiveDate: e.target.value})}
-                  className="p-2 border border-slate-200 rounded-xl focus:outline-none focus:border-slate-300 text-xs text-slate-800"
-                  required
-                />
-              </div>
-
-            </div>
-
-            <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
-              <button 
-                type="button"
-                onClick={() => setIsAssignModalOpen(false)}
-                className="px-4 py-2 border border-slate-200 hover:bg-slate-100 rounded-xl text-slate-600 text-xs font-bold transition-all"
-              >
-                Cancel
-              </button>
-              <button 
-                type="submit"
-                className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold shadow-md shadow-orange-100 transition-all"
-              >
-                Confirm Assignment
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
 
       {/* Drawer Panel: City Manager View Detail */}
       {selectedCM && (

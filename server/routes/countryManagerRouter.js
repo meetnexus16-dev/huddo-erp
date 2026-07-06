@@ -25,6 +25,7 @@ import {
   validateCountryAvailable
 } from '../utils/managerAssignment.js';
 import { DEFAULT_USER_PASSWORD } from '../constants/defaultCredentials.js';
+import { isAdminUser } from '../utils/adminRole.js';
 
 const router = express.Router();
 
@@ -770,6 +771,13 @@ router.get('/:id/state-manager-candidates', verifyJWT, async (req, res, next) =>
 // 7c. POST /api/v1/country-managers/:id/state-manager-users
 router.post('/:id/state-manager-users', verifyJWT, async (req, res, next) => {
   try {
+    if (!isAdminUser(req.user)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only administrators can create state managers for assignment.'
+      });
+    }
+
     const { name, email, mobile } = req.body;
 
     if (!name?.trim() || !email?.trim() || !mobile?.trim()) {
@@ -809,6 +817,13 @@ router.post('/:id/state-manager-users', verifyJWT, async (req, res, next) => {
 // 8. POST /api/v1/country-managers/:id/states/assign-manager
 router.post('/:id/states/assign-manager', verifyJWT, async (req, res, next) => {
   try {
+    if (!isAdminUser(req.user)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only administrators can reassign state managers.'
+      });
+    }
+
     const { state_id, state_manager_id } = req.body;
 
     if (!isValidObjectId(state_id)) {

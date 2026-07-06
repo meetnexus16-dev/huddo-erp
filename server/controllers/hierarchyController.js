@@ -21,6 +21,7 @@ import {
 } from '../utils/managerAssignment.js';
 import { buildGeoOptions } from '../utils/geoOptionsService.js';
 import { DEFAULT_USER_PASSWORD } from '../constants/defaultCredentials.js';
+import { isAdminUser } from '../utils/adminRole.js';
 
 export const getGeoCascade = async (req, res, next) => {
   try {
@@ -109,6 +110,13 @@ export const getAvailableCountries = async (req, res, next) => {
 
 export const createHierarchyManagerUser = async (req, res, next) => {
   try {
+    if (!isAdminUser(req.user)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only administrators can create managers for hierarchy assignment.'
+      });
+    }
+
     const { name, email, mobile, roleName } = req.body;
 
     if (!name?.trim() || !email?.trim() || !mobile?.trim() || !roleName?.trim()) {
@@ -145,6 +153,13 @@ export const createHierarchyManagerUser = async (req, res, next) => {
 
 export const assignHierarchyManager = async (req, res, next) => {
   try {
+    if (!isAdminUser(req.user)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only administrators can reassign managers.'
+      });
+    }
+
     const { type, entity_id: entityId, manager_id: managerId } = req.body;
 
     if (!type) {

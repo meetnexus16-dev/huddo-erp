@@ -70,6 +70,11 @@ export function isEmployeeRole(role) {
   ].includes(key);
 }
 
+export function isAdminRole(role) {
+  const key = normalizeRoleKey(role);
+  return key === 'founder' || key === 'ceo' || key === 'admin';
+}
+
 export function resolveUserRole(user) {
   if (!user) return '';
   return user.role?.name || user.roleName || user.role || '';

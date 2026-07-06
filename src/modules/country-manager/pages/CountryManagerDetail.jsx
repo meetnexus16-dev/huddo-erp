@@ -8,8 +8,10 @@ import CountryManagerDashboard from './CountryManagerDashboard';
 import AnalyticsDeepDive from './AnalyticsDeepDive';
 import { DataTable, Modal, DefaultPasswordNotice } from '../../../components/Common';
 import { getUserCreatedMessage } from '../../../constants/defaultCredentials';
+import { isAdminRole } from '../../../utils/roleRouting';
 
 export default function CountryManagerDetail({ cmId, onNavigate, showToast, userRole = 'Founder', initialTab }) {
+  const canReassignManagers = isAdminRole(userRole);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState(initialTab || 'Overview');
@@ -591,13 +593,15 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
                 <h3 className="text-sm font-bold text-slate-800 font-display">Assigned States Matrix</h3>
                 <p className="text-xs text-slate-400 font-semibold mt-0.5">Map showing state nodes and state managers allocated to this country.</p>
               </div>
-              <button
-                onClick={() => openAssignStateModal(states[0]?.state_id)}
-                className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 hover:border-slate-350 bg-white text-slate-700 text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5 text-brand-orange" />
-                <span>Reassign State Manager</span>
-              </button>
+              {canReassignManagers && (
+                <button
+                  onClick={() => openAssignStateModal(states[0]?.state_id)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 hover:border-slate-350 bg-white text-slate-700 text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5 text-brand-orange" />
+                  <span>Reassign State Manager</span>
+                </button>
+              )}
             </div>
 
             <DataTable
@@ -616,14 +620,19 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
                   const color = pct >= 80 ? 'text-emerald-600 bg-emerald-50 border-emerald-250' : pct >= 50 ? 'text-amber-600 bg-amber-50 border-amber-250' : 'text-rose-600 bg-rose-50 border-rose-250';
                   return <span className={`px-2 py-0.5 border rounded-full text-[10px] font-bold ${color}`}>{pct}%</span>;
                 }},
-                { header: "Actions", accessor: "state_id", sortable: false, render: (val) => (
-                  <button
-                    onClick={() => openAssignStateModal(val)}
-                    className="text-xs font-bold text-brand-orange hover:underline cursor-pointer"
-                  >
-                    Reassign
-                  </button>
-                )}
+                ...(canReassignManagers ? [{
+                  header: "Actions",
+                  accessor: "state_id",
+                  sortable: false,
+                  render: (val) => (
+                    <button
+                      onClick={() => openAssignStateModal(val)}
+                      className="text-xs font-bold text-brand-orange hover:underline cursor-pointer"
+                    >
+                      Reassign
+                    </button>
+                  )
+                }] : [])
               ]}
               data={states}
               searchKeys={["state_name"]}
@@ -918,7 +927,8 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
       {/* MODALS */}
       {/* ──────────────────────────────────────────────────────────────────────── */}
 
-      {/* 1. Reassign State Manager Modal */}
+      {/* 1. Reassign State Manager Modal (admin only) */}
+      {canReassignManagers && (
       <Modal
         isOpen={assignStateModal}
         onClose={closeAssignStateModal}
@@ -1031,6 +1041,7 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
           )}
         </div>
       </Modal>
+      )}
 
       {/* 2. Configure Target Modal */}
       <Modal

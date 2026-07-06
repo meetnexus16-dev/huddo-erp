@@ -15,7 +15,6 @@ import { formatCurrency } from './cityManagerUtils';
 
 // Import Mock Data
 import {
-  retailers as initialRetailers,
   orders as initialOrders,
   leads as initialLeads,
   visitLogs as initialVisitLogs,
@@ -47,6 +46,7 @@ import OnboardSharePanel from '../modules/network/OnboardSharePanel';
 import ManagerOrdersLive from '../modules/manager/ManagerOrdersLive';
 import ManagerApprovalsLive from '../modules/manager/ManagerApprovalsLive';
 import { fetchPendingOrderCount } from '../modules/manager/pendingOrderUtils';
+import { fetchTerritoryRetailers } from '../modules/manager/territoryTeamApi';
 
 export default function CityManagerModule({ showToast: parentShowToast, onSwitchRole }) {
   const {
@@ -63,7 +63,8 @@ export default function CityManagerModule({ showToast: parentShowToast, onSwitch
   const [searchQuery, setSearchQuery] = useState('');
 
   // Global collections state
-  const [retailers, setRetailers] = useState(initialRetailers);
+  const [retailers, setRetailers] = useState([]);
+  const [retailersLoading, setRetailersLoading] = useState(true);
   const [orders, setOrders] = useState(initialOrders);
   const [leads, setLeads] = useState(initialLeads);
   const [visitLogs, setVisitLogs] = useState(initialVisitLogs);
@@ -121,6 +122,24 @@ export default function CityManagerModule({ showToast: parentShowToast, onSwitch
   useEffect(() => {
     fetchPendingOrderCount().then(setPendingOrderCount);
   }, [activeTab]);
+
+  useEffect(() => {
+    setRetailersLoading(true);
+    fetchTerritoryRetailers()
+      .then((data) => {
+        const mapped = (data.retailers || []).map((r) => ({
+          ...r,
+          shopAddress: r.address || '',
+          pan: r.panNo || '',
+          aadhaar: r.aadhaarNo || '',
+          communicationHistory: [],
+          lastVisitDate: null
+        }));
+        setRetailers(mapped);
+      })
+      .catch(() => showToast('Failed to load retailers.', 'error'))
+      .finally(() => setRetailersLoading(false));
+  }, []);
 
   const showToast = (message, type = 'success') => {
     if (parentShowToast) {

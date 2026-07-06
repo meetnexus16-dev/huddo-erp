@@ -590,10 +590,29 @@ export const getMyDashboard = async (req, res, next) => {
       const retailers = await retailersInGeo({ stateIds: [user.state] });
       const stats = await buildTerritoryDashboard(retailers);
 
-      const cities = await City.find({ state: user.state, is_deleted: { $ne: true } }).populate('manager', 'name');
+      const cities = await City.find({ state: user.state, is_deleted: { $ne: true } }).populate(
+        'manager',
+        'name mobile email status joining_date updatedAt'
+      );
       const startOfMonth = new Date();
       startOfMonth.setDate(1);
       startOfMonth.setHours(0, 0, 0, 0);
+      const targetPeriod = new Date().toISOString().slice(0, 7);
+      const managerIds = cities.filter((c) => c.manager?._id).map((c) => c.manager._id);
+      const revenueTargets = managerIds.length
+        ? await Target.find({
+          assigned_to: { $in: managerIds },
+          period_type: 'Monthly',
+          title: targetPeriod,
+          kpi_type: 'Revenue',
+          is_deleted: { $ne: true }
+        })
+        : [];
+      const targetByManager = revenueTargets.reduce((acc, row) => {
+        acc[row.assigned_to.toString()] = Number(row.target_value || 0);
+        return acc;
+      }, {});
+
       const monthOrders = retailers.length
         ? await Order.find({
           retailer: { $in: retailers.map((r) => r._id) },
@@ -619,6 +638,8 @@ export const getMyDashboard = async (req, res, next) => {
       const cityManagers = cities
         .filter((c) => c.manager)
         .map((city) => {
+          const manager = city.manager;
+          const managerId = manager._id.toString();
           const cityRetailers = retailers.filter((r) => r.city?.toString() === city._id.toString());
           const cityRetailerIds = new Set(cityRetailers.map((r) => r._id.toString()));
           const ordersThisMonth = monthOrders.filter((o) => cityRetailerIds.has(o.retailer?.toString())).length;
@@ -626,13 +647,21 @@ export const getMyDashboard = async (req, res, next) => {
             .filter((o) => cityRetailerIds.has(o.retailer?.toString()))
             .reduce((sum, o) => sum + Number(o.grand_total || o.subtotal || 0), 0);
           return {
+            id: managerId,
+            cityId: city._id.toString(),
             city: city.name,
-            name: city.manager?.name || '—',
+            name: manager.name || '—',
+            mobile: manager.mobile || '',
+            email: manager.email || '',
+            joiningDate: manager.joining_date || null,
             retailersCount: cityRetailers.length,
             ordersThisMonth,
             achieved,
-            monthlyTarget: 0,
-            status: 'Active'
+            monthlyTarget: targetByManager[managerId] || 0,
+            status: manager.status || 'Active',
+            lastActive: manager.updatedAt
+              ? manager.updatedAt.toISOString().split('T')[0]
+              : null
           };
         });
 
