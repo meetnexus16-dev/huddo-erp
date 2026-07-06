@@ -156,7 +156,7 @@ export default function CountryManagerModule({ userRole = 'Founder', showToast, 
     }
     switch (activeTab) {
       case 'Dashboard':
-        return <CountryManagerDashboard cmId={1} isTab={true} onNavigate={setActiveTab} showToast={safeShowToast} />;
+        return <CountryManagerDashboard isTab={true} onNavigate={setActiveTab} showToast={safeShowToast} />;
       case 'Orders':
         return (
           <ManagerOrdersLive

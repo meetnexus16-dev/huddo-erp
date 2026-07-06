@@ -421,17 +421,6 @@ export default function CityManagerModule({ showToast: parentShowToast, onSwitch
       case 'Dashboard':
         return (
           <Dashboard
-            retailers={retailers}
-            orders={orders}
-            pendingApprovals={pendingApprovals}
-            visitLogs={visitLogs}
-            monthlyRevenueData={monthlyRevenueData}
-            retailerSalesData={retailerSalesData}
-            onApprove={handleApproveApproval}
-            onReject={(id) => {
-              handleTabChange('Approvals');
-              showToast(`Review pending items to reject ID ${id}`, 'info');
-            }}
             onNavigate={handleTabChange}
             showToast={showToast}
           />

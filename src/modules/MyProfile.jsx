@@ -1,10 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  User, Mail, Phone, MapPin, Shield, Calendar, 
-  Lock, Camera, Trash2, Key, CheckCircle2, ShieldCheck, Clock, UserCheck
+  User, MapPin, Camera, Trash2, Key, ShieldCheck, Clock, UserCheck
 } from 'lucide-react';
+import { authFetch } from '../utils/authFetch';
+
+const displayLabel = (value) => {
+  if (value == null || value === '') return '';
+  if (typeof value === 'string' || typeof value === 'number') return String(value);
+  if (typeof value === 'object') return value.name || value.title || value.label || '';
+  return String(value);
+};
+
+const normalizeProfile = (data) => ({
+  ...data,
+  role: displayLabel(data.role),
+  department: displayLabel(data.department),
+  designation: displayLabel(data.designation),
+  city: displayLabel(data.city),
+  state: displayLabel(data.state),
+  country: displayLabel(data.country),
+  reporting_manager: displayLabel(data.reporting_manager),
+  joining_date: displayLabel(data.joining_date) || (data.createdAt ? new Date(data.createdAt).toISOString().split('T')[0] : ''),
+});
 
 export default function MyProfile({ showToast, userRole = 'Founder', onSwitchRole }) {
+  const toast = showToast || ((msg, type) => console.log(`[Toast] ${type}: ${msg}`));
   const [activeSubTab, setActiveSubTab] = useState('overview'); // overview | edit | password
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -47,38 +67,37 @@ export default function MyProfile({ showToast, userRole = 'Founder', onSwitchRol
 
   const fetchProfile = () => {
     setLoading(true);
-    fetch('/api/profile')
-      .then(res => res.json())
+    authFetch('/profile')
       .then(res => {
         if (res.success && res.data) {
-          setProfile(res.data);
-          // Initialize edit form
+          const normalized = normalizeProfile(res.data);
+          setProfile(normalized);
           setFormData({
-            mobile: res.data.mobile || '',
-            alternate_mobile: res.data.alternate_mobile || '',
-            gender: res.data.gender || '',
-            blood_group: res.data.blood_group || '',
-            marital_status: res.data.marital_status || '',
-            address: res.data.address || '',
-            city: res.data.city || '',
-            state: res.data.state || '',
-            country: res.data.country || '',
-            pincode: res.data.pincode || '',
-            date_of_birth: res.data.date_of_birth || '',
-            emergency_contact: res.data.emergency_contact || {
+            mobile: normalized.mobile || '',
+            alternate_mobile: normalized.alternate_mobile || '',
+            gender: normalized.gender || '',
+            blood_group: normalized.blood_group || '',
+            marital_status: normalized.marital_status || '',
+            address: normalized.address || '',
+            city: normalized.city || '',
+            state: normalized.state || '',
+            country: normalized.country || '',
+            pincode: normalized.pincode || '',
+            date_of_birth: normalized.date_of_birth || '',
+            emergency_contact: normalized.emergency_contact || {
               contact_person: '',
               relationship: '',
               mobile: ''
             }
           });
         } else {
-          showToast(res.message || "Failed to load profile.", "error");
+          toast(res.message || "Failed to load profile.", "error");
         }
         setLoading(false);
       })
       .catch(err => {
         console.error("Error loading profile:", err);
-        showToast("Error connecting to server.", "error");
+        toast("Error connecting to server.", "error");
         setLoading(false);
       });
   };
@@ -105,7 +124,7 @@ export default function MyProfile({ showToast, userRole = 'Founder', onSwitchRol
   const handleSaveProfile = (e) => {
     e.preventDefault();
     if (!formData.mobile) {
-      showToast("Mobile number is required.", "error");
+      toast("Mobile number is required.", "error");
       return;
     }
 
@@ -117,17 +136,17 @@ export default function MyProfile({ showToast, userRole = 'Founder', onSwitchRol
       .then(res => res.json())
       .then(data => {
         if (data.success) {
-          showToast("Profile details updated successfully!", "success");
+          toast("Profile details updated successfully!", "success");
           fetchProfile();
           // Notify app to sync header avatars/names
           window.dispatchEvent(new Event('profileUpdated'));
           setActiveSubTab('overview');
         } else {
-          showToast(data.message || "Failed to update profile.", "error");
+          toast(data.message || "Failed to update profile.", "error");
         }
       })
       .catch(err => {
-        showToast("Error updating profile.", "error");
+        toast("Error updating profile.", "error");
         console.error(err);
       });
   };
@@ -135,15 +154,15 @@ export default function MyProfile({ showToast, userRole = 'Founder', onSwitchRol
   const handlePasswordSubmit = (e) => {
     e.preventDefault();
     if (!passwords.currentPassword || !passwords.newPassword || !passwords.confirmPassword) {
-      showToast("All password fields are required.", "error");
+      toast("All password fields are required.", "error");
       return;
     }
     if (passwords.newPassword !== passwords.confirmPassword) {
-      showToast("Confirm password must match the new password.", "error");
+      toast("Confirm password must match the new password.", "error");
       return;
     }
     if (passwords.newPassword.length < 6) {
-      showToast("Password must be at least 6 characters long.", "error");
+      toast("Password must be at least 6 characters long.", "error");
       return;
     }
 
@@ -158,18 +177,18 @@ export default function MyProfile({ showToast, userRole = 'Founder', onSwitchRol
       .then(res => res.json())
       .then(data => {
         if (data.success) {
-          showToast("Password changed successfully! Logging out...", "success");
+          toast("Password changed successfully! Logging out...", "success");
           setPasswords({ currentPassword: '', newPassword: '', confirmPassword: '' });
           // Log out the user after password change to enforce re-auth
           setTimeout(() => {
             if (onSwitchRole) onSwitchRole('Logout');
           }, 1500);
         } else {
-          showToast(data.message || "Failed to change password.", "error");
+          toast(data.message || "Failed to change password.", "error");
         }
       })
       .catch(err => {
-        showToast("Error changing password.", "error");
+        toast("Error changing password.", "error");
         console.error(err);
       });
   };
@@ -180,14 +199,14 @@ export default function MyProfile({ showToast, userRole = 'Founder', onSwitchRol
 
     // Validate size (5 MB limit)
     if (file.size > 5 * 1024 * 1024) {
-      showToast("File size exceeds 5 MB limit.", "error");
+      toast("File size exceeds 5 MB limit.", "error");
       return;
     }
 
     // Validate format
     const allowedFormats = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
     if (!allowedFormats.includes(file.type)) {
-      showToast("Invalid file format. Allowed: JPG, JPEG, PNG, WEBP.", "error");
+      toast("Invalid file format. Allowed: JPG, JPEG, PNG, WEBP.", "error");
       return;
     }
 
@@ -201,15 +220,15 @@ export default function MyProfile({ showToast, userRole = 'Founder', onSwitchRol
       .then(res => res.json())
       .then(data => {
         if (data.success) {
-          showToast("Profile photo updated successfully!", "success");
+          toast("Profile photo updated successfully!", "success");
           fetchProfile();
           window.dispatchEvent(new Event('profileUpdated'));
         } else {
-          showToast(data.message || "Upload failed.", "error");
+          toast(data.message || "Upload failed.", "error");
         }
       })
       .catch(err => {
-        showToast("Error uploading file.", "error");
+        toast("Error uploading file.", "error");
         console.error(err);
       });
   };
@@ -223,15 +242,15 @@ export default function MyProfile({ showToast, userRole = 'Founder', onSwitchRol
       .then(res => res.json())
       .then(data => {
         if (data.success) {
-          showToast("Profile photo removed.", "success");
+          toast("Profile photo removed.", "success");
           fetchProfile();
           window.dispatchEvent(new Event('profileUpdated'));
         } else {
-          showToast(data.message || "Removal failed.", "error");
+          toast(data.message || "Removal failed.", "error");
         }
       })
       .catch(err => {
-        showToast("Error removing photo.", "error");
+        toast("Error removing photo.", "error");
         console.error(err);
       });
   };

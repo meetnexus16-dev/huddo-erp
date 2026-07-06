@@ -1,24 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { Home, Link2 } from 'lucide-react';
+import { Home, Link2, Users, Percent, CreditCard, RefreshCw } from 'lucide-react';
 import { DashboardLayout } from '../../../components/DesignSystem';
 import MyProfile from '../../MyProfile';
 import NetworkWorkspace from '../../network/NetworkWorkspace';
 import OnboardSharePanel from '../../network/OnboardSharePanel';
 import { NETWORK_SIDEBAR_SECTION, getNetworkTab, isNetworkScreen } from '../../network/networkSidebarConfig';
+import { authFetch, formatInr } from '../../../utils/authFetch';
 
 export default function PromoterDashboard({ userRole = 'Promoter', showToast, onSwitchRole }) {
   const [activeScreen, setActiveScreen] = useState('Dashboard');
   const [profile, setProfile] = useState(null);
+  const [dashStats, setDashStats] = useState(null);
+  const [dashLoading, setDashLoading] = useState(true);
 
-  const authFetch = (path) => fetch(`/api${path}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(localStorage.getItem('huddo_token') ? { Authorization: `Bearer ${localStorage.getItem('huddo_token')}` } : {})
-    }
-  }).then((r) => r.json());
+  const authFetchLocal = (path) => authFetch(path);
 
   useEffect(() => {
-    authFetch('/onboarding/referral-info').then((res) => {
+    authFetchLocal('/onboarding/referral-info').then((res) => {
       if (res.success && res.data) {
         setProfile((prev) => ({
           ...(prev || {}),
@@ -28,7 +26,7 @@ export default function PromoterDashboard({ userRole = 'Promoter', showToast, on
       }
     }).catch(() => {});
 
-    authFetch('/profile').then((res) => {
+    authFetchLocal('/profile').then((res) => {
       if (res.success && res.data) {
         setProfile((prev) => ({
           ...(prev || {}),
@@ -37,6 +35,15 @@ export default function PromoterDashboard({ userRole = 'Promoter', showToast, on
         }));
       }
     }).catch(() => {});
+
+    if (activeScreen === 'Dashboard') {
+      setDashLoading(true);
+      authFetchLocal('/dashboard/me')
+        .then((res) => {
+          if (res.success) setDashStats(res.data);
+        })
+        .finally(() => setDashLoading(false));
+    }
   }, [activeScreen]);
 
   const SIDEBAR_ITEMS = [
@@ -58,6 +65,31 @@ export default function PromoterDashboard({ userRole = 'Promoter', showToast, on
             <h1 className="text-xl font-bold text-slate-900">Promoter Dashboard</h1>
             <p className="text-sm text-slate-500">Share your referral code, track onboarded users, and view commissions from your network.</p>
           </div>
+          {dashLoading ? (
+            <div className="flex items-center gap-2 text-slate-400 text-sm py-8">
+              <RefreshCw className="animate-spin text-orange-500" size={18} />
+              Loading network stats...
+            </div>
+          ) : dashStats ? (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white border border-slate-200 rounded-xl p-4">
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Total Referrals</p>
+                <p className="text-2xl font-extrabold text-slate-900 mt-1">{dashStats.referralTotal || 0}</p>
+              </div>
+              <div className="bg-white border border-slate-200 rounded-xl p-4">
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Approved</p>
+                <p className="text-2xl font-extrabold text-emerald-600 mt-1">{dashStats.referralApproved || 0}</p>
+              </div>
+              <div className="bg-white border border-slate-200 rounded-xl p-4">
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Pending</p>
+                <p className="text-2xl font-extrabold text-amber-600 mt-1">{dashStats.referralPending || 0}</p>
+              </div>
+              <div className="bg-white border border-slate-200 rounded-xl p-4">
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Commission Earned</p>
+                <p className="text-2xl font-extrabold text-indigo-600 mt-1">{formatInr(dashStats.totalEarned)}</p>
+              </div>
+            </div>
+          ) : null}
           <OnboardSharePanel
             showToast={showToast}
             title="Your Referral Code & Onboarding Link"
@@ -65,7 +97,7 @@ export default function PromoterDashboard({ userRole = 'Promoter', showToast, on
           />
           <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 text-sm text-indigo-900">
             <p className="font-bold flex items-center gap-2"><Link2 size={16} /> Quick tip</p>
-            <p className="mt-1">Open <strong>My Users</strong>, <strong>My Referrals</strong>, <strong>Commissions</strong>, or <strong>Payment History</strong> from the sidebar for live data from your network.</p>
+            <p className="mt-1">Open <strong>My Referrals</strong>, <strong>Commissions</strong>, or <strong>Payment History</strong> from the sidebar for full live data.</p>
           </div>
         </div>
       );

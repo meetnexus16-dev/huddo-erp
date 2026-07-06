@@ -42,7 +42,8 @@ import {
   getCityDashboard,
   getRetailerDashboard,
   getEmployeeDashboard,
-  getPromoterDashboard
+  getPromoterDashboard,
+  getMyDashboard
 } from '../controllers/dashboardController.js';
 
 import { getReport } from '../controllers/reportController.js';
@@ -191,6 +192,7 @@ router.post('/profile/remove-photo', verifyJWT, removePhoto);
 // 2. DASHBOARD ROUTES (Protected)
 // ==========================================
 router.get('/dashboard/founder', verifyJWT, checkPermission('dashboard', 'view'), getFounderDashboard);
+router.get('/dashboard/me', verifyJWT, getMyDashboard);
 router.get('/dashboard/country/:id', verifyJWT, checkPermission('dashboard', 'view'), getCountryDashboard);
 router.get('/dashboard/state/:id', verifyJWT, checkPermission('dashboard', 'view'), getStateDashboard);
 router.get('/dashboard/city/:id', verifyJWT, checkPermission('dashboard', 'view'), getCityDashboard);

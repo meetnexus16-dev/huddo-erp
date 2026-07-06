@@ -24,27 +24,46 @@ export default function CountryManagerDashboard({ cmId, isTab = false, onNavigat
   const [approvalRemarks, setApprovalRemarks] = useState('');
   const [actioning, setActioning] = useState(false);
 
-  // Fallback cmId if not supplied (e.g. read from localStorage for logged-in CM)
-  const resolvedCmId = cmId || 1;
+  const [resolvedCmId, setResolvedCmId] = useState(cmId || null);
+
+  useEffect(() => {
+    if (cmId) {
+      setResolvedCmId(cmId);
+      return;
+    }
+    const token = localStorage.getItem('huddo_token');
+    fetch('/api/profile', { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && res.data?._id) setResolvedCmId(res.data._id);
+      })
+      .catch(() => {});
+  }, [cmId]);
 
   const fetchDashboardData = async () => {
+    if (!resolvedCmId) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/country-managers/${resolvedCmId}/dashboard`);
+      const token = localStorage.getItem('huddo_token');
+      const res = await fetch(`/api/country-managers/${resolvedCmId}/dashboard`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       if (res.ok) {
         const result = await res.json();
         setData(result);
+      } else {
+        setData(null);
       }
     } catch (err) {
       console.error(err);
-      if (showToast) showToast("Failed to compile dashboard metrics", "error");
+      if (showToast) showToast('Failed to compile dashboard metrics', 'error');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchDashboardData();
+    if (resolvedCmId) fetchDashboardData();
   }, [resolvedCmId]);
 
   const handleApprovalSubmit = async () => {
@@ -68,7 +87,7 @@ export default function CountryManagerDashboard({ cmId, isTab = false, onNavigat
     }
   };
 
-  if (loading) {
+  if (loading || !resolvedCmId) {
     return (
       <div className="bg-white rounded-xl border border-slate-200 p-8 shadow-xs flex items-center justify-center min-h-[300px]">
         <div className="flex items-center gap-2 text-slate-400 text-sm font-bold animate-pulse">

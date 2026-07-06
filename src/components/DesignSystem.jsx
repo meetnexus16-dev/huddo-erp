@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  Search, Bell, User, Settings, LogOut, ChevronLeft, ChevronRight, X, Menu, Home,
+  Search, Bell, User, Settings, LogOut, Lock, ChevronLeft, ChevronRight, X, Menu, Home,
   ArrowUpRight, ShoppingCart, Store, Award, AlertCircle, Users
 } from 'lucide-react';
 import { 

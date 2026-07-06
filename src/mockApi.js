@@ -6,6 +6,12 @@ import { handleCountryManagerApi } from './modules/country-manager/mockApiCM';
 import { handlePromoterApi } from './modules/promoter/mockApiPromo';
 
 
+const geoLabel = (value, fallback = '') => {
+  if (value == null || value === '') return fallback;
+  if (typeof value === 'object') return value.name || fallback;
+  return String(value);
+};
+
 // Helper to initialize local storage data if not present
 const getOrSetLocal = (key, defaultVal) => {
   const existing = localStorage.getItem(key);
@@ -1021,9 +1027,9 @@ window.fetch = async function (input, init) {
       shift_timing: userProfile.shift_timing || "09:00 AM - 06:00 PM",
       
       address: userProfile.address || "101, Sea Breeze Apartments, Juhu",
-      city: userProfile.city || "Mumbai",
-      state: userProfile.state || "Maharashtra",
-      country: userProfile.country || "India",
+      city: geoLabel(userProfile.city, "Mumbai"),
+      state: geoLabel(userProfile.state, "Maharashtra"),
+      country: geoLabel(userProfile.country, "India"),
       pincode: userProfile.pincode || "400049",
       
       emergency_contact: userProfile.emergency_contact || {

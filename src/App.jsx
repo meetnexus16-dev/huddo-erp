@@ -447,7 +447,7 @@ export default function App() {
         image: user?.profile_photo || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"
       }}
     >
-      <ActiveComponent onNavigate={(target) => setActiveScreen(target)} showToast={showToast} userRole={currentRole} />
+      <ActiveComponent onNavigate={(target) => setActiveScreen(target)} showToast={showToast} userRole={currentRole} onSwitchRole={handleRoleChange} />
       
       {/* Global Success/Error toast */}
       {toast && (

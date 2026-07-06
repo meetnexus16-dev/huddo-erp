@@ -394,20 +394,9 @@ export default function StateManagerModule({ showToast: parentShowToast, onSwitc
     switch (activeTab) {
       case 'Dashboard':
         return (
-          <Dashboard 
-            cityManagers={cityManagers}
-            retailers={retailers}
-            orders={orders}
-            monthlyRevenueData={monthlyRevenueData}
-            cityPerformanceData={cityPerformanceData}
-            fieldForceData={fieldForceData}
-            pendingApprovals={pendingApprovals}
-            onApprove={(id) => handleApproveApproval(id)}
-            onReject={() => {
-              handleTabChange("Approvals");
-              showToast("Provide rejection reason in workspace card.", "info");
-            }}
+          <Dashboard
             onNavigate={handleTabChange}
+            showToast={showToast}
           />
         );
       case 'City Managers':
@@ -506,18 +495,9 @@ export default function StateManagerModule({ showToast: parentShowToast, onSwitc
         );
       default:
         return (
-          <Dashboard 
-            cityManagers={cityManagers}
-            monthlyRevenueData={monthlyRevenueData}
-            cityPerformanceData={cityPerformanceData}
-            fieldForceData={fieldForceData}
-            pendingApprovals={pendingApprovals}
-            onApprove={handleApproveApproval}
-            onReject={() => {
-              handleTabChange("Approvals");
-              showToast("Provide rejection reason in workspace card.", "info");
-            }}
+          <Dashboard
             onNavigate={handleTabChange}
+            showToast={showToast}
           />
         );
     }

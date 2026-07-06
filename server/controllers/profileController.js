@@ -47,7 +47,7 @@ export const getProfile = async (req, res, next) => {
       profile_photo: user.profile_photo || '',
 
       // Professional
-      role: user.role?.name || user.roleName || 'None',
+      role: (typeof user.role === 'object' && user.role !== null ? user.role.name : user.role) || user.roleName || 'None',
       department: user.department?.name || user.departmentName || '',
       designation: user.designation?.title || user.designationName || '',
       branch: user.branch || '',

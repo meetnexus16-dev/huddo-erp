@@ -163,7 +163,7 @@ export const getFounderDashboard = async (req, res, next) => {
           totalRetailers,
           totalPromoters,
           totalEmployees,
-          totalOutstanding: isCeo ? 0 : stats.totalOutstanding
+          totalOutstanding: isCeo ? 0 : totalOutstanding
         },
         statusBreakdown: statusBreakdown.map(item => ({
           name: item._id,
@@ -175,16 +175,8 @@ export const getFounderDashboard = async (req, res, next) => {
           amount: isCeo ? 0 : o.subtotal,
           status: o.status
         })),
-        monthlyRevenueTrends: isCeo ? [] : (monthlyRevenueTrends.length > 0 ? monthlyRevenueTrends : [
-          { month: "Apr", revenue: 8500000 },
-          { month: "May", revenue: 11000000 },
-          { month: "Jun", revenue: stats.totalRevenue || 12400000 }
-        ]),
-        statePerformanceData: isCeo ? [] : (statePerformanceData.length > 0 ? statePerformanceData : [
-          { state: "Maharashtra", revenue: stats.totalRevenue * 0.4 || 4500000 },
-          { state: "Delhi", revenue: stats.totalRevenue * 0.3 || 3200000 },
-          { state: "Karnataka", revenue: stats.totalRevenue * 0.2 || 2100000 }
-        ])
+        monthlyRevenueTrends: isCeo ? [] : monthlyRevenueTrends,
+        statePerformanceData: isCeo ? [] : statePerformanceData
       }
     });
   } catch (error) {
@@ -447,6 +439,254 @@ export const getEmployeeDashboard = async (req, res, next) => {
           percentage: userTarget.achievement_percentage
         } : null
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+import User from '../models/User.js';
+
+const APPROVED_ORDER_STATUSES = ['Approved', 'Processing', 'Packed', 'Shipped', 'Delivered'];
+const PENDING_ORDER_STATUSES = ['Submitted', 'Draft'];
+
+async function retailersInGeo({ cityIds, stateIds, countryId }) {
+  const filter = { is_deleted: { $ne: true } };
+  if (cityIds?.length) {
+    filter.city = { $in: cityIds };
+  } else if (stateIds?.length) {
+    filter.state = { $in: stateIds };
+  } else if (countryId) {
+    const states = await State.find({ country: countryId, is_deleted: { $ne: true } }).select('_id');
+    const cities = await City.find({ state: { $in: states.map((s) => s._id) }, is_deleted: { $ne: true } }).select('_id');
+    filter.city = { $in: cities.map((c) => c._id) };
+  } else {
+    return [];
+  }
+  return Retailer.find(filter).select('_id business_name city state is_active is_verified createdAt');
+}
+
+async function buildTerritoryDashboard(retailers) {
+  const retailerIds = retailers.map((r) => r._id);
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
+
+  const [monthOrders, allOrders, pendingOrders, recentOrders] = await Promise.all([
+    retailerIds.length
+      ? Order.find({
+        retailer: { $in: retailerIds },
+        status: { $in: APPROVED_ORDER_STATUSES },
+        createdAt: { $gte: startOfMonth }
+      })
+      : [],
+    retailerIds.length
+      ? Order.find({ retailer: { $in: retailerIds }, status: { $in: APPROVED_ORDER_STATUSES } })
+      : [],
+    retailerIds.length
+      ? Order.find({ retailer: { $in: retailerIds }, status: { $in: PENDING_ORDER_STATUSES } })
+        .populate('retailer', 'business_name')
+        .sort({ createdAt: -1 })
+        .limit(10)
+      : [],
+    retailerIds.length
+      ? Order.find({ retailer: { $in: retailerIds } })
+        .populate('retailer', 'business_name')
+        .sort({ createdAt: -1 })
+        .limit(5)
+      : []
+  ]);
+
+  const monthRevenue = monthOrders.reduce((sum, o) => sum + Number(o.grand_total || o.subtotal || 0), 0);
+
+  const monthlyTrends = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date();
+    d.setMonth(d.getMonth() - i);
+    const mStart = new Date(d.getFullYear(), d.getMonth(), 1);
+    const mEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
+    const mOrders = allOrders.filter((o) => o.createdAt >= mStart && o.createdAt <= mEnd);
+    monthlyTrends.push({
+      month: mStart.toLocaleString('en', { month: 'short' }),
+      revenue: mOrders.reduce((sum, o) => sum + Number(o.grand_total || o.subtotal || 0), 0),
+      orders: mOrders.length
+    });
+  }
+
+  const revenueByRetailer = {};
+  monthOrders.forEach((o) => {
+    const rid = o.retailer?.toString();
+    if (rid) revenueByRetailer[rid] = (revenueByRetailer[rid] || 0) + Number(o.grand_total || o.subtotal || 0);
+  });
+
+  const topRetailers = retailers
+    .map((r) => ({
+      id: r._id,
+      name: r.business_name,
+      revenue: revenueByRetailer[r._id.toString()] || 0,
+      status: r.is_active && r.is_verified ? 'Active' : 'Pending'
+    }))
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 8);
+
+  return {
+    monthRevenue,
+    totalOrders: allOrders.length,
+    monthOrders: monthOrders.length,
+    retailerCount: retailers.length,
+    activeRetailers: retailers.filter((r) => r.is_active && r.is_verified).length,
+    pendingApprovals: pendingOrders.length,
+    pendingOrders: pendingOrders.map((o) => ({
+      id: o._id,
+      order_number: o.order_number,
+      retailer: o.retailer?.business_name || '—',
+      amount: o.grand_total || o.subtotal || 0,
+      status: o.status,
+      date: o.createdAt
+    })),
+    recentOrders: recentOrders.map((o) => ({
+      id: o.order_number || o._id,
+      retailer: o.retailer?.business_name || '—',
+      amount: o.grand_total || o.subtotal || 0,
+      status: o.status
+    })),
+    monthlyTrends,
+    topRetailers
+  };
+}
+
+// GET /api/v1/dashboard/me — role-scoped dashboard for logged-in manager/promoter
+export const getMyDashboard = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user._id).populate('role country state city');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    const roleName = user.role?.name || user.roleName;
+
+    if (roleName === 'CityManager') {
+      if (!user.city) {
+        return res.status(400).json({ success: false, message: 'No city assigned to this account.' });
+      }
+      const city = await City.findById(user.city).populate({ path: 'state', select: 'name' });
+      const retailers = await retailersInGeo({ cityIds: [user.city] });
+      const stats = await buildTerritoryDashboard(retailers);
+      return res.status(200).json({
+        success: true,
+        data: {
+          role: roleName,
+          territoryLabel: city ? `${city.name}${city.state?.name ? `, ${city.state.name}` : ''}` : 'City',
+          ...stats
+        }
+      });
+    }
+
+    if (roleName === 'StateManager') {
+      if (!user.state) {
+        return res.status(400).json({ success: false, message: 'No state assigned to this account.' });
+      }
+      const state = await State.findById(user.state).select('name');
+      const retailers = await retailersInGeo({ stateIds: [user.state] });
+      const stats = await buildTerritoryDashboard(retailers);
+
+      const cities = await City.find({ state: user.state, is_deleted: { $ne: true } }).populate('manager', 'name');
+      const startOfMonth = new Date();
+      startOfMonth.setDate(1);
+      startOfMonth.setHours(0, 0, 0, 0);
+      const monthOrders = retailers.length
+        ? await Order.find({
+          retailer: { $in: retailers.map((r) => r._id) },
+          status: { $in: APPROVED_ORDER_STATUSES },
+          createdAt: { $gte: startOfMonth }
+        })
+        : [];
+
+      const cityPerformance = cities.map((city) => {
+        const cityRetailers = retailers.filter((r) => r.city?.toString() === city._id.toString());
+        const cityRetailerIds = new Set(cityRetailers.map((r) => r._id.toString()));
+        const cityOrders = monthOrders.filter((o) => cityRetailerIds.has(o.retailer?.toString()));
+        const revenue = cityOrders.reduce((sum, o) => sum + Number(o.grand_total || o.subtotal || 0), 0);
+        return {
+          city: city.name,
+          revenue,
+          orders: cityOrders.length,
+          retailers: cityRetailers.length,
+          managerName: city.manager?.name || 'Unassigned'
+        };
+      }).sort((a, b) => b.revenue - a.revenue);
+
+      const cityManagers = cities
+        .filter((c) => c.manager)
+        .map((city) => {
+          const cityRetailers = retailers.filter((r) => r.city?.toString() === city._id.toString());
+          const cityRetailerIds = new Set(cityRetailers.map((r) => r._id.toString()));
+          const ordersThisMonth = monthOrders.filter((o) => cityRetailerIds.has(o.retailer?.toString())).length;
+          const achieved = monthOrders
+            .filter((o) => cityRetailerIds.has(o.retailer?.toString()))
+            .reduce((sum, o) => sum + Number(o.grand_total || o.subtotal || 0), 0);
+          return {
+            city: city.name,
+            name: city.manager?.name || '—',
+            retailersCount: cityRetailers.length,
+            ordersThisMonth,
+            achieved,
+            monthlyTarget: 0,
+            status: 'Active'
+          };
+        });
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          role: roleName,
+          territoryLabel: state?.name || 'State',
+          ...stats,
+          cityPerformance,
+          cityManagers
+        }
+      });
+    }
+
+    if (roleName === 'Promoter') {
+      const [referralTotal, referralApproved, referralPending, commissionRows] = await Promise.all([
+        User.countDocuments({ promoted_by: user._id, is_deleted: { $ne: true } }),
+        User.countDocuments({ promoted_by: user._id, approval_status: 'Approved', is_deleted: { $ne: true } }),
+        User.countDocuments({ promoted_by: user._id, approval_status: 'Pending', is_deleted: { $ne: true } }),
+        CommissionRecord.find({ user: user._id, is_deleted: { $ne: true } }).sort({ createdAt: -1 }).limit(5)
+      ]);
+
+      const allCommissions = await CommissionRecord.find({ user: user._id, is_deleted: { $ne: true } });
+      const totalEarned = allCommissions.reduce((sum, r) => sum + Number(r.amount || 0), 0);
+      const unpaidEarned = allCommissions
+        .filter((r) => r.status === 'Approved')
+        .reduce((sum, r) => sum + Number(r.amount || 0), 0);
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          role: roleName,
+          territoryLabel: 'Referral Network',
+          referralTotal,
+          referralApproved,
+          referralPending,
+          totalEarned,
+          unpaidEarned,
+          recentCommissions: commissionRows.map((r) => ({
+            id: r._id,
+            amount: r.amount,
+            status: r.status,
+            type: r.commission_type,
+            description: r.description,
+            date: r.createdAt
+          }))
+        }
+      });
+    }
+
+    return res.status(400).json({
+      success: false,
+      message: 'Use /dashboard/founder for admin roles or /country-managers/:id/dashboard for country managers.'
     });
   } catch (error) {
     next(error);
