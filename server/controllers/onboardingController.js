@@ -16,106 +16,22 @@ import {
   getActiveManagerUser
 } from '../utils/managerAssignment.js';
 import { normalizeRoleName } from '../utils/roleUtils.js';
+import {
+  findCityByName,
+  findCountryByName,
+  findStateByName,
+  geoNamePresent,
+  resolveOnboardingTerritory
+} from '../utils/geoResolve.js';
 
 const ONBOARDING_ROLES = ['CountryManager', 'StateManager', 'CityManager', 'Retailer'];
 
 export const getOnboardingGeoOptions = async (req, res, next) => {
   try {
-    const { role, country_id: countryId, state_id: stateId } = req.query;
-
-    if (role === 'CountryManager' || !role) {
-      const countries = await Country.find({ is_deleted: { $ne: true } }).sort({ name: 1 });
-      const data = [];
-      for (const country of countries) {
-        await cleanupOrphanedCountryManager(country._id);
-        const refreshed = await Country.findById(country._id);
-        const manager = await getActiveManagerUser(refreshed?.manager);
-        data.push({
-          _id: country._id,
-          name: country.name,
-          code: country.code,
-          available: !manager,
-          manager_name: manager?.name || null
-        });
-      }
-      return res.status(200).json({ success: true, data: { countries: data } });
-    }
-
-    if (role === 'StateManager') {
-      if (!countryId) {
-        return res.status(400).json({ success: false, message: 'country_id is required for StateManager.' });
-      }
-      const country = await Country.findById(countryId).populate('manager');
-      const states = await State.find({ country: countryId, is_deleted: { $ne: true } }).sort({ name: 1 });
-      const stateData = [];
-      for (const state of states) {
-        await cleanupOrphanedStateManager(state._id);
-        const refreshed = await State.findById(state._id);
-        const manager = await getActiveManagerUser(refreshed?.manager);
-        stateData.push({
-          _id: state._id,
-          name: state.name,
-          available: !manager,
-          manager_name: manager?.name || null
-        });
-      }
-      return res.status(200).json({
-        success: true,
-        data: {
-          country_manager_name: country?.manager?.name || null,
-          states: stateData
-        }
-      });
-    }
-
-    if (role === 'CityManager' || role === 'Retailer') {
-      if (!countryId) {
-        return res.status(400).json({ success: false, message: 'country_id is required.' });
-      }
-      const country = await Country.findById(countryId).populate('manager');
-      let states = [];
-      if (stateId) {
-        const state = await State.findById(stateId).populate('manager');
-        states = state ? [state] : [];
-      } else {
-        states = await State.find({ country: countryId, is_deleted: { $ne: true } }).sort({ name: 1 });
-      }
-
-      const statesPayload = [];
-      for (const state of states) {
-        await cleanupOrphanedStateManager(state._id);
-        const refreshedState = await State.findById(state._id).populate('manager');
-        const cities = await City.find({ state: refreshedState._id, is_deleted: { $ne: true } }).sort({ name: 1 });
-        const cityData = [];
-        for (const city of cities) {
-          await cleanupOrphanedCityManager(city._id);
-          const refreshedCity = await City.findById(city._id);
-          const manager = await getActiveManagerUser(refreshedCity?.manager);
-          cityData.push({
-            _id: city._id,
-            name: city.name,
-            available: role === 'Retailer' ? true : !manager,
-            manager_name: manager?.name || null
-          });
-        }
-        statesPayload.push({
-          _id: refreshedState._id,
-          name: refreshedState.name,
-          state_manager_name: refreshedState.manager?.name || null,
-          cities: cityData
-        });
-      }
-
-      return res.status(200).json({
-        success: true,
-        data: {
-          country_manager_name: country?.manager?.name || null,
-          states: statesPayload
-        }
-      });
-    }
-
-    return res.status(400).json({ success: false, message: 'Invalid role for geo options.' });
+    return res.status(410).json({
+      success: false,
+      message: 'Use /api/geo/world/* endpoints for territory search.'
+    });
   } catch (error) {
     next(error);
   }
@@ -144,6 +60,55 @@ export const validateReferrerCode = async (req, res, next) => {
   }
 };
 
+async function validateManagerSlotByName(roleName, { countryName, stateName, cityName }) {
+  if (roleName === 'CountryManager' && countryName) {
+    const country = await findCountryByName(countryName);
+    if (country) {
+      await cleanupOrphanedCountryManager(country._id);
+      const refreshed = await Country.findById(country._id);
+      const manager = await getActiveManagerUser(refreshed?.manager);
+      if (manager) {
+        return `${country.name} already has manager ${manager.name}.`;
+      }
+    }
+  }
+
+  if (roleName === 'StateManager' && countryName && stateName) {
+    const country = await findCountryByName(countryName);
+    if (country) {
+      const state = await findStateByName(stateName, country._id);
+      if (state) {
+        await cleanupOrphanedStateManager(state._id);
+        const refreshed = await State.findById(state._id);
+        const manager = await getActiveManagerUser(refreshed?.manager);
+        if (manager) {
+          return `${state.name} already has manager ${manager.name}.`;
+        }
+      }
+    }
+  }
+
+  if (roleName === 'CityManager' && countryName && stateName && cityName) {
+    const country = await findCountryByName(countryName);
+    if (country) {
+      const state = await findStateByName(stateName, country._id);
+      if (state) {
+        const city = await findCityByName(cityName, state._id);
+        if (city) {
+          await cleanupOrphanedCityManager(city._id);
+          const refreshed = await City.findById(city._id);
+          const manager = await getActiveManagerUser(refreshed?.manager);
+          if (manager) {
+            return `${city.name} already has manager ${manager.name}.`;
+          }
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
 export const submitOnboarding = async (req, res, next) => {
   try {
     const {
@@ -155,6 +120,10 @@ export const submitOnboarding = async (req, res, next) => {
       country_id: countryId,
       state_id: stateId,
       city_id: cityId,
+      country_name: countryName,
+      state_name: stateName,
+      city_name: cityName,
+      country_iso: countryIso,
       business_name: businessName,
       owner_name: ownerName,
       shop_address: shopAddress,
@@ -189,45 +158,47 @@ export const submitOnboarding = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Role not found.' });
     }
 
-    if (normalizedRole === 'CountryManager') {
-      if (!countryId) return res.status(400).json({ success: false, message: 'Country is required.' });
-      await cleanupOrphanedCountryManager(countryId);
-      const country = await Country.findById(countryId);
-      const manager = await getActiveManagerUser(country?.manager);
-      if (manager) {
-        return res.status(400).json({ success: false, message: `${country.name} already has manager ${manager.name}.` });
-      }
+    if (normalizedRole === 'CountryManager' && !geoNamePresent(countryName)) {
+      return res.status(400).json({ success: false, message: 'Country is required.' });
     }
 
     if (normalizedRole === 'StateManager') {
-      if (!countryId || !stateId) {
+      if (!geoNamePresent(countryName, stateName)) {
         return res.status(400).json({ success: false, message: 'Country and state are required.' });
-      }
-      await cleanupOrphanedStateManager(stateId);
-      const state = await State.findById(stateId);
-      const manager = await getActiveManagerUser(state?.manager);
-      if (manager) {
-        return res.status(400).json({ success: false, message: `${state.name} already has manager ${manager.name}.` });
       }
     }
 
     if (normalizedRole === 'CityManager') {
-      if (!countryId || !stateId || !cityId) {
+      if (!geoNamePresent(countryName, stateName, cityName)) {
         return res.status(400).json({ success: false, message: 'Country, state, and city are required.' });
-      }
-      await cleanupOrphanedCityManager(cityId);
-      const city = await City.findById(cityId);
-      const manager = await getActiveManagerUser(city?.manager);
-      if (manager) {
-        return res.status(400).json({ success: false, message: `${city.name} already has manager ${manager.name}.` });
       }
     }
 
     if (normalizedRole === 'Retailer') {
-      if (!stateId || !cityId || !businessName?.trim()) {
-        return res.status(400).json({ success: false, message: 'Business name, state, and city are required for retailer.' });
+      if (!businessName?.trim() || !geoNamePresent(countryName, stateName, cityName)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Business name, country, state, and city are required for retailer.'
+        });
       }
     }
+
+    const slotError = await validateManagerSlotByName(normalizedRole, {
+      countryName,
+      stateName,
+      cityName
+    });
+    if (slotError) {
+      return res.status(400).json({ success: false, message: slotError });
+    }
+
+    const existingCountry = countryName ? await findCountryByName(countryName) : null;
+    const existingState = existingCountry && stateName
+      ? await findStateByName(stateName, existingCountry._id)
+      : null;
+    const existingCity = existingState && cityName
+      ? await findCityByName(cityName, existingState._id)
+      : null;
 
     const user = new User({
       name: name.trim(),
@@ -243,9 +214,13 @@ export const submitOnboarding = async (req, res, next) => {
       is_verified: false,
       is_active: true,
       onboarding_meta: {
-        requested_country: countryId || undefined,
-        requested_state: stateId || undefined,
-        requested_city: cityId || undefined,
+        requested_country: existingCountry?._id,
+        requested_state: existingState?._id,
+        requested_city: existingCity?._id,
+        requested_country_name: countryName?.trim() || undefined,
+        requested_state_name: stateName?.trim() || undefined,
+        requested_city_name: cityName?.trim() || undefined,
+        requested_country_iso: countryIso || undefined,
         business_name: businessName || undefined,
         shop_address: shopAddress || undefined,
         gst_number: gstNumber || undefined,
@@ -264,8 +239,8 @@ export const submitOnboarding = async (req, res, next) => {
         mobile: mobile.trim(),
         email: email.toLowerCase().trim(),
         shop_address: shopAddress,
-        state: stateId,
-        city: cityId,
+        state: existingState?._id,
+        city: existingCity?._id,
         gst_number: gstNumber,
         pan_number: panNumber,
         aadhaar_number: aadhaarNumber,
@@ -344,17 +319,48 @@ export const approveOnboardingUser = async (req, res, next) => {
     const roleName = user.roleName || user.role?.name;
     const meta = user.onboarding_meta || {};
 
-    if (roleName === 'CountryManager' && meta.requested_country) {
-      await assignCountryManager(meta.requested_country, user._id);
-    } else if (roleName === 'StateManager' && meta.requested_state) {
-      await assignStateManager(meta.requested_state, user._id);
-    } else if (roleName === 'CityManager' && meta.requested_city) {
-      await assignCityManager(meta.requested_city, user._id);
+    const territory = await resolveOnboardingTerritory(roleName, meta);
+    const createdNote = territory.created?.length
+      ? ` Created: ${territory.created.join(', ')}.`
+      : '';
+
+    if (territory.countryId) user.country = territory.countryId;
+    if (territory.stateId) user.state = territory.stateId;
+    if (territory.cityId) user.city = territory.cityId;
+
+    if (roleName === 'CountryManager' && territory.countryId) {
+      await assignCountryManager(territory.countryId, user._id);
+    } else if (roleName === 'StateManager' && territory.stateId) {
+      await assignStateManager(territory.stateId, user._id);
+    } else if (roleName === 'CityManager' && territory.cityId) {
+      await assignCityManager(territory.cityId, user._id);
     } else if (roleName === 'Retailer') {
+      let cityManagerId = null;
+      if (territory.cityId) {
+        const city = await City.findById(territory.cityId);
+        cityManagerId = city?.manager || null;
+      }
       await Retailer.findOneAndUpdate(
         { user: user._id },
-        { $set: { is_verified: true, is_active: true } }
+        {
+          $set: {
+            is_verified: true,
+            is_active: true,
+            state: territory.stateId || undefined,
+            city: territory.cityId || undefined,
+            assigned_city_manager: cityManagerId || undefined
+          }
+        }
       );
+    }
+
+    if (meta.requested_country_name || meta.requested_state_name || meta.requested_city_name) {
+      user.onboarding_meta = {
+        ...meta,
+        requested_country: territory.countryId || meta.requested_country,
+        requested_state: territory.stateId || meta.requested_state,
+        requested_city: territory.cityId || meta.requested_city
+      };
     }
 
     await user.save();
@@ -364,9 +370,10 @@ export const approveOnboardingUser = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      message: 'User approved successfully.',
+      message: `User approved successfully.${createdNote}`,
       data: refreshed,
-      default_password: DEFAULT_USER_PASSWORD
+      default_password: DEFAULT_USER_PASSWORD,
+      geo_created: territory.created || []
     });
   } catch (error) {
     next(error);

@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Shield, UserPlus, FileText, CheckSquare, XSquare, Plus, Edit2 } from 'lucide-react';
 import { initialUsers, STANDARD_ROLES, MODULES_LIST, PERMISSIONS_LIST, initialRolePermissions } from '../mockData';
 import { DataTable, Modal, DefaultPasswordNotice } from '../components/Common';
+import GeoCascadeSelect from '../components/GeoCascadeSelect';
+import { confirmGeoCreation, fetchGeoCreationPreview } from '../utils/geoPreview';
 import { DEFAULT_USER_PASSWORD, getUserCreatedMessage } from '../constants/defaultCredentials';
 
 const ROLE_DISPLAY_MAP = {
@@ -22,6 +24,38 @@ const formatRoleForDisplay = (role) => ROLE_DISPLAY_MAP[role] || role;
 const isCountryManagerRole = (role) =>
   role === 'Country Manager' || role === 'CountryManager';
 
+const isStateManagerRole = (role) =>
+  role === 'State Manager' || role === 'StateManager';
+
+const isCityManagerRole = (role) =>
+  role === 'City Manager' || role === 'CityManager';
+
+const isGeoManagerRole = (role) =>
+  isCountryManagerRole(role) || isStateManagerRole(role) || isCityManagerRole(role);
+
+const getGeoCascadeRole = (role) => {
+  if (isCountryManagerRole(role)) return 'CountryManager';
+  if (isStateManagerRole(role)) return 'StateManager';
+  if (isCityManagerRole(role)) return 'CityManager';
+  return null;
+};
+
+const emptyGeo = () => ({
+  country_name: '',
+  state_name: '',
+  city_name: '',
+  country_iso: ''
+});
+
+const toApiRoleName = (role) => {
+  const map = {
+    'Country Manager': 'CountryManager',
+    'State Manager': 'StateManager',
+    'City Manager': 'CityManager'
+  };
+  return map[role] || role.replace(/\s+/g, '');
+};
+
 const mapUserFromApi = (u) => ({
   id: u._id,
   name: u.name,
@@ -31,7 +65,11 @@ const mapUserFromApi = (u) => ({
   department: u.departmentName || u.department?.name || u.department || 'Sales',
   status: u.status || (u.is_active ? 'Active' : 'Inactive'),
   countryId: u.country?._id?.toString() || (typeof u.country === 'string' ? u.country : ''),
-  countryName: u.country?.name || ''
+  countryName: u.country?.name || '',
+  stateId: u.state?._id?.toString() || (typeof u.state === 'string' ? u.state : ''),
+  stateName: u.state?.name || '',
+  cityId: u.city?._id?.toString() || (typeof u.city === 'string' ? u.city : ''),
+  cityName: u.city?.name || ''
 });
 export default function UserRoleManagement({ showToast }) {
   const [activeTab, setActiveTab] = useState('users'); // users | roles
@@ -62,17 +100,17 @@ export default function UserRoleManagement({ showToast }) {
   // Add User Modal State
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [newUserData, setNewUserData] = useState({
-    name: '', email: '', mobile: '', role: 'Team Member', department: 'Sales', status: 'Active', countryId: ''
+    name: '', email: '', mobile: '', role: 'Team Member', department: 'Sales', status: 'Active',
+    ...emptyGeo()
   });
 
   // Edit User Modal State
   const [isEditUserOpen, setIsEditUserOpen] = useState(false);
   const [editUserData, setEditUserData] = useState({
-    id: '', name: '', email: '', mobile: '', role: 'Team Member', department: 'Sales', status: 'Active', countryId: ''
+    id: '', name: '', email: '', mobile: '', role: 'Team Member', department: 'Sales', status: 'Active',
+    ...emptyGeo()
   });
   const [editLoading, setEditLoading] = useState(false);
-  const [countries, setCountries] = useState([]);
-  const [countriesLoading, setCountriesLoading] = useState(false);
   // Custom Role Creator State
   const [isCustomRoleOpen, setIsCustomRoleOpen] = useState(false);
   const [customRoleName, setCustomRoleName] = useState('');
@@ -81,43 +119,20 @@ export default function UserRoleManagement({ showToast }) {
   const [editingRole, setEditingRole] = useState(null); // role name
   const [tempPermissions, setTempPermissions] = useState({}); // permissions copy
 
-  const loadAvailableCountries = React.useCallback(async (excludeUserId = null) => {
-    setCountriesLoading(true);
-    try {
-      const endpoint = excludeUserId
-        ? `/api/hierarchy/available-countries?exclude_user_id=${excludeUserId}`
-        : '/api/hierarchy/available-countries';
-      const res = await fetch(endpoint);
-      const data = await res.json();
-      if (data.success && Array.isArray(data.data)) {
-        setCountries(data.data);
-        return data.data;
-      }
-    } catch (err) {
-      console.error('Error loading countries:', err);
-    } finally {
-      setCountriesLoading(false);
-    }
-    return [];
-  }, []);
-
-  React.useEffect(() => {
-    if (!isAddUserOpen && !isEditUserOpen) return;
-
-    const role = isAddUserOpen ? newUserData.role : editUserData.role;
-    if (!isCountryManagerRole(role)) {
-      setCountries([]);
-      return;
-    }
-
-    loadAvailableCountries(isEditUserOpen ? editUserData.id : null);
-  }, [isAddUserOpen, isEditUserOpen, newUserData.role, editUserData.role, editUserData.id, loadAvailableCountries]);
+  const appendGeoPayload = (payload, userData) => {
+    if (!isGeoManagerRole(userData.role)) return payload;
+    if (userData.country_name) payload.country_name = userData.country_name;
+    if (userData.state_name) payload.state_name = userData.state_name;
+    if (userData.city_name) payload.city_name = userData.city_name;
+    if (userData.country_iso) payload.country_iso = userData.country_iso;
+    return payload;
+  };
 
   const handleNewUserRoleChange = (role) => {
     setNewUserData((prev) => ({
       ...prev,
       role,
-      countryId: isCountryManagerRole(role) ? prev.countryId : ''
+      ...(isGeoManagerRole(role) ? {} : emptyGeo())
     }));
   };
 
@@ -125,34 +140,33 @@ export default function UserRoleManagement({ showToast }) {
     setEditUserData((prev) => ({
       ...prev,
       role,
-      countryId: isCountryManagerRole(role) ? prev.countryId : ''
+      ...(isGeoManagerRole(role) ? {} : emptyGeo())
     }));
   };
 
-  const renderCountrySelect = (value, onChange, isEdit = false) => (
-    <div>
-      <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Assigned Country (Optional)</label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={countriesLoading}
-        className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
-      >
-        <option value="">{countriesLoading ? 'Loading countries...' : 'Not Assigned — assign later from Hierarchy'}</option>
-        {countries.map((country) => (
-          <option key={country._id} value={country._id} disabled={country.available === false}>
-            {country.available === false
-              ? `${country.name} — Assigned to ${country.manager_name || 'another manager'}`
-              : country.name}
-          </option>
-        ))}
-      </select>
-      {!isEdit && countries.length > 0 && !countries.some((c) => c.available) && (
-        <p className="text-[11px] text-amber-700 font-medium mt-1">All countries are currently assigned. You can still create the account and assign a country later.</p>
-      )}
-      <p className="text-[11px] text-slate-500 font-medium mt-1">Optional. Assign country from Hierarchy when ready.</p>
-    </div>
-  );
+  const renderGeoFields = (userData, setUserData) => {
+    const geoRole = getGeoCascadeRole(userData.role);
+    if (!geoRole) return null;
+
+    return (
+      <div className="border-t border-slate-100 pt-3">
+        <p className="text-xs font-bold text-slate-500 uppercase mb-2">Territory Assignment (Optional)</p>
+        <GeoCascadeSelect
+          role={geoRole}
+          value={{
+            country_name: userData.country_name || userData.countryName || '',
+            state_name: userData.state_name || userData.stateName || '',
+            city_name: userData.city_name || userData.cityName || '',
+            country_iso: userData.country_iso || ''
+          }}
+          onChange={(geo) => setUserData((prev) => ({ ...prev, ...geo }))}
+        />
+        <p className="text-[11px] text-slate-500 font-medium mt-1">
+          Search worldwide locations. Missing entries are created automatically when you save.
+        </p>
+      </div>
+    );
+  };
 
   // Create User Handler
   const handleAddUserSubmit = async (e) => {
@@ -162,7 +176,12 @@ export default function UserRoleManagement({ showToast }) {
       return;
     }
     try {
-      const payload = {
+      if (isGeoManagerRole(newUserData.role) && newUserData.country_name) {
+        const preview = await fetchGeoCreationPreview(toApiRoleName(newUserData.role), newUserData);
+        if (!confirmGeoCreation(preview)) return;
+      }
+
+      const payload = appendGeoPayload({
         name: newUserData.name,
         email: newUserData.email,
         mobile: newUserData.mobile,
@@ -171,10 +190,7 @@ export default function UserRoleManagement({ showToast }) {
         password: DEFAULT_USER_PASSWORD,
         is_active: newUserData.status === 'Active',
         status: newUserData.status
-      };
-      if (isCountryManagerRole(newUserData.role) && newUserData.countryId) {
-        payload.assigned_country_id = newUserData.countryId;
-      }
+      }, newUserData);
 
       const res = await fetch('/api/users', {
         method: 'POST',
@@ -190,7 +206,8 @@ export default function UserRoleManagement({ showToast }) {
 
       setIsAddUserOpen(false);
       setNewUserData({
-        name: '', email: '', mobile: '', role: 'Team Member', department: 'Sales', status: 'Active', countryId: ''
+        name: '', email: '', mobile: '', role: 'Team Member', department: 'Sales', status: 'Active',
+        ...emptyGeo()
       });
       showToast(resData.message || getUserCreatedMessage('User added successfully!'), 'success');
       loadUsers();
@@ -209,7 +226,10 @@ export default function UserRoleManagement({ showToast }) {
       role: user.role,
       department: user.department,
       status: user.status,
-      countryId: user.countryId || ''
+      country_name: user.countryName || '',
+      state_name: user.stateName || '',
+      city_name: user.cityName || '',
+      country_iso: ''
     });
     setIsEditUserOpen(true);
   };
@@ -222,7 +242,15 @@ export default function UserRoleManagement({ showToast }) {
     }
     setEditLoading(true);
     try {
-      const payload = {
+      if (isGeoManagerRole(editUserData.role) && editUserData.country_name) {
+        const preview = await fetchGeoCreationPreview(toApiRoleName(editUserData.role), editUserData);
+        if (!confirmGeoCreation(preview)) {
+          setEditLoading(false);
+          return;
+        }
+      }
+
+      const payload = appendGeoPayload({
         name: editUserData.name,
         email: editUserData.email,
         mobile: editUserData.mobile,
@@ -230,10 +258,7 @@ export default function UserRoleManagement({ showToast }) {
         departmentName: editUserData.department,
         status: editUserData.status,
         is_active: editUserData.status === 'Active'
-      };
-      if (isCountryManagerRole(editUserData.role) && editUserData.countryId) {
-        payload.assigned_country_id = editUserData.countryId;
-      }
+      }, editUserData);
 
       const res = await fetch(`/api/users/${editUserData.id}`, {
         method: 'PUT',
@@ -546,10 +571,7 @@ export default function UserRoleManagement({ showToast }) {
               </select>
             </div>
           </div>
-          {isCountryManagerRole(newUserData.role) && renderCountrySelect(
-            newUserData.countryId,
-            (countryId) => setNewUserData({ ...newUserData, countryId })
-          )}
+          {renderGeoFields(newUserData, setNewUserData)}
           <DefaultPasswordNotice />
           <div className="flex items-center justify-between border-t border-slate-100 pt-3">
             <span className="text-sm font-semibold text-slate-700">Account Access Status</span>
@@ -634,11 +656,7 @@ export default function UserRoleManagement({ showToast }) {
               </select>
             </div>
           </div>
-          {isCountryManagerRole(editUserData.role) && renderCountrySelect(
-            editUserData.countryId,
-            (countryId) => setEditUserData({ ...editUserData, countryId }),
-            true
-          )}
+          {renderGeoFields(editUserData, setEditUserData)}
           <div className="flex items-center justify-between border-t border-slate-100 pt-3">
             <span className="text-sm font-semibold text-slate-700">Account Access Status</span>
             <button

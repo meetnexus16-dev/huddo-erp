@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { GitBranch, MapPin, Award, User, Layers, Plus, ExternalLink, ShieldAlert } from 'lucide-react';
 import { DataTable, Modal, DefaultPasswordNotice } from '../components/Common';
+import GeoCascadeSelect from '../components/GeoCascadeSelect';
+import { confirmGeoCreation, fetchGeoCreationPreview } from '../utils/geoPreview';
 import { getUserCreatedMessage } from '../constants/defaultCredentials';
 
 export default function Hierarchy({ showToast, userRole }) {
@@ -14,7 +16,33 @@ export default function Hierarchy({ showToast, userRole }) {
   // Modals state
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [addType, setAddType] = useState(''); // Country | State | City
-  const [formData, setFormData] = useState({ name: '', code: '', manager: '', parent: '', stateName: '', countryName: '' });
+  const [formData, setFormData] = useState({
+    manager: '',
+    country_name: '',
+    state_name: '',
+    city_name: '',
+    country_iso: ''
+  });
+
+  const emptyGeoForm = () => ({
+    manager: '',
+    country_name: '',
+    state_name: '',
+    city_name: '',
+    country_iso: ''
+  });
+
+  const hierarchyGeoRole = addType === 'Country'
+    ? 'HierarchyCountry'
+    : addType === 'State'
+      ? 'HierarchyState'
+      : 'HierarchyCity';
+
+  const previewRoleForAdd = addType === 'Country'
+    ? 'CountryManager'
+    : addType === 'State'
+      ? 'StateManager'
+      : 'CityManager';
 
   const [isAssignOpen, setIsAssignOpen] = useState(false);
   const [assignTarget, setAssignTarget] = useState(null); // { type, name, currentManager }
@@ -295,10 +323,28 @@ export default function Hierarchy({ showToast, userRole }) {
     return Array.from(map.values());
   };
 
-  const handleAddSubmit = (e) => {
+  const handleAddSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.name) {
-      showToast("Please enter a name.", "error");
+
+    if (addType === 'Country' && !formData.country_name) {
+      showToast('Please select a country.', 'error');
+      return;
+    }
+    if (addType === 'State' && (!formData.country_name || !formData.state_name)) {
+      showToast('Please select country and state.', 'error');
+      return;
+    }
+    if (addType === 'City' && (!formData.country_name || !formData.state_name || !formData.city_name)) {
+      showToast('Please select country, state, and city.', 'error');
+      return;
+    }
+
+    try {
+      const preview = await fetchGeoCreationPreview(previewRoleForAdd, formData);
+      if (!confirmGeoCreation(preview)) return;
+    } catch (err) {
+      console.error(err);
+      showToast('Could not verify territory.', 'error');
       return;
     }
 
@@ -306,75 +352,56 @@ export default function Hierarchy({ showToast, userRole }) {
     const selectedEmpObj = employees.find(emp => (emp.full_name || emp.name) === formData.manager);
     const managerId = selectedUserObj?._id || selectedEmpObj?.user?._id || selectedEmpObj?.user || null;
 
+    let endpoint = '';
+    let payload = { manager: managerId };
+
     if (addType === 'Country') {
-      const countryCode = formData.code?.trim() || formData.name.slice(0, 3).toUpperCase();
-      const payload = { name: formData.name, code: countryCode, manager: managerId };
-      fetch('/api/countries', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      })
-        .then(res => res.json())
-        .then(resData => {
-          if (resData.success) {
-            showToast("Country added successfully.", "success");
-            loadHierarchy();
-            setIsAddOpen(false);
-            setFormData({ name: '', code: '', manager: '', parent: '', stateName: '', countryName: '' });
-          } else {
-            showToast(resData.message || "Error adding country.", "error");
-          }
-        })
-        .catch(err => console.error(err));
+      endpoint = '/api/countries';
+      payload = {
+        ...payload,
+        name: formData.country_name,
+        country_name: formData.country_name,
+        country_iso: formData.country_iso,
+        code: formData.country_iso || formData.country_name.slice(0, 3).toUpperCase()
+      };
     } else if (addType === 'State') {
-      const parentCountryObj = countries.find(c => c.name === formData.countryName) || countries[0];
-      if (!parentCountryObj) {
-        showToast("Please select a valid Country first.", "error");
-        return;
-      }
-      const payload = { name: formData.name, country: parentCountryObj.id, manager: managerId };
-      fetch('/api/states', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      })
-        .then(res => res.json())
-        .then(resData => {
-          if (resData.success) {
-            showToast("State added successfully.", "success");
-            loadHierarchy();
-            setIsAddOpen(false);
-            setFormData({ name: '', code: '', manager: '', parent: '', stateName: '', countryName: '' });
-          } else {
-            showToast(resData.message || "Error adding state.", "error");
-          }
-        })
-        .catch(err => console.error(err));
+      endpoint = '/api/states';
+      payload = {
+        ...payload,
+        name: formData.state_name,
+        state_name: formData.state_name,
+        country_name: formData.country_name,
+        country_iso: formData.country_iso
+      };
     } else if (addType === 'City') {
-      const parentStateObj = states.find(s => s.name === formData.stateName) || states[0];
-      if (!parentStateObj) {
-        showToast("Please select a valid State first.", "error");
-        return;
-      }
-      const payload = { name: formData.name, state: parentStateObj.id, manager: managerId };
-      fetch('/api/cities', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      })
-        .then(res => res.json())
-        .then(resData => {
-          if (resData.success) {
-            showToast("City added successfully.", "success");
-            loadHierarchy();
-            setIsAddOpen(false);
-            setFormData({ name: '', code: '', manager: '', parent: '', stateName: '', countryName: '' });
-          } else {
-            showToast(resData.message || "Error adding city.", "error");
-          }
-        })
-        .catch(err => console.error(err));
+      endpoint = '/api/cities';
+      payload = {
+        ...payload,
+        name: formData.city_name,
+        city_name: formData.city_name,
+        state_name: formData.state_name,
+        country_name: formData.country_name,
+        country_iso: formData.country_iso
+      };
     }
+
+    fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+      .then(res => res.json())
+      .then(resData => {
+        if (resData.success) {
+          showToast(`${addType} added successfully.`, 'success');
+          loadHierarchy();
+          setIsAddOpen(false);
+          setFormData(emptyGeoForm());
+        } else {
+          showToast(resData.message || `Error adding ${addType.toLowerCase()}.`, 'error');
+        }
+      })
+      .catch(err => console.error(err));
   };
 
   const reloadUsersAndAssignments = () => {
@@ -871,6 +898,7 @@ export default function Hierarchy({ showToast, userRole }) {
           <button 
             onClick={() => {
               setAddType(activeTab === 'countries' ? 'Country' : activeTab === 'states' ? 'State' : 'City');
+              setFormData(emptyGeoForm());
               setIsAddOpen(true);
             }}
             className="flex items-center gap-2 px-4 py-2 bg-brand-orange hover:bg-brand-orange-hover text-white text-sm font-semibold rounded-lg shadow-sm transition-colors"
@@ -995,57 +1023,20 @@ export default function Hierarchy({ showToast, userRole }) {
         onConfirm={handleAddSubmit}
       >
         <form className="space-y-4 text-left">
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{addType} Name</label>
-            <input 
-              type="text" 
-              placeholder={`e.g., ${addType === 'Country' ? 'Nepal' : addType === 'State' ? 'Rajasthan' : 'Jaipur'}`}
-              value={formData.name}
-              onChange={(e) => setFormData({...formData, name: e.target.value})}
-              className="w-full text-sm border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-brand-orange/20 focus:border-brand-orange"
-            />
-          </div>
+          <p className="text-xs text-slate-500">
+            Search and select from worldwide locations. Parent countries or states are created automatically when needed.
+          </p>
 
-          {addType === 'Country' && (
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Country Code</label>
-              <input 
-                type="text" 
-                placeholder="e.g., IN, NP, US"
-                value={formData.code || ''}
-                onChange={(e) => setFormData({...formData, code: e.target.value})}
-                className="w-full text-sm border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-brand-orange/20 focus:border-brand-orange"
-              />
-            </div>
-          )}
-
-          {addType === 'State' && (
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Parent Country</label>
-              <select 
-                value={formData.countryName}
-                onChange={(e) => setFormData({...formData, countryName: e.target.value})}
-                className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white"
-              >
-                <option value="">Select country...</option>
-                {countries.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-              </select>
-            </div>
-          )}
-
-          {addType === 'City' && (
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Parent State</label>
-              <select 
-                value={formData.stateName}
-                onChange={(e) => setFormData({...formData, stateName: e.target.value})}
-                className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white"
-              >
-                <option value="">Select state...</option>
-                {states.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-              </select>
-            </div>
-          )}
+          <GeoCascadeSelect
+            role={hierarchyGeoRole}
+            value={{
+              country_name: formData.country_name,
+              state_name: formData.state_name,
+              city_name: formData.city_name,
+              country_iso: formData.country_iso
+            }}
+            onChange={(geo) => setFormData((prev) => ({ ...prev, ...geo }))}
+          />
 
           <div>
             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Assign {addType} Manager</label>

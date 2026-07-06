@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { UserPlus, MapPin, Building, CheckCircle2, Loader2, Search } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { UserPlus, MapPin, Building, CheckCircle2, Loader2 } from 'lucide-react';
+import GeoCascadeSelect from '../components/GeoCascadeSelect';
 
 const ROLE_OPTIONS = [
   { value: 'CountryManager', label: 'Country Manager' },
@@ -18,72 +19,11 @@ async function apiFetch(path, options = {}) {
   return res.json();
 }
 
-function SearchableSelect({ label, options, value, onChange, disabled, placeholder, hint }) {
-  const [query, setQuery] = useState('');
-  const [open, setOpen] = useState(false);
-
-  const selected = options.find((o) => o._id === value);
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return options;
-    return options.filter((o) => o.name.toLowerCase().includes(q));
-  }, [options, query]);
-
-  return (
-    <div className="relative">
-      <label className="block text-sm font-semibold text-slate-700 mb-1">{label}</label>
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-        <input
-          type="text"
-          disabled={disabled}
-          value={open ? query : (selected?.name || '')}
-          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
-          onFocus={() => setOpen(true)}
-          placeholder={placeholder}
-          className="w-full pl-9 pr-3 py-2.5 border border-slate-200 rounded-lg text-sm disabled:bg-slate-100 disabled:text-slate-400"
-        />
-      </div>
-      {hint && <p className="text-xs text-indigo-600 mt-1">{hint}</p>}
-      {open && !disabled && (
-        <div className="absolute z-20 mt-1 w-full max-h-48 overflow-auto bg-white border border-slate-200 rounded-lg shadow-lg">
-          {filtered.map((option) => (
-            <button
-              key={option._id}
-              type="button"
-              disabled={option.disabled}
-              onClick={() => {
-                if (option.disabled) return;
-                onChange(option._id);
-                setQuery('');
-                setOpen(false);
-              }}
-              className={`w-full text-left px-3 py-2 text-sm border-b border-slate-50 last:border-0 ${
-                option.disabled ? 'text-slate-400 bg-slate-50 cursor-not-allowed' : 'hover:bg-orange-50 text-slate-700'
-              }`}
-            >
-              {option.name}
-              {option.disabled && option.manager_name ? ` — ${option.manager_name} (assigned)` : ''}
-            </button>
-          ))}
-          {filtered.length === 0 && <div className="px-3 py-2 text-sm text-slate-400">No matches</div>}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function OnboardingForm() {
   const params = new URLSearchParams(window.location.search);
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [geoLoading, setGeoLoading] = useState(false);
   const [referrerValid, setReferrerValid] = useState(null);
-  const [countries, setCountries] = useState([]);
-  const [states, setStates] = useState([]);
-  const [cities, setCities] = useState([]);
-  const [countryManagerName, setCountryManagerName] = useState('');
-  const [stateManagerName, setStateManagerName] = useState('');
 
   const [form, setForm] = useState({
     roleName: 'Retailer',
@@ -91,9 +31,10 @@ export default function OnboardingForm() {
     email: '',
     mobile: '',
     referrer_code: params.get('ref') || '',
-    country_id: '',
-    state_id: '',
-    city_id: '',
+    country_name: '',
+    state_name: '',
+    city_name: '',
+    country_iso: '',
     business_name: '',
     owner_name: '',
     shop_address: '',
@@ -101,52 +42,6 @@ export default function OnboardingForm() {
     pan_number: '',
     aadhaar_number: ''
   });
-
-  const loadGeo = async (role, countryId, stateId) => {
-    setGeoLoading(true);
-    try {
-      const query = new URLSearchParams({ role });
-      if (countryId) query.set('country_id', countryId);
-      if (stateId) query.set('state_id', stateId);
-      const res = await apiFetch(`/onboarding/geo-options?${query.toString()}`);
-      if (!res.success) return;
-
-      if (role === 'CountryManager') {
-        setCountries(res.data.countries || []);
-      } else if (role === 'StateManager') {
-        setCountryManagerName(res.data.country_manager_name || '');
-        setStates((res.data.states || []).map((s) => ({
-          ...s,
-          disabled: !s.available,
-          manager_name: s.manager_name
-        })));
-      } else {
-        setCountryManagerName(res.data.country_manager_name || '');
-        const stateRows = res.data.states || [];
-        if (stateId) {
-          const match = stateRows.find((s) => s._id === stateId) || stateRows[0];
-          setStateManagerName(match?.state_manager_name || '');
-          setCities((match?.cities || []).map((c) => ({
-            ...c,
-            disabled: form.roleName === 'CityManager' ? !c.available : false,
-            manager_name: c.manager_name
-          })));
-        } else {
-          setStates(stateRows.map((s) => ({ _id: s._id, name: s.name })));
-          setCities([]);
-          setStateManagerName('');
-        }
-      }
-    } finally {
-      setGeoLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    apiFetch('/onboarding/geo-options?role=CountryManager').then((res) => {
-      if (res.success) setCountries(res.data.countries || []);
-    });
-  }, []);
 
   useEffect(() => {
     if (form.referrer_code.trim().length >= 4) {
@@ -157,16 +52,6 @@ export default function OnboardingForm() {
       setReferrerValid(null);
     }
   }, [form.referrer_code]);
-
-  useEffect(() => {
-    if (form.roleName === 'CountryManager') {
-      loadGeo('CountryManager');
-    } else if (form.roleName === 'StateManager' && form.country_id) {
-      loadGeo('StateManager', form.country_id);
-    } else if ((form.roleName === 'CityManager' || form.roleName === 'Retailer') && form.country_id) {
-      loadGeo(form.roleName, form.country_id, form.state_id || undefined);
-    }
-  }, [form.roleName, form.country_id, form.state_id]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -185,7 +70,7 @@ export default function OnboardingForm() {
       } else {
         alert(res.message || 'Submission failed.');
       }
-    } catch (err) {
+    } catch {
       alert('Unable to submit onboarding form.');
     } finally {
       setLoading(false);
@@ -199,7 +84,7 @@ export default function OnboardingForm() {
           <CheckCircle2 className="mx-auto text-emerald-500 mb-4" size={48} />
           <h1 className="text-2xl font-bold text-slate-800 mb-2">Registration Submitted</h1>
           <p className="text-slate-600">
-            The onboarding request has been sent for admin approval. The referred user will receive login access after approval.
+            Your request is pending admin approval. Selected locations will be added to the system automatically when approved.
           </p>
         </div>
       </div>
@@ -215,7 +100,7 @@ export default function OnboardingForm() {
               <UserPlus size={28} />
               <div>
                 <h1 className="text-2xl font-bold">User Onboarding</h1>
-                <p className="text-orange-100 text-sm">Fill this form on behalf of the user you are referring</p>
+                <p className="text-orange-100 text-sm">Search and select territory from worldwide locations</p>
               </div>
             </div>
           </div>
@@ -245,9 +130,10 @@ export default function OnboardingForm() {
                   onChange={(e) => setForm({
                     ...form,
                     roleName: e.target.value,
-                    country_id: '',
-                    state_id: '',
-                    city_id: ''
+                    country_name: '',
+                    state_name: '',
+                    city_name: '',
+                    country_iso: ''
                   })}
                   className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm"
                 >
@@ -273,7 +159,7 @@ export default function OnboardingForm() {
               </div>
             </div>
 
-            {(form.roleName === 'Retailer') && (
+            {form.roleName === 'Retailer' && (
               <div className="border-t pt-6 space-y-4">
                 <h3 className="font-bold text-slate-800 flex items-center gap-2"><Building size={18} /> Business Details</h3>
                 <div className="grid md:grid-cols-2 gap-4">
@@ -289,76 +175,16 @@ export default function OnboardingForm() {
 
             <div className="border-t pt-6 space-y-4">
               <h3 className="font-bold text-slate-800 flex items-center gap-2"><MapPin size={18} /> Territory</h3>
-              {geoLoading && <p className="text-sm text-slate-500 flex items-center gap-2"><Loader2 className="animate-spin" size={16} /> Loading locations...</p>}
-
-              {form.roleName === 'CountryManager' && (
-                <SearchableSelect
-                  label="Country *"
-                  options={countries.map((c) => ({
-                    _id: c._id,
-                    name: c.name,
-                    disabled: !c.available,
-                    manager_name: c.manager_name
-                  }))}
-                  value={form.country_id}
-                  onChange={(id) => setForm({ ...form, country_id: id })}
-                  placeholder="Search country..."
-                />
-              )}
-
-              {form.roleName === 'StateManager' && (
-                <>
-                  <SearchableSelect
-                    label="Country *"
-                    options={countries.map((c) => ({ _id: c._id, name: c.name, disabled: false }))}
-                    value={form.country_id}
-                    onChange={(id) => setForm({ ...form, country_id: id, state_id: '' })}
-                    placeholder="Search country..."
-                    hint={countryManagerName ? `Country Manager: ${countryManagerName}` : ''}
-                  />
-                  {form.country_id && (
-                    <SearchableSelect
-                      label="State *"
-                      options={states}
-                      value={form.state_id}
-                      onChange={(id) => setForm({ ...form, state_id: id })}
-                      placeholder="Search state..."
-                    />
-                  )}
-                </>
-              )}
-
-              {(form.roleName === 'CityManager' || form.roleName === 'Retailer') && (
-                <>
-                  <SearchableSelect
-                    label="Country *"
-                    options={countries.map((c) => ({ _id: c._id, name: c.name, disabled: false }))}
-                    value={form.country_id}
-                    onChange={(id) => setForm({ ...form, country_id: id, state_id: '', city_id: '' })}
-                    placeholder="Search country..."
-                    hint={countryManagerName ? `Country Manager: ${countryManagerName}` : ''}
-                  />
-                  {form.country_id && (
-                    <SearchableSelect
-                      label="State *"
-                      options={states}
-                      value={form.state_id}
-                      onChange={(id) => setForm({ ...form, state_id: id, city_id: '' })}
-                      placeholder="Search state..."
-                    />
-                  )}
-                  {form.state_id && (
-                    <SearchableSelect
-                      label="City *"
-                      options={cities}
-                      value={form.city_id}
-                      onChange={(id) => setForm({ ...form, city_id: id })}
-                      placeholder="Search city..."
-                      hint={stateManagerName ? `State Manager: ${stateManagerName}` : ''}
-                    />
-                  )}
-                </>
-              )}
+              <GeoCascadeSelect
+                role={form.roleName}
+                value={{
+                  country_name: form.country_name,
+                  state_name: form.state_name,
+                  city_name: form.city_name,
+                  country_iso: form.country_iso
+                }}
+                onChange={(geo) => setForm((prev) => ({ ...prev, ...geo }))}
+              />
             </div>
 
             <button

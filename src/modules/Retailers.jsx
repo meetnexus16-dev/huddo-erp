@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import { Store, Plus, Eye, CheckCircle, XCircle, AlertCircle, FileText, ChevronRight, X, PhoneCall, CreditCard } from 'lucide-react';
 import { initialRetailers } from '../mockData';
 import { DataTable, Modal } from '../components/Common';
+import GeoCascadeSelect from '../components/GeoCascadeSelect';
+import { confirmGeoCreation, fetchGeoCreationPreview } from '../utils/geoPreview';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
 export default function Retailers({ showToast }) {
   const [retailers, setRetailers] = useState([]);
-  const [statesList, setStatesList] = useState([]);
-  const [citiesList, setCitiesList] = useState([]);
   const [promotersList, setPromotersList] = useState([]);
   const [cityManagersList, setCityManagersList] = useState([]);
 
@@ -46,27 +46,7 @@ export default function Retailers({ showToast }) {
         setRetailers(initialRetailers);
       });
 
-    // 2. Fetch States
-    fetch('/api/states?limit=500')
-      .then(res => res.json())
-      .then(resData => {
-        if (resData.success && Array.isArray(resData.data)) {
-          setStatesList(resData.data.map(s => ({ id: s._id, name: s.name })));
-        }
-      })
-      .catch(err => console.error("Error loading states:", err));
-
-    // 3. Fetch Cities
-    fetch('/api/cities?limit=500')
-      .then(res => res.json())
-      .then(resData => {
-        if (resData.success && Array.isArray(resData.data)) {
-          setCitiesList(resData.data.map(c => ({ id: c._id, name: c.name, stateId: c.state?._id || c.state })));
-        }
-      })
-      .catch(err => console.error("Error loading cities:", err));
-
-    // 4. Fetch Promoters
+    // 2. Fetch Promoters
     fetch('/api/promoters')
       .then(res => res.json())
       .then(resData => {
@@ -99,7 +79,8 @@ export default function Retailers({ showToast }) {
   // Form State
   const [formData, setFormData] = useState({
     shopName: '', owner: '', email: '', mobile: '', address: '',
-    state: '', city: '', category: 'Standard',
+    country_name: '', state_name: '', city_name: '', country_iso: '',
+    category: 'Standard',
     promoter: '', cityManager: '',
     gstNo: '', panNo: '', aadhaarNo: ''
   });
@@ -181,22 +162,10 @@ export default function Retailers({ showToast }) {
     return chartData;
   };
 
-  const handleStateChange = (stateId) => {
-    const matchedCities = citiesList.filter(c => c.stateId === stateId);
-    setFormData(prev => ({
-      ...prev,
-      state: stateId,
-      city: matchedCities[0]?.id || ''
-    }));
-  };
-
   const handleOpenAddModal = () => {
-    const firstState = statesList[0]?.id || '';
-    const filteredCities = citiesList.filter(c => c.stateId === firstState);
     setFormData({
       shopName: '', owner: '', email: '', mobile: '', address: '',
-      state: firstState,
-      city: filteredCities[0]?.id || '',
+      country_name: '', state_name: '', city_name: '', country_iso: '',
       category: 'Standard',
       promoter: '',
       cityManager: cityManagersList[0]?.id || '',
@@ -205,10 +174,23 @@ export default function Retailers({ showToast }) {
     setIsAddOpen(true);
   };
 
-  const handleAddSubmit = (e) => {
+  const handleAddSubmit = async (e) => {
     e.preventDefault();
     if (!formData.shopName || !formData.owner || !formData.mobile) {
       showToast("Please fill all required field parameters.", "error");
+      return;
+    }
+    if (!formData.country_name || !formData.state_name || !formData.city_name) {
+      showToast("Please select country, state, and city.", "error");
+      return;
+    }
+
+    try {
+      const preview = await fetchGeoCreationPreview('Retailer', formData);
+      if (!confirmGeoCreation(preview)) return;
+    } catch (err) {
+      console.error(err);
+      showToast('Could not verify territory.', 'error');
       return;
     }
 
@@ -223,8 +205,10 @@ export default function Retailers({ showToast }) {
         email: formData.email,
         mobile: formData.mobile,
         shop_address: formData.address,
-        state: formData.state || null,
-        city: formData.city || null,
+        country_name: formData.country_name,
+        state_name: formData.state_name,
+        city_name: formData.city_name,
+        country_iso: formData.country_iso,
         category: formData.category,
         assigned_promoter: formData.promoter && formData.promoter !== '' ? formData.promoter : null,
         assigned_city_manager: formData.cityManager || null,
@@ -552,26 +536,16 @@ export default function Retailers({ showToast }) {
             <textarea rows="2" placeholder="Suite details, Local bazaar..." value={formData.address} onChange={(e) => setFormData({...formData, address: e.target.value})} className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none" />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">State Allocation</label>
-              <select value={formData.state} onChange={(e) => handleStateChange(e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg p-2 bg-white">
-                {statesList.length === 0 && <option value="">No States Found</option>}
-                {statesList.map(st => (
-                  <option key={st.id} value={st.id}>{st.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">City Location</label>
-              <select value={formData.city} onChange={(e) => setFormData({...formData, city: e.target.value})} className="w-full text-sm border border-slate-200 rounded-lg p-2 bg-white">
-                {citiesList.filter(c => c.stateId === formData.state).length === 0 && <option value="">No Cities Found</option>}
-                {citiesList.filter(c => c.stateId === formData.state).map(ct => (
-                  <option key={ct.id} value={ct.id}>{ct.name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
+          <GeoCascadeSelect
+            role="Retailer"
+            value={{
+              country_name: formData.country_name,
+              state_name: formData.state_name,
+              city_name: formData.city_name,
+              country_iso: formData.country_iso
+            }}
+            onChange={(geo) => setFormData((prev) => ({ ...prev, ...geo }))}
+          />
 
           <div className="grid grid-cols-3 gap-2 border-t border-slate-100 pt-3">
             <div>

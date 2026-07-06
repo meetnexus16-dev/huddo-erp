@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle, XCircle } from 'lucide-react';
 import { DataTable, Modal } from '../components/Common';
+import { confirmGeoCreation, fetchGeoCreationPreview, formatGeoPreviewMessage } from '../utils/geoPreview';
 
 export default function Approvals({ showToast }) {
   const [approvals, setApprovals] = useState([]);
@@ -8,6 +9,8 @@ export default function Approvals({ showToast }) {
   const [selectedReq, setSelectedReq] = useState(null);
   const [reqAction, setReqAction] = useState('approve');
   const [commentVal, setCommentVal] = useState('');
+  const [geoPreview, setGeoPreview] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const loadApprovals = () => {
     Promise.all([
@@ -27,15 +30,26 @@ export default function Approvals({ showToast }) {
         }));
 
       const mappedOnboarding = (onboardingData.success && Array.isArray(onboardingData.data) ? onboardingData.data : [])
-        .map((u) => ({
-          id: u._id,
-          requester: u.name,
-          type: 'User Onboarding',
-          status: 'Pending',
-          details: `${u.roleName || u.role?.name} referred by ${u.promoted_by?.name || u.promoter_code_used || 'Unknown'}.`,
-          date: u.createdAt ? new Date(u.createdAt).toISOString().split('T')[0] : '—',
-          rawType: 'onboarding'
-        }));
+        .map((u) => {
+          const meta = u.onboarding_meta || {};
+          const territory = [
+            meta.requested_country?.name || meta.requested_country_name,
+            meta.requested_state?.name || meta.requested_state_name,
+            meta.requested_city?.name || meta.requested_city_name
+          ].filter(Boolean).join(' → ');
+
+          return {
+            id: u._id,
+            requester: u.name,
+            type: 'User Onboarding',
+            status: 'Pending',
+            details: `${u.roleName || u.role?.name} referred by ${u.promoted_by?.name || u.promoter_code_used || 'Unknown'}${territory ? `. Territory: ${territory}` : ''}.`,
+            date: u.createdAt ? new Date(u.createdAt).toISOString().split('T')[0] : '—',
+            rawType: 'onboarding',
+            roleName: u.roleName || u.role?.name,
+            onboardingMeta: meta
+          };
+        });
 
       setApprovals([...mappedOrders, ...mappedOnboarding]);
     }).catch((err) => console.error('Error loading approvals:', err));
@@ -45,14 +59,38 @@ export default function Approvals({ showToast }) {
     loadApprovals();
   }, []);
 
+  useEffect(() => {
+    if (!selectedReq || selectedReq.rawType !== 'onboarding' || reqAction !== 'approve') {
+      setGeoPreview(null);
+      return;
+    }
+
+    const meta = selectedReq.onboardingMeta || {};
+    setPreviewLoading(true);
+    fetchGeoCreationPreview(selectedReq.roleName, {
+      country_name: meta.requested_country?.name || meta.requested_country_name,
+      state_name: meta.requested_state?.name || meta.requested_state_name,
+      city_name: meta.requested_city?.name || meta.requested_city_name
+    })
+      .then((preview) => setGeoPreview(preview))
+      .catch(() => setGeoPreview(null))
+      .finally(() => setPreviewLoading(false));
+  }, [selectedReq, reqAction]);
+
   const handleActionClick = (req, action) => {
     setSelectedReq(req);
     setReqAction(action);
     setCommentVal('');
+    setGeoPreview(null);
   };
 
-  const handleConfirmActionSubmit = () => {
+  const handleConfirmActionSubmit = async () => {
     const isApprove = reqAction === 'approve';
+
+    if (isApprove && selectedReq?.rawType === 'onboarding' && geoPreview?.requires_confirmation) {
+      if (!confirmGeoCreation(geoPreview)) return;
+    }
+
     let endpoint = '';
     let payload = {};
 
@@ -73,7 +111,7 @@ export default function Approvals({ showToast }) {
       .then((resData) => {
         if (resData.success) {
           showToast(
-            `Request has been ${isApprove ? 'approved' : 'rejected'} successfully.`,
+            resData.message || `Request has been ${isApprove ? 'approved' : 'rejected'} successfully.`,
             isApprove ? 'success' : 'error'
           );
           loadApprovals();
@@ -87,6 +125,7 @@ export default function Approvals({ showToast }) {
       })
       .finally(() => {
         setSelectedReq(null);
+        setGeoPreview(null);
       });
   };
 
@@ -167,6 +206,19 @@ export default function Approvals({ showToast }) {
           <p className="text-xs text-slate-600">
             {selectedReq?.type}: <strong>{selectedReq?.requester}</strong>
           </p>
+
+          {reqAction === 'approve' && selectedReq?.rawType === 'onboarding' && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              {previewLoading && <p>Checking territory...</p>}
+              {!previewLoading && geoPreview?.requires_confirmation && (
+                <pre className="whitespace-pre-wrap font-sans">{formatGeoPreviewMessage(geoPreview)}</pre>
+              )}
+              {!previewLoading && geoPreview && !geoPreview.requires_confirmation && (
+                <p>All selected locations already exist in the system. Territory: {geoPreview.territory_label}</p>
+              )}
+            </div>
+          )}
+
           <div>
             <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Remarks (optional for approve)</label>
             <textarea

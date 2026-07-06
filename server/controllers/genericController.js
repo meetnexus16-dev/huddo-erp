@@ -148,6 +148,19 @@ export const genericController = (Model, populateOptions = []) => {
           req.body.company_id = req.user.company_id;
         }
 
+        if (['Country', 'State', 'City'].includes(Model.modelName)) {
+          const { prepareHierarchyGeoCreate } = await import('../utils/geoResolve.js');
+          try {
+            await prepareHierarchyGeoCreate(Model.modelName, req.body);
+          } catch (geoError) {
+            return res.status(400).json({ success: false, message: geoError.message, data: null });
+          }
+          delete req.body.country_name;
+          delete req.body.state_name;
+          delete req.body.city_name;
+          delete req.body.country_iso;
+        }
+
         if (req.body.manager && ['Country', 'State', 'City'].includes(Model.modelName)) {
           const {
             assignCountryManager,
@@ -195,12 +208,36 @@ export const genericController = (Model, populateOptions = []) => {
           }
         }
 
+        if (Model.modelName === 'Retailer') {
+          const { resolveRetailerGeo } = await import('../utils/geoResolve.js');
+          try {
+            const { countryId, stateId, cityId } = await resolveRetailerGeo(req.body);
+            req.body.state = stateId;
+            req.body.city = cityId;
+            if (countryId) req.body.country = countryId;
+          } catch (geoError) {
+            return res.status(400).json({ success: false, message: geoError.message, data: null });
+          }
+          delete req.body.country_id;
+          delete req.body.state_id;
+          delete req.body.city_id;
+          delete req.body.country_name;
+          delete req.body.state_name;
+          delete req.body.city_name;
+          delete req.body.country_iso;
+        }
+
         if (Model.modelName === 'User') {
           const { normalizeRoleName } = await import('../utils/roleUtils.js');
           const Role = mongoose.model('Role');
+          const { resolveOnboardingTerritory } = await import('../utils/geoResolve.js');
 
-          const assignedCountryId = req.body.assigned_country_id || req.body.country || null;
+          const assignedCountryId = req.body.assigned_country_id || req.body.country_id || req.body.country || null;
+          const assignedStateId = req.body.assigned_state_id || req.body.state_id || req.body.state || null;
+          const assignedCityId = req.body.assigned_city_id || req.body.city_id || req.body.city || null;
           delete req.body.assigned_country_id;
+          delete req.body.assigned_state_id;
+          delete req.body.assigned_city_id;
 
           if (req.body.roleName) {
             req.body.roleName = normalizeRoleName(req.body.roleName);
@@ -225,10 +262,36 @@ export const genericController = (Model, populateOptions = []) => {
 
           if (req.body.roleName === 'CountryManager') {
             req.body.designationName = 'Country Manager';
-            if (assignedCountryId && mongoose.isValidObjectId(assignedCountryId)) {
-              req.body.country = assignedCountryId;
+          } else if (req.body.roleName === 'StateManager') {
+            req.body.designationName = 'State Manager';
+          } else if (req.body.roleName === 'CityManager') {
+            req.body.designationName = 'City Manager';
+          }
+
+          const roleNameForGeo = req.body.roleName;
+          if (['CountryManager', 'StateManager', 'CityManager'].includes(roleNameForGeo)) {
+            try {
+              const territory = await resolveOnboardingTerritory(roleNameForGeo, {
+                requested_country: assignedCountryId,
+                requested_state: assignedStateId,
+                requested_city: assignedCityId,
+                requested_country_name: req.body.country_name,
+                requested_state_name: req.body.state_name,
+                requested_city_name: req.body.city_name,
+                requested_country_iso: req.body.country_iso
+              });
+              if (territory.countryId) req.body.country = territory.countryId;
+              if (territory.stateId) req.body.state = territory.stateId;
+              if (territory.cityId) req.body.city = territory.cityId;
+            } catch (geoError) {
+              return res.status(400).json({ success: false, message: geoError.message, data: null });
             }
           }
+
+          delete req.body.country_name;
+          delete req.body.state_name;
+          delete req.body.city_name;
+          delete req.body.country_iso;
 
           if (!req.body.password) {
             req.body.password = DEFAULT_USER_PASSWORD;
@@ -264,7 +327,10 @@ export const genericController = (Model, populateOptions = []) => {
                 designationName: 'Retailer',
                 status: 'Active',
                 is_verified: true,
-                is_active: true
+                is_active: true,
+                country: req.body.country || undefined,
+                state: req.body.state || undefined,
+                city: req.body.city || undefined
               });
               await newUser.save();
 
@@ -298,6 +364,26 @@ export const genericController = (Model, populateOptions = []) => {
               data: null,
               existing_manager_id: assignmentError.existingManagerId || null
             });
+          }
+        }
+
+        if (Model.modelName === 'User' && req.body.roleName === 'StateManager' && req.body.state) {
+          const { assignStateManager } = await import('../utils/managerAssignment.js');
+          try {
+            await assignStateManager(req.body.state, doc._id);
+          } catch (assignmentError) {
+            await Model.findByIdAndDelete(doc._id);
+            return res.status(400).json({ success: false, message: assignmentError.message, data: null });
+          }
+        }
+
+        if (Model.modelName === 'User' && req.body.roleName === 'CityManager' && req.body.city) {
+          const { assignCityManager } = await import('../utils/managerAssignment.js');
+          try {
+            await assignCityManager(req.body.city, doc._id);
+          } catch (assignmentError) {
+            await Model.findByIdAndDelete(doc._id);
+            return res.status(400).json({ success: false, message: assignmentError.message, data: null });
           }
         }
 
@@ -398,17 +484,48 @@ export const genericController = (Model, populateOptions = []) => {
           req.body.roleName = normalizeRoleName(req.body.roleName);
         }
 
-        const assignedCountryId = req.body.assigned_country_id || req.body.country || null;
+        const assignedCountryId = req.body.assigned_country_id || req.body.country_id || req.body.country || null;
+        const assignedStateId = req.body.assigned_state_id || req.body.state_id || req.body.state || null;
+        const assignedCityId = req.body.assigned_city_id || req.body.city_id || req.body.city || null;
+
         if (Model.modelName === 'User') {
           delete req.body.assigned_country_id;
+          delete req.body.assigned_state_id;
+          delete req.body.assigned_city_id;
 
           const nextRoleName = req.body.roleName || oldDoc?.roleName;
           if (nextRoleName === 'CountryManager') {
             req.body.designationName = 'Country Manager';
-            if (assignedCountryId && mongoose.isValidObjectId(assignedCountryId)) {
-              req.body.country = assignedCountryId;
+          } else if (nextRoleName === 'StateManager') {
+            req.body.designationName = 'State Manager';
+          } else if (nextRoleName === 'CityManager') {
+            req.body.designationName = 'City Manager';
+          }
+
+          if (['CountryManager', 'StateManager', 'CityManager'].includes(nextRoleName)) {
+            const { resolveOnboardingTerritory } = await import('../utils/geoResolve.js');
+            try {
+              const territory = await resolveOnboardingTerritory(nextRoleName, {
+                requested_country: assignedCountryId,
+                requested_state: assignedStateId,
+                requested_city: assignedCityId,
+                requested_country_name: req.body.country_name,
+                requested_state_name: req.body.state_name,
+                requested_city_name: req.body.city_name,
+                requested_country_iso: req.body.country_iso
+              });
+              if (territory.countryId) req.body.country = territory.countryId;
+              if (territory.stateId) req.body.state = territory.stateId;
+              if (territory.cityId) req.body.city = territory.cityId;
+            } catch (geoError) {
+              return res.status(400).json({ success: false, message: geoError.message, data: null });
             }
           }
+
+          delete req.body.country_name;
+          delete req.body.state_name;
+          delete req.body.city_name;
+          delete req.body.country_iso;
         }
 
         const data = await Model.findByIdAndUpdate(
@@ -425,21 +542,31 @@ export const genericController = (Model, populateOptions = []) => {
           });
         }
 
-        if (Model.modelName === 'User' && assignedCountryId && mongoose.isValidObjectId(assignedCountryId)) {
-          const effectiveRole = data.roleName || req.body.roleName;
-          if (effectiveRole === 'CountryManager') {
-            const { assignCountryManager, validateCountryAvailable } = await import('../utils/managerAssignment.js');
-            try {
-              await validateCountryAvailable(assignedCountryId, id);
-              await assignCountryManager(assignedCountryId, id);
-            } catch (assignmentError) {
-              return res.status(400).json({
-                success: false,
-                message: assignmentError.message,
-                data: null,
-                existing_manager_id: assignmentError.existingManagerId || null
-              });
+        if (Model.modelName === 'User') {
+          const effectiveRole = data.roleName || req.body.roleName || oldDoc?.roleName;
+          const {
+            assignCountryManager,
+            assignStateManager,
+            assignCityManager,
+            validateCountryAvailable
+          } = await import('../utils/managerAssignment.js');
+
+          try {
+            if (effectiveRole === 'CountryManager' && data.country) {
+              await validateCountryAvailable(data.country, id);
+              await assignCountryManager(data.country, id);
+            } else if (effectiveRole === 'StateManager' && data.state) {
+              await assignStateManager(data.state, id);
+            } else if (effectiveRole === 'CityManager' && data.city) {
+              await assignCityManager(data.city, id);
             }
+          } catch (assignmentError) {
+            return res.status(400).json({
+              success: false,
+              message: assignmentError.message,
+              data: null,
+              existing_manager_id: assignmentError.existingManagerId || null
+            });
           }
         }
 

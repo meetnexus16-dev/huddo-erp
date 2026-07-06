@@ -19,7 +19,25 @@ import {
   unassignStateManager,
   validateCountryAvailable
 } from '../utils/managerAssignment.js';
+import { buildGeoOptions } from '../utils/geoOptionsService.js';
 import { DEFAULT_USER_PASSWORD } from '../constants/defaultCredentials.js';
+
+export const getGeoCascade = async (req, res, next) => {
+  try {
+    const { role, country_id: countryId, state_id: stateId } = req.query;
+    const data = await buildGeoOptions({
+      role: role || 'list_countries',
+      countryId,
+      stateId
+    });
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    if (error.message === 'Invalid role for geo options.') {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+    next(error);
+  }
+};
 
 export const getCeoCandidates = async (req, res, next) => {
   try {

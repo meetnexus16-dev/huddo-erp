@@ -56,7 +56,8 @@ import {
   getCitiesWithHierarchyStats,
   getCountriesWithHierarchyStats,
   getStatesWithHierarchyStats,
-  validateCountryForManager
+  validateCountryForManager,
+  getGeoCascade
 } from '../controllers/hierarchyController.js';
 
 // Custom business logic imports
@@ -149,6 +150,7 @@ import { saveFileToDisk } from '../utils/fileUpload.js';
 import countryManagerRouter from './countryManagerRouter.js';
 import promoterRouter from './promoterRouter.js';
 import onboardingRouter from './onboardingRouter.js';
+import geoRouter from './geoRouter.js';
 import networkRouter from './networkRouter.js';
 import {
   listPromoterBonusStructures,
@@ -167,6 +169,7 @@ const router = express.Router();
 router.use('/country-managers', countryManagerRouter);
 router.use('/promoters', promoterRouter);
 router.use('/onboarding', onboardingRouter);
+router.use('/geo', geoRouter);
 router.use('/network', networkRouter);
 
 // ==========================================
@@ -217,6 +220,7 @@ router.get('/hierarchy/city/:id/revenue', verifyJWT, getCityRevenue);
 router.get('/hierarchy/assigned-managers', verifyJWT, getAssignedManagers);
 router.get('/hierarchy/ceo-candidates', verifyJWT, getCeoCandidates);
 router.get('/hierarchy/available-countries', verifyJWT, getAvailableCountries);
+router.get('/hierarchy/geo-cascade', verifyJWT, getGeoCascade);
 router.get('/hierarchy/validate-country', verifyJWT, validateCountryForManager);
 router.post('/hierarchy/manager-users', verifyJWT, checkPermission('users', 'create'), createHierarchyManagerUser);
 router.post('/hierarchy/assign-manager', verifyJWT, assignHierarchyManager);
@@ -366,7 +370,7 @@ router.delete('/product-categories/:id', verifyJWT, checkPermission('product-cat
 // 7. DYNAMIC CRUD REGISTRATION FOR ALL MODULES
 // ==========================================
 const modules = [
-  { path: 'users', model: User, populate: ['role', 'country'] },
+  { path: 'users', model: User, populate: ['role', 'country', 'state', 'city'] },
   { path: 'roles', model: Role },
   { path: 'countries', model: Country, populate: ['manager'] },
   { path: 'states', model: State, populate: ['country', 'manager'] },
