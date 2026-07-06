@@ -393,11 +393,41 @@ export async function handlePromoterApi(pathname, method, body, params) {
     ];
 
     // City distribution
-    const city_wise_distribution = [
-      { city: 'Mumbai', state: 'Maharashtra', promoter_count: promoters.filter(p => p.allocated_city_name === 'Mumbai').length, retailers: mappings.filter(m => m.retailer_city === 'Mumbai').length, revenue: revenueTracking.filter(r => r.retailer_city === 'Mumbai').length * 85000 },
-      { city: 'Pune', state: 'Maharashtra', promoter_count: promoters.filter(p => p.allocated_city_name === 'Pune').length, retailers: mappings.filter(m => m.retailer_city === 'Pune').length, revenue: 0 },
-      { city: 'New Delhi', state: 'Delhi', promoter_count: promoters.filter(p => p.allocated_city_name === 'New Delhi').length, retailers: mappings.filter(m => m.retailer_city === 'New Delhi').length, revenue: 124000 }
-    ];
+    const cityGroups = {};
+    for (const track of revenueTracking) {
+      const cityKey = `${track.retailer_city}|${track.retailer_state || ''}`;
+      if (!cityGroups[cityKey]) {
+        cityGroups[cityKey] = {
+          city: track.retailer_city,
+          state: track.retailer_state || '',
+          promoter_ids: new Set(),
+          retailers: 0,
+          revenue: 0
+        };
+      }
+      cityGroups[cityKey].revenue += track.invoice_amount;
+    }
+    for (const mapping of mappings.filter(m => m.is_active === 1)) {
+      const cityKey = `${mapping.retailer_city}|${mapping.retailer_state || ''}`;
+      if (!cityGroups[cityKey]) {
+        cityGroups[cityKey] = {
+          city: mapping.retailer_city,
+          state: mapping.retailer_state || '',
+          promoter_ids: new Set(),
+          retailers: 0,
+          revenue: 0
+        };
+      }
+      cityGroups[cityKey].retailers += 1;
+      cityGroups[cityKey].promoter_ids.add(mapping.promoter_id);
+    }
+    const city_wise_distribution = Object.values(cityGroups).map(group => ({
+      city: group.city,
+      state: group.state,
+      promoter_count: group.promoter_ids.size,
+      retailers: group.retailers,
+      revenue: group.revenue
+    })).sort((a, b) => b.revenue - a.revenue);
 
     return jsonResponse({
       total_promoters,

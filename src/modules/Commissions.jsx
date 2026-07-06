@@ -12,6 +12,7 @@ export default function Commissions({ showToast }) {
   const [states, setStates] = useState([]);
   const [cities, setCities] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [commissionPaidData, setCommissionPaidData] = useState([]);
 
   const [activeSubTab, setActiveSubTab] = useState('retailer'); // retailer | employee | promoter
   const [employeeRoleTab, setEmployeeRoleTab] = useState('city'); // city | state | country
@@ -93,20 +94,55 @@ export default function Commissions({ showToast }) {
     fetch('/api/promoters')
       .then(res => res.json())
       .then(resData => {
-        if (resData.success && Array.isArray(resData.data)) {
-          setPromoters(resData.data.map(p => ({
-            id: p._id,
-            name: p.name,
+        const rows = Array.isArray(resData.data) ? resData.data : (Array.isArray(resData) ? resData : []);
+        if (rows.length) {
+          setPromoters(rows.map(p => ({
+            id: p.promoter_id || p._id,
+            name: p.full_name || p.name,
             code: p.promoter_code,
-            mobile: p.mobile,
+            mobile: p.mobile_number || p.mobile,
             cities: p.territory?.map(c => c.name || c) || [],
             royaltyEarned: p.total_royalty_earned || 0,
-            royaltySettled: p.royalty_settled || 0,
-            royaltyPending: p.royalty_pending || 0
+            royaltySettled: (p.total_royalty_earned || 0) - (p.pending_royalty || 0),
+            royaltyPending: p.pending_royalty || 0
           })));
         }
       })
       .catch(err => console.error("Error loading promoters:", err));
+
+    fetch('/api/commission-records')
+      .then(res => res.json())
+      .then(resData => {
+        const records = Array.isArray(resData.data) ? resData.data : [];
+        const totals = {
+          Retailers: 0,
+          'City Mgrs': 0,
+          'State Mgrs': 0,
+          'Country Mgrs': 0,
+          Promoters: 0
+        };
+
+        for (const record of records) {
+          const amount = Number(record.amount || 0);
+          if (record.commission_type === 'PromoterRoyalty' || record.commission_type === 'PromoterBonus') {
+            totals.Promoters += amount;
+          } else if (record.commission_type === 'ManagerIncentive') {
+            const role = (record.beneficiary_role || '').toLowerCase();
+            if (role.includes('city')) totals['City Mgrs'] += amount;
+            else if (role.includes('state')) totals['State Mgrs'] += amount;
+            else if (role.includes('country')) totals['Country Mgrs'] += amount;
+          }
+        }
+
+        setCommissionPaidData([
+          { role: 'Retailers', amount: totals.Retailers, fill: '#f97316' },
+          { role: 'City Mgrs', amount: totals['City Mgrs'], fill: '#3b82f6' },
+          { role: 'State Mgrs', amount: totals['State Mgrs'], fill: '#10b981' },
+          { role: 'Country Mgrs', amount: totals['Country Mgrs'], fill: '#f59e0b' },
+          { role: 'Promoters', amount: totals.Promoters, fill: '#8b5cf6' }
+        ]);
+      })
+      .catch(err => console.error("Error loading commission records:", err));
 
     fetch('/api/employees')
       .then(res => res.json())
@@ -336,14 +372,15 @@ export default function Commissions({ showToast }) {
     };
   });
 
-  // Commission bar chart data
-  const commissionPaidData = [
-    { role: 'Retailers', amount: 485000, fill: '#f97316' },
-    { role: 'City Mgrs', amount: 78000, fill: '#3b82f6' },
-    { role: 'State Mgrs', amount: 56000, fill: '#10b981' },
-    { role: 'Country Mgrs', amount: 35000, fill: '#f59e0b' },
-    { role: 'Promoters', amount: 101600, fill: '#8b5cf6' }
-  ];
+  const payoutChartData = commissionPaidData.length
+    ? commissionPaidData
+    : [
+        { role: 'Retailers', amount: 0, fill: '#f97316' },
+        { role: 'City Mgrs', amount: 0, fill: '#3b82f6' },
+        { role: 'State Mgrs', amount: 0, fill: '#10b981' },
+        { role: 'Country Mgrs', amount: 0, fill: '#f59e0b' },
+        { role: 'Promoters', amount: 0, fill: '#8b5cf6' }
+      ];
 
   return (
     <div className="space-y-6">
@@ -726,13 +763,13 @@ export default function Commissions({ showToast }) {
         <h3 className="text-sm font-bold text-slate-900 mb-4 font-display">Commission Payout Ratios (This Month)</h3>
         <div className="h-56">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={commissionPaidData} margin={{ top: 5, right: 10, left: 20, bottom: 5 }}>
+            <BarChart data={payoutChartData} margin={{ top: 5, right: 10, left: 20, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
               <XAxis dataKey="role" fontSize={11} stroke="#94a3b8" />
               <YAxis fontSize={11} stroke="#94a3b8" tickFormatter={(val) => `₹${val / 1000}K`} />
               <Tooltip formatter={(value) => `₹${value.toLocaleString('en-IN')}`} />
               <Bar dataKey="amount" radius={[4, 4, 0, 0]}>
-                {commissionPaidData.map((entry, index) => (
+                {payoutChartData.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={entry.fill} />
                 ))}
               </Bar>
