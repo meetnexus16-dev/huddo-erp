@@ -8,7 +8,7 @@ const ROLE_OPTIONS = [
   { value: 'Retailer', label: 'Retailer' }
 ];
 
-const API_BASE = '/api/v1';
+const API_BASE = '/api';
 
 async function apiFetch(path, options = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
