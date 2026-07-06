@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { UserPlus, MapPin, Building, CheckCircle2, Loader2 } from 'lucide-react';
 import GeoCascadeSelect from '../components/GeoCascadeSelect';
+import { useConfirm } from '../context/ConfirmContext';
 
 const ROLE_OPTIONS = [
   { value: 'CountryManager', label: 'Country Manager' },
@@ -20,6 +21,7 @@ async function apiFetch(path, options = {}) {
 }
 
 export default function OnboardingForm() {
+  const { alert } = useConfirm();
   const params = new URLSearchParams(window.location.search);
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -56,7 +58,7 @@ export default function OnboardingForm() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!referrerValid) {
-      alert('Please enter a valid referrer user code.');
+      await alert('Please enter a valid referrer user code.', 'Invalid referrer');
       return;
     }
     setLoading(true);
@@ -68,10 +70,10 @@ export default function OnboardingForm() {
       if (res.success) {
         setSubmitted(true);
       } else {
-        alert(res.message || 'Submission failed.');
+        await alert(res.message || 'Submission failed.', 'Submission failed');
       }
     } catch {
-      alert('Unable to submit onboarding form.');
+      await alert('Unable to submit onboarding form.', 'Error');
     } finally {
       setLoading(false);
     }
@@ -94,7 +96,7 @@ export default function OnboardingForm() {
   return (
     <div className="min-h-screen bg-slate-50 py-10 px-4">
       <div className="max-w-3xl mx-auto">
-        <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-lg">
           <div className="bg-gradient-to-r from-orange-500 to-amber-500 px-8 py-6 text-white">
             <div className="flex items-center gap-3">
               <UserPlus size={28} />

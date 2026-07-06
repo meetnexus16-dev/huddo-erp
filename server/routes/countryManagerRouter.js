@@ -41,6 +41,7 @@ async function findAllCountryManagerUsers() {
   if (cmRole) {
     const roleUsers = await User.find({
       is_deleted: { $ne: true },
+      approval_status: 'Approved',
       $or: [
         { role: cmRole._id },
         { roleName: 'CountryManager' },
@@ -376,27 +377,13 @@ router.post('/', verifyJWT, upload.single('profile_photo'), async (req, res, nex
     if (existingMobile) {
       return res.status(400).json({ success: false, message: 'A user with this mobile number already exists.' });
     }
-    
-    // Generate a unique employee code
-    let employee_code = '';
-    let isUnique = false;
-    while (!isUnique) {
-      const rand = Math.floor(100 + Math.random() * 900);
-      employee_code = `CM-IN-2026-00${rand}`;
-      const existingUser = await User.findOne({ 
-        $or: [ { employee_id: employee_code }, { user_code: employee_code } ] 
-      });
-      if (!existingUser) {
-        isUnique = true;
-      }
-    }
 
     let final_photo = profile_photo_url || '';
     if (req.file) {
       final_photo = await saveFileToDisk(req.file, 'profile');
     }
     
-    // Create new User
+    // Create active Country Manager (admin direct — no approval required)
     const user = new User({
       name: full_name,
       email: email,
@@ -405,14 +392,12 @@ router.post('/', verifyJWT, upload.single('profile_photo'), async (req, res, nex
       role: cmRole._id,
       roleName: 'CountryManager',
       designationName: 'Country Manager',
-      employee_id: employee_code,
-      user_code: employee_code,
       profile_photo: final_photo,
+      approval_status: 'Approved',
+      onboarding_source: 'admin',
       status: 'Active',
       is_verified: true,
       is_active: true,
-      joining_date: joining_date || new Date(),
-      salary_structure: salary_structure ? Number(salary_structure) : 180000.00,
       residential_address,
       aadhaar_number,
       pan_number,
@@ -420,13 +405,16 @@ router.post('/', verifyJWT, upload.single('profile_photo'), async (req, res, nex
       bank_account_number,
       bank_ifsc
     });
-    
-    if (isValidObjectId(assigned_country_id)) {
-      user.country = assigned_country_id;
-    }
-    
+
     await user.save();
-    
+
+    const { generateUniqueUserCode } = await import('../utils/userCode.js');
+    if (!user.user_code) {
+      user.user_code = await generateUniqueUserCode('USR');
+      user.employee_id = user.user_code;
+      await user.save();
+    }
+
     if (isValidObjectId(assigned_country_id)) {
       try {
         await assignCountryManager(assigned_country_id, user._id);
@@ -439,11 +427,11 @@ router.post('/', verifyJWT, upload.single('profile_photo'), async (req, res, nex
         });
       }
     }
-    
+
     res.status(201).json({
       success: true,
       cm_id: user._id.toString(),
-      employee_code: user.employee_id,
+      employee_code: user.user_code,
       default_password: DEFAULT_USER_PASSWORD,
       message: `Country Manager created. Default login password: ${DEFAULT_USER_PASSWORD}.`
     });
@@ -791,7 +779,8 @@ router.post('/:id/state-manager-users', verifyJWT, async (req, res, next) => {
       name,
       email,
       mobile,
-      roleName: 'StateManager'
+      roleName: 'StateManager',
+      autoApprove: true
     });
     await user.populate('role');
 

@@ -23,7 +23,12 @@ export function formatGeoPreviewMessage(preview) {
   return `The following location(s) will be added to the system:\n\n${lines.join('\n')}\n\nTerritory: ${preview.territory_label}`;
 }
 
-export function confirmGeoCreation(preview) {
+export async function confirmGeoCreation(preview, confirmFn) {
   if (!preview?.requires_confirmation) return true;
-  return window.confirm(formatGeoPreviewMessage(preview));
+  if (!confirmFn) return false;
+  return confirmFn({
+    title: 'Create new territory?',
+    message: formatGeoPreviewMessage(preview),
+    confirmText: 'Continue'
+  });
 }

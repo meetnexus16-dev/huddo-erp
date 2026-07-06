@@ -1,6 +1,7 @@
 import User from '../models/User.js';
 import Role from '../models/Role.js';
 import Retailer from '../models/Retailer.js';
+import Promoter from '../models/Promoter.js';
 import Country from '../models/Country.js';
 import State from '../models/State.js';
 import City from '../models/City.js';
@@ -21,6 +22,8 @@ import {
   findCountryByName,
   findStateByName,
   geoNamePresent,
+  hasTerritoryIntent,
+  normalizeOnboardingMeta,
   resolveOnboardingTerritory
 } from '../utils/geoResolve.js';
 
@@ -212,7 +215,8 @@ export const submitOnboarding = async (req, res, next) => {
       onboarding_source: 'referral',
       approval_status: 'Pending',
       is_verified: false,
-      is_active: true,
+      is_active: false,
+      status: 'Inactive',
       onboarding_meta: {
         requested_country: existingCountry?._id,
         requested_state: existingState?._id,
@@ -222,6 +226,7 @@ export const submitOnboarding = async (req, res, next) => {
         requested_city_name: cityName?.trim() || undefined,
         requested_country_iso: countryIso || undefined,
         business_name: businessName || undefined,
+        owner_name: ownerName?.trim() || undefined,
         shop_address: shopAddress || undefined,
         gst_number: gstNumber || undefined,
         pan_number: panNumber || undefined,
@@ -230,24 +235,6 @@ export const submitOnboarding = async (req, res, next) => {
     });
 
     await user.save();
-
-    if (normalizedRole === 'Retailer') {
-      await Retailer.create({
-        user: user._id,
-        business_name: businessName.trim(),
-        owner_name: ownerName?.trim() || name.trim(),
-        mobile: mobile.trim(),
-        email: email.toLowerCase().trim(),
-        shop_address: shopAddress,
-        state: existingState?._id,
-        city: existingCity?._id,
-        gst_number: gstNumber,
-        pan_number: panNumber,
-        aadhaar_number: aadhaarNumber,
-        is_verified: false,
-        is_active: true
-      });
-    }
 
     res.status(201).json({
       success: true,
@@ -266,7 +253,6 @@ export const getPendingOnboardingUsers = async (req, res, next) => {
   try {
     const users = await User.find({
       approval_status: 'Pending',
-      onboarding_source: 'referral',
       is_deleted: { $ne: true }
     })
       .populate('role')
@@ -300,8 +286,13 @@ export const approveOnboardingUser = async (req, res, next) => {
       user.approved_by = req.user._id;
       user.approved_at = new Date();
       user.is_active = false;
+      user.status = 'Inactive';
       await user.save();
-      return res.status(200).json({ success: true, message: 'Onboarding rejected.', data: user });
+      await Retailer.updateMany(
+        { user: user._id },
+        { $set: { is_verified: false, is_active: false } }
+      );
+      return res.status(200).json({ success: true, message: 'Application rejected.', data: user });
     }
 
     const { generateUniqueUserCode } = await import('../utils/userCode.js');
@@ -315,11 +306,15 @@ export const approveOnboardingUser = async (req, res, next) => {
     user.approved_at = new Date();
     user.is_verified = true;
     user.is_active = true;
+    user.status = 'Active';
 
     const roleName = user.roleName || user.role?.name;
-    const meta = user.onboarding_meta || {};
+    const meta = await normalizeOnboardingMeta(user.onboarding_meta || {});
 
-    const territory = await resolveOnboardingTerritory(roleName, meta);
+    let territory = { countryId: null, stateId: null, cityId: null, created: [] };
+    if (hasTerritoryIntent(roleName, meta)) {
+      territory = await resolveOnboardingTerritory(roleName, meta);
+    }
     const createdNote = territory.created?.length
       ? ` Created: ${territory.created.join(', ')}.`
       : '';
@@ -335,22 +330,41 @@ export const approveOnboardingUser = async (req, res, next) => {
     } else if (roleName === 'CityManager' && territory.cityId) {
       await assignCityManager(territory.cityId, user._id);
     } else if (roleName === 'Retailer') {
-      let cityManagerId = null;
+      let cityManagerId = meta.assigned_city_manager || null;
       if (territory.cityId) {
         const city = await City.findById(territory.cityId);
-        cityManagerId = city?.manager || null;
+        cityManagerId = cityManagerId || city?.manager || null;
       }
-      await Retailer.findOneAndUpdate(
+
+      const retailerPayload = {
+        user: user._id,
+        business_name: meta.business_name || user.name,
+        owner_name: meta.owner_name || user.name,
+        mobile: user.mobile,
+        email: user.email,
+        shop_address: meta.shop_address,
+        gst_number: meta.gst_number,
+        pan_number: meta.pan_number,
+        aadhaar_number: meta.aadhaar_number,
+        category: meta.category,
+        is_verified: true,
+        is_active: true,
+        state: territory.stateId || undefined,
+        city: territory.cityId || undefined,
+        assigned_city_manager: cityManagerId || undefined,
+        assigned_promoter: meta.assigned_promoter || undefined
+      };
+
+      const existingRetailer = await Retailer.findOne({ user: user._id });
+      if (existingRetailer) {
+        await Retailer.findByIdAndUpdate(existingRetailer._id, { $set: retailerPayload });
+      } else {
+        await Retailer.create(retailerPayload);
+      }
+    } else if (roleName === 'Promoter') {
+      await Promoter.updateMany(
         { user: user._id },
-        {
-          $set: {
-            is_verified: true,
-            is_active: true,
-            state: territory.stateId || undefined,
-            city: territory.cityId || undefined,
-            assigned_city_manager: cityManagerId || undefined
-          }
-        }
+        { $set: { is_active: true } }
       );
     }
 

@@ -3,9 +3,11 @@ import React, { useState, useEffect } from 'react';
 import { User, Shield, Briefcase, CreditCard, ArrowLeft, Save, RefreshCw, Upload, Globe } from 'lucide-react';
 import { initialUsers, GEOGRAPHY } from '../../../mockData';
 import { DefaultPasswordNotice } from '../../../components/Common';
+import { useConfirm } from '../../../context/ConfirmContext';
 import { getUserCreatedMessage } from '../../../constants/defaultCredentials';
 
 export default function CountryManagerForm({ cmId, onNavigate, showToast }) {
+  const { confirm } = useConfirm();
   const isEdit = !!cmId;
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
@@ -263,7 +265,7 @@ export default function CountryManagerForm({ cmId, onNavigate, showToast }) {
         showToast(
           isEdit
             ? 'Country Manager profile updated successfully.'
-            : getUserCreatedMessage(responseData.message || 'Country Manager registered successfully.'),
+            : (responseData.message || 'Country Manager application submitted for approval.'),
           'success'
         );
         onNavigate(`detail-${isEdit ? cmId : responseData.cm_id}`);
@@ -271,9 +273,11 @@ export default function CountryManagerForm({ cmId, onNavigate, showToast }) {
         const errResult = await res.json().catch(() => ({}));
         showToast(errResult.message || errResult.error || "Save operation failed", "error");
         if (errResult.existing_manager_id) {
-          const openExisting = window.confirm(
-            `${errResult.message || 'Validation error'}\n\nWould you like to open the existing Country Manager profile?`
-          );
+          const openExisting = await confirm({
+            title: 'Country already assigned',
+            message: `${errResult.message || 'Validation error'}\n\nWould you like to open the existing Country Manager profile?`,
+            confirmText: 'Open profile'
+          });
           if (openExisting) {
             onNavigate(`detail-${errResult.existing_manager_id}`);
           }

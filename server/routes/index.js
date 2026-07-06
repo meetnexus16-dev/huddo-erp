@@ -374,7 +374,7 @@ router.delete('/product-categories/:id', verifyJWT, checkPermission('product-cat
 // 7. DYNAMIC CRUD REGISTRATION FOR ALL MODULES
 // ==========================================
 const modules = [
-  { path: 'users', model: User, populate: ['role', 'country', 'state', 'city'] },
+  { path: 'users', model: User, populate: ['role', 'country', 'state', 'city', 'department', 'designation', 'promoted_by'] },
   { path: 'roles', model: Role },
   { path: 'countries', model: Country, populate: ['manager'] },
   { path: 'states', model: State, populate: ['country', 'manager'] },

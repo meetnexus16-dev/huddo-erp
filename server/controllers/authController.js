@@ -71,7 +71,10 @@ export const register = async (req, res, next) => {
       otp,
       otp_expiry,
       is_verified: false,
-      is_active: true
+      is_active: false,
+      status: 'Inactive',
+      approval_status: 'Pending',
+      onboarding_source: 'self'
     });
 
     await newUser.save();
@@ -86,7 +89,7 @@ export const register = async (req, res, next) => {
 
     res.status(201).json({
       success: true,
-      message: 'Registration successful! Verification OTP sent to email and mobile.',
+      message: 'Registration submitted. Verify your OTP, then wait for admin approval before logging in.',
       data: userResponse
     });
   } catch (error) {

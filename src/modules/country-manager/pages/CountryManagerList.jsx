@@ -2,8 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import { Users, UserPlus, Search, RefreshCw, Eye, Edit2, ShieldAlert, Trash2, Globe, TrendingUp, CheckCircle, Shield } from 'lucide-react';
 import { DataTable } from '../../../components/Common';
+import { useConfirm } from '../../../context/ConfirmContext';
 
 export default function CountryManagerList({ onNavigate, showToast }) {
+  const { confirm } = useConfirm();
   const [managers, setManagers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
@@ -73,7 +75,14 @@ export default function CountryManagerList({ onNavigate, showToast }) {
 
   // Handle delete action
   const handleDelete = async (id) => {
-    if (!window.confirm("Are you sure you want to delete this Country Manager? All assigned states will be unassigned.")) return;
+    const confirmed = await confirm({
+      title: 'Delete Country Manager?',
+      message: 'Are you sure you want to delete this Country Manager? All assigned states will be unassigned.',
+      confirmText: 'Delete',
+      isDestructive: true
+    });
+    if (!confirmed) return;
+
     try {
       const res = await fetch(`/api/country-managers/${id}`, {
         method: 'DELETE'

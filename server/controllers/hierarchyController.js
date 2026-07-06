@@ -20,8 +20,8 @@ import {
   validateCountryAvailable
 } from '../utils/managerAssignment.js';
 import { buildGeoOptions } from '../utils/geoOptionsService.js';
-import { DEFAULT_USER_PASSWORD } from '../constants/defaultCredentials.js';
 import { isAdminUser } from '../utils/adminRole.js';
+import { DEFAULT_USER_PASSWORD } from '../constants/defaultCredentials.js';
 
 export const getGeoCascade = async (req, res, next) => {
   try {
@@ -126,7 +126,13 @@ export const createHierarchyManagerUser = async (req, res, next) => {
       });
     }
 
-    const user = await createManagerUser({ name, email, mobile, roleName });
+    const user = await createManagerUser({
+      name,
+      email,
+      mobile,
+      roleName,
+      autoApprove: true
+    });
     await user.populate('role');
 
     res.status(201).json({
@@ -138,7 +144,8 @@ export const createHierarchyManagerUser = async (req, res, next) => {
         mobile: user.mobile,
         roleName: user.roleName,
         role: user.role,
-        designationName: user.designationName
+        designationName: user.designationName,
+        approval_status: user.approval_status
       },
       default_password: DEFAULT_USER_PASSWORD,
       message: `Manager user created successfully. Default login password: ${DEFAULT_USER_PASSWORD}.`
@@ -202,6 +209,17 @@ export const assignHierarchyManager = async (req, res, next) => {
         success: true,
         data,
         message: 'Manager unassigned successfully.'
+      });
+    }
+
+    const managerUser = await User.findById(managerId);
+    if (!managerUser) {
+      return res.status(400).json({ success: false, message: 'Manager user not found.' });
+    }
+    if (managerUser.approval_status !== 'Approved') {
+      return res.status(400).json({
+        success: false,
+        message: 'This user is pending approval. Approve them in Approvals before assigning as manager.'
       });
     }
 

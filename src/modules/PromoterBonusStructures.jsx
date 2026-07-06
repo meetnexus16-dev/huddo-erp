@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Plus, Save, Trash2 } from 'lucide-react';
 import { DataTable, Modal } from '../components/Common';
+import { useConfirm } from '../context/ConfirmContext';
 
 const PROMOTED_ROLES = [
   { value: 'Retailer', label: 'Retailer' },
@@ -10,6 +11,7 @@ const PROMOTED_ROLES = [
 ];
 
 export default function PromoterBonusStructures({ showToast }) {
+  const { confirm } = useConfirm();
   const [rows, setRows] = useState([]);
   const [categories, setCategories] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
@@ -73,7 +75,12 @@ export default function PromoterBonusStructures({ showToast }) {
   };
 
   const handleDelete = async (row) => {
-    if (!window.confirm('Delete this bonus structure?')) return;
+    if (!(await confirm({
+      title: 'Delete bonus structure?',
+      message: 'Delete this bonus structure?',
+      confirmText: 'Delete',
+      isDestructive: true
+    }))) return;
     const res = await fetch(`/api/promoter-bonus-structures/${row._id}`, { method: 'DELETE' });
     const data = await res.json();
     if (data.success) {

@@ -26,6 +26,7 @@ export async function getActiveManagerUser(managerRef) {
 
   const user = await User.findById(managerId);
   if (!user || user.is_deleted) return null;
+  if (user.approval_status && user.approval_status !== 'Approved') return null;
 
   return user;
 }
@@ -474,7 +475,16 @@ export const assignCEO = async (userId) => {
   return updatedUser;
 };
 
-export const createManagerUser = async ({ name, email, mobile, roleName }) => {
+export const createManagerUser = async ({
+  name,
+  email,
+  mobile,
+  roleName,
+  onboardingSource = 'admin',
+  onboardingMeta = null,
+  extraFields = {},
+  autoApprove = false
+}) => {
   const normalizedRole = normalizeRoleName(roleName);
   const role = await getRoleByName(normalizedRole);
   if (!role) {
@@ -506,11 +516,23 @@ export const createManagerUser = async ({ name, email, mobile, roleName }) => {
     role: role._id,
     roleName: normalizedRole,
     designationName: designationMap[normalizedRole] || normalizedRole,
-    status: 'Active',
-    is_verified: true,
-    is_active: true
+    onboarding_source: onboardingSource,
+    onboarding_meta: autoApprove ? undefined : (onboardingMeta || undefined),
+    approval_status: autoApprove ? 'Approved' : 'Pending',
+    status: autoApprove ? 'Active' : 'Inactive',
+    is_verified: autoApprove,
+    is_active: autoApprove,
+    ...extraFields
   });
 
   await user.save();
+
+  if (autoApprove && !user.user_code) {
+    const { generateUniqueUserCode } = await import('../utils/userCode.js');
+    user.user_code = await generateUniqueUserCode('USR');
+    user.employee_id = user.user_code;
+    await user.save();
+  }
+
   return user;
 };

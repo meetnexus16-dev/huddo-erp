@@ -316,7 +316,9 @@ router.post('/register', verifyJWT, async (req, res, next) => {
       status: 'Active',
       is_verified: false,
       approval_status: 'Pending',
-      is_active: true
+      is_active: false,
+      status: 'Inactive',
+      onboarding_source: 'admin'
     });
 
     await user.save();
@@ -337,7 +339,8 @@ router.post('/register', verifyJWT, async (req, res, next) => {
         ifsc: bank_ifsc,
         bank_name
       },
-      royalty_percentage: Number(royalty_percentage || 5.0)
+      royalty_percentage: Number(royalty_percentage || 5.0),
+      is_active: false
     });
 
     await promoter.save();
@@ -347,7 +350,7 @@ router.post('/register', verifyJWT, async (req, res, next) => {
       promoter_id: promoter._id.toString(),
       promoter_code: pCode,
       default_password: DEFAULT_USER_PASSWORD,
-      message: `Promoter registered. Default login password: ${DEFAULT_USER_PASSWORD}.`
+      message: 'Promoter application submitted for approval.'
     });
   } catch (error) {
     next(error);

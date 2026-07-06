@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Users, UserCheck, ShoppingCart, Percent, CreditCard, Link2, Plus, Filter, RotateCcw, ChevronDown } from 'lucide-react';
+import { Users, UserCheck, ShoppingCart, Percent, CreditCard, Link2, Plus, Filter, RotateCcw, ChevronDown, Eye } from 'lucide-react';
 import { DataTable, Modal } from '../../components/Common';
 import OnboardSharePanel from './OnboardSharePanel';
+import OnboardingApplicationDetailModal from '../../components/OnboardingApplicationDetailModal';
 
 const DEFAULT_COMMISSION_FILTERS = {
   month: '',
@@ -70,6 +71,7 @@ export default function NetworkWorkspace({ showToast, initialTab = 'referral', h
   const [unpaidCommissions, setUnpaidCommissions] = useState([]);
   const [selectedCommissionIds, setSelectedCommissionIds] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
+  const [selectedReferral, setSelectedReferral] = useState(null);
 
   const loadUsers = () => {
     authFetch(`/network/users?tab=${userTab}`).then((res) => {
@@ -351,8 +353,40 @@ export default function NetworkWorkspace({ showToast, initialTab = 'referral', h
             columns={[
               { header: 'Name', accessor: 'name' },
               { header: 'Role', accessor: (r) => r.roleName || r.role?.name },
+              { header: 'Email', accessor: 'email' },
               { header: 'Mobile', accessor: 'mobile' },
-              { header: 'Status', accessor: 'approval_status', render: (v) => <span className={`px-2 py-0.5 rounded text-xs font-bold ${v === 'Approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{v}</span> }
+              {
+                header: 'Submitted',
+                accessor: (r) => (r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-IN') : '—')
+              },
+              {
+                header: 'Status',
+                accessor: 'approval_status',
+                render: (v) => (
+                  <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                    v === 'Approved' ? 'bg-emerald-100 text-emerald-700'
+                      : v === 'Rejected' ? 'bg-rose-100 text-rose-700'
+                        : 'bg-amber-100 text-amber-700'
+                  }`}>
+                    {v}
+                  </span>
+                )
+              },
+              {
+                header: 'View',
+                accessor: '_id',
+                render: (_, row) => (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedReferral(row)}
+                    className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-slate-200 text-slate-600 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200 transition-colors"
+                    title="View application details"
+                    aria-label={`View details for ${row.name}`}
+                  >
+                    <Eye size={16} />
+                  </button>
+                )
+              }
             ]}
           />
         </div>
@@ -701,6 +735,13 @@ export default function NetworkWorkspace({ showToast, initialTab = 'referral', h
           <button onClick={submitPayout} className="w-full bg-orange-500 text-white font-bold py-2.5 rounded-lg">Save Payment</button>
         </div>
       </Modal>
+
+      <OnboardingApplicationDetailModal
+        isOpen={!!selectedReferral}
+        onClose={() => setSelectedReferral(null)}
+        application={selectedReferral}
+        title="Referral Application Details"
+      />
 
       <Modal isOpen={!!selectedCommission} onClose={() => setSelectedCommission(null)} title="Commission Breakdown">
         {selectedCommission && (

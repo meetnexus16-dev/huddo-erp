@@ -100,13 +100,26 @@ function buildOptionMeta(role, level, { exists, has_manager, manager_name: manag
     sublabel = `${managerName} (assigned)`;
   }
 
+  if (!disabled && has_manager && managerName) {
+    if (role === 'Retailer') {
+      if (level === 'country') sublabel = `Country Manager: ${managerName}`;
+      if (level === 'state') sublabel = `State Manager: ${managerName}`;
+      if (level === 'city') sublabel = `City Manager: ${managerName}`;
+    } else if (role === 'StateManager' && level === 'country') {
+      sublabel = `Country Manager: ${managerName}`;
+    } else if (role === 'CityManager') {
+      if (level === 'country') sublabel = `Country Manager: ${managerName}`;
+      if (level === 'state') sublabel = `State Manager: ${managerName}`;
+    }
+  }
+
   return { disabled, sublabel, exists_in_db: exists, has_manager: has_manager, manager_name: managerName };
 }
 
 export async function annotateWorldCountries(countries, role = '') {
   if (!Array.isArray(countries) || countries.length === 0) return [];
 
-  const needsLookup = ['HierarchyCountry', 'CountryManager'].includes(role);
+  const needsLookup = ['HierarchyCountry', 'CountryManager', 'StateManager', 'CityManager', 'Retailer'].includes(role);
   if (!needsLookup) {
     return countries.map((row) => ({ ...row, disabled: false, sublabel: null }));
   }
@@ -123,7 +136,7 @@ export async function annotateWorldCountries(countries, role = '') {
 export async function annotateWorldStates(states, countryName, role = '') {
   if (!Array.isArray(states) || states.length === 0) return [];
 
-  const needsLookup = ['HierarchyState', 'StateManager'].includes(role);
+  const needsLookup = ['HierarchyState', 'StateManager', 'CityManager', 'Retailer'].includes(role);
   if (!needsLookup || !countryName) {
     return states.map((row) => ({ ...row, disabled: false, sublabel: null }));
   }
@@ -140,7 +153,7 @@ export async function annotateWorldStates(states, countryName, role = '') {
 export async function annotateWorldCities(cities, countryName, stateName, role = '') {
   if (!Array.isArray(cities) || cities.length === 0) return [];
 
-  const needsLookup = ['HierarchyCity', 'CityManager'].includes(role);
+  const needsLookup = ['HierarchyCity', 'CityManager', 'Retailer'].includes(role);
   if (!needsLookup || !countryName || !stateName) {
     return cities.map((row) => ({ ...row, disabled: false, sublabel: null }));
   }
@@ -203,5 +216,18 @@ export async function resolveManagerSlotMessage(role, { countryName, stateName, 
     }
   }
 
+  return null;
+}
+
+export async function lookupTerritoryManager(role, { countryName, stateName, cityName } = {}) {
+  if (role === 'CountryManager' && countryName) {
+    return (await getCountryManagerInfo(countryName)).manager_name;
+  }
+  if (role === 'StateManager' && countryName && stateName) {
+    return (await getStateManagerInfo(countryName, stateName)).manager_name;
+  }
+  if (role === 'CityManager' && countryName && stateName && cityName) {
+    return (await getCityManagerInfo(countryName, stateName, cityName)).manager_name;
+  }
   return null;
 }

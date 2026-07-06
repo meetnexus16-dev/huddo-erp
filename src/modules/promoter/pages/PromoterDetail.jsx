@@ -11,8 +11,10 @@ import {
   ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend 
 } from 'recharts';
 import { DataTable, Modal } from '../../../components/Common';
+import { useConfirm } from '../../../context/ConfirmContext';
 
 export default function PromoterDetail({ promoterId, onNavigate, showToast, userRole = 'Founder', initialTab = 'Overview' }) {
+  const { confirm } = useConfirm();
   const [activeTab, setActiveTab] = useState(initialTab);
 
   // PROMO-MODULE: Sync activeTab state when initialTab changes in the parent dashboard sidebar
@@ -246,21 +248,27 @@ export default function PromoterDetail({ promoterId, onNavigate, showToast, user
   };
 
   const handleUnmapRetailer = async (retId) => {
-    if (window.confirm("Are you sure you want to unmap this retailer?")) {
-      try {
-        const res = await fetch(`/api/promoters/${promoterId}/retailers/${retId}/unmap`, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reason: "Unmapped manually by manager" })
-        });
-        if (res.ok) {
-          showToast("Retailer unmapped successfully.", "success");
-          fetchRetailers();
-          fetchData();
-        }
-      } catch (err) {
-        showToast("Unmap operation failed.", "error");
+    const confirmed = await confirm({
+      title: 'Unmap retailer?',
+      message: 'Are you sure you want to unmap this retailer?',
+      confirmText: 'Unmap',
+      isDestructive: true
+    });
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch(`/api/promoters/${promoterId}/retailers/${retId}/unmap`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: "Unmapped manually by manager" })
+      });
+      if (res.ok) {
+        showToast("Retailer unmapped successfully.", "success");
+        fetchRetailers();
+        fetchData();
       }
+    } catch (err) {
+      showToast("Unmap operation failed.", "error");
     }
   };
 
@@ -349,18 +357,24 @@ export default function PromoterDetail({ promoterId, onNavigate, showToast, user
   };
 
   const handleDeleteRoyaltyConfig = async (confId) => {
-    if (window.confirm("Are you sure you want to delete this commission override?")) {
-      try {
-        const res = await fetch(`/api/promoters/${promoterId}/royalty/config/${confId}`, {
-          method: 'DELETE'
-        });
-        if (res.ok) {
-          showToast("Override deactivated successfully.", "success");
-          fetchRoyalty();
-        }
-      } catch (err) {
-        showToast("Deactivation failed.", "error");
+    const confirmed = await confirm({
+      title: 'Delete override?',
+      message: 'Are you sure you want to delete this commission override?',
+      confirmText: 'Delete',
+      isDestructive: true
+    });
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch(`/api/promoters/${promoterId}/royalty/config/${confId}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        showToast("Override deactivated successfully.", "success");
+        fetchRoyalty();
       }
+    } catch (err) {
+      showToast("Deactivation failed.", "error");
     }
   };
 

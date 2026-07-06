@@ -95,6 +95,9 @@ export const getMyReferrals = async (req, res, next) => {
       is_deleted: { $ne: true }
     })
       .populate('role')
+      .populate('onboarding_meta.requested_country', 'name')
+      .populate('onboarding_meta.requested_state', 'name')
+      .populate('onboarding_meta.requested_city', 'name')
       .sort({ createdAt: -1 });
 
     const filtered = tab === 'pending'

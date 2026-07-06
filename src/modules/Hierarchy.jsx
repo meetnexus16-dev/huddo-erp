@@ -3,9 +3,11 @@ import { GitBranch, MapPin, Award, User, Layers, Plus, ExternalLink, ShieldAlert
 import { DataTable, Modal, DefaultPasswordNotice } from '../components/Common';
 import GeoCascadeSelect from '../components/GeoCascadeSelect';
 import { confirmGeoCreation, fetchGeoCreationPreview } from '../utils/geoPreview';
+import { useConfirm } from '../context/ConfirmContext';
 import { getUserCreatedMessage } from '../constants/defaultCredentials';
 
 export default function Hierarchy({ showToast, userRole }) {
+  const { confirm } = useConfirm();
   const [activeTab, setActiveTab] = useState('tree'); // tree | countries | states | cities
   const [countries, setCountries] = useState([]);
   const [states, setStates] = useState([]);
@@ -341,7 +343,7 @@ export default function Hierarchy({ showToast, userRole }) {
 
     try {
       const preview = await fetchGeoCreationPreview(previewRoleForAdd, formData);
-      if (!confirmGeoCreation(preview)) return;
+      if (!(await confirmGeoCreation(preview, confirm))) return;
     } catch (err) {
       console.error(err);
       showToast('Could not verify territory.', 'error');

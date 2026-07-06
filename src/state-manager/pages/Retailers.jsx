@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts';
 import { formatCurrency, formatDate } from '../utils';
+import { useConfirm } from '../../context/ConfirmContext';
 
 export default function Retailers({ 
   retailers, 
@@ -17,6 +18,7 @@ export default function Retailers({
   territoryLabel = '',
   loading = false
 }) {
+  const { confirm } = useConfirm();
   const [activeTab, setActiveTab] = useState('All'); // All | Platinum | Gold | Silver | Standard | Pending Verification
   const [searchQuery, setSearchQuery] = useState('');
   const [cityFilter, setCityFilter] = useState('All Cities');
@@ -240,8 +242,14 @@ export default function Retailers({
                             <Check className="w-3.5 h-3.5" />
                           </button>
                           <button 
-                            onClick={() => {
-                              if (confirm(`Are you sure you want to reject ${ret.businessName}?`)) {
+                            onClick={async () => {
+                              const confirmed = await confirm({
+                                title: 'Reject retailer?',
+                                message: `Are you sure you want to reject ${ret.businessName}?`,
+                                confirmText: 'Reject',
+                                isDestructive: true
+                              });
+                              if (confirmed) {
                                 onRejectRetailer(ret.id);
                                 showToast(`Rejected registration for ${ret.businessName}`, "error");
                               }

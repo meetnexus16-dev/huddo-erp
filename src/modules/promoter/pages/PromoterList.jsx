@@ -3,9 +3,11 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Eye, Edit, Trash2, CheckCircle2, UserCheck, UserMinus, ShieldAlert, Download, BarChart2 } from 'lucide-react';
 import { DataTable } from '../../../components/Common';
+import { useConfirm } from '../../../context/ConfirmContext';
 import { GEOGRAPHY } from '../../../mockData';
 
 export default function PromoterList({ onNavigate, showToast }) {
+  const { confirm } = useConfirm();
   const [promoters, setPromoters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [analytics, setAnalytics] = useState({
@@ -102,19 +104,25 @@ export default function PromoterList({ onNavigate, showToast }) {
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm("Are you sure you want to delete this promoter? All retailer mappings will be unlinked.")) {
-      try {
-        const res = await fetch(`/api/promoters/${id}`, {
-          method: 'DELETE'
-        });
-        if (res.ok) {
-          showToast("Promoter soft deleted successfully.", "success");
-          fetchPromoters();
-          fetchAnalytics();
-        }
-      } catch (err) {
-        showToast("Delete operation failed.", "error");
+    const confirmed = await confirm({
+      title: 'Delete promoter?',
+      message: 'Are you sure you want to delete this promoter? All retailer mappings will be unlinked.',
+      confirmText: 'Delete',
+      isDestructive: true
+    });
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch(`/api/promoters/${id}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        showToast("Promoter soft deleted successfully.", "success");
+        fetchPromoters();
+        fetchAnalytics();
       }
+    } catch (err) {
+      showToast("Delete operation failed.", "error");
     }
   };
 

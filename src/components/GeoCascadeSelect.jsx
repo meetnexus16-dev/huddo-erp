@@ -1,5 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Loader2, Search } from 'lucide-react';
+
+const DROPDOWN_MAX_HEIGHT = 192;
+const DROPDOWN_GAP = 4;
 
 const MANAGER_SLOT_ROLES = new Set([
   'CountryManager',
@@ -20,10 +24,33 @@ function SearchableWorldSelect({
   warning,
   loadOptions
 }) {
+  const anchorRef = useRef(null);
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [options, setOptions] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [menuStyle, setMenuStyle] = useState(null);
+
+  const updateMenuPosition = useCallback(() => {
+    const anchor = anchorRef.current;
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom - DROPDOWN_GAP;
+    const spaceAbove = rect.top - DROPDOWN_GAP;
+    const openUp = spaceBelow < 120 && spaceAbove > spaceBelow;
+    const maxHeight = Math.min(DROPDOWN_MAX_HEIGHT, Math.max(openUp ? spaceAbove : spaceBelow, 96));
+
+    setMenuStyle({
+      position: 'fixed',
+      left: rect.left,
+      width: rect.width,
+      ...(openUp
+        ? { bottom: window.innerHeight - rect.top + DROPDOWN_GAP }
+        : { top: rect.bottom + DROPDOWN_GAP }),
+      maxHeight,
+      zIndex: 9999
+    });
+  }, []);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -45,12 +72,27 @@ function SearchableWorldSelect({
     };
   }, [open, query, loadOptions]);
 
+  useEffect(() => {
+    if (!open) {
+      setMenuStyle(null);
+      return undefined;
+    }
+    updateMenuPosition();
+    const handleReposition = () => updateMenuPosition();
+    window.addEventListener('resize', handleReposition);
+    window.addEventListener('scroll', handleReposition, true);
+    return () => {
+      window.removeEventListener('resize', handleReposition);
+      window.removeEventListener('scroll', handleReposition, true);
+    };
+  }, [open, updateMenuPosition]);
+
   const displayValue = useMemo(() => value || '', [value]);
 
   return (
     <div className="relative">
       <label className="block text-sm font-semibold text-slate-700 mb-1">{label}</label>
-      <div className="relative">
+      <div className="relative" ref={anchorRef}>
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
         <input
           type="text"
@@ -65,8 +107,11 @@ function SearchableWorldSelect({
       </div>
       {hint && <p className="text-xs text-indigo-600 mt-1">{hint}</p>}
       {warning && <p className="text-xs text-amber-700 mt-1">{warning}</p>}
-      {open && !disabled && (
-        <div className="absolute z-30 mt-1 w-full max-h-48 overflow-auto bg-white border border-slate-200 rounded-lg shadow-lg">
+      {open && !disabled && menuStyle && createPortal(
+        <div
+          style={menuStyle}
+          className="overflow-auto bg-white border border-slate-200 rounded-lg shadow-lg"
+        >
           {loading && (
             <div className="px-3 py-2 text-sm text-slate-400 flex items-center gap-2">
               <Loader2 className="animate-spin" size={14} /> Searching...
@@ -95,10 +140,29 @@ function SearchableWorldSelect({
           {!loading && options.length === 0 && (
             <div className="px-3 py-2 text-sm text-slate-400">No matches found</div>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
+}
+
+function managerHint(level, name) {
+  return name ? `${level} Manager: ${name}` : '';
+}
+
+async function fetchTerritoryManager(slotRole, params) {
+  const query = new URLSearchParams({ role: slotRole, ...params });
+  try {
+    const res = await fetch(`/api/geo/manager-slot?${query.toString()}`);
+    const json = await res.json();
+    if (json.success && json.data?.manager_name) {
+      return json.data.manager_name;
+    }
+  } catch {
+    // ignore lookup errors
+  }
+  return '';
 }
 
 const EMPTY_VALUE = {
@@ -136,6 +200,8 @@ export default function GeoCascadeSelect({
 }) {
   const [slotWarning, setSlotWarning] = useState({ country: '', state: '', city: '' });
   const [countryManagerName, setCountryManagerName] = useState('');
+  const [stateManagerName, setStateManagerName] = useState('');
+  const [cityManagerName, setCityManagerName] = useState('');
 
   const showCountry = ['StateManager', 'CityManager', 'Retailer', 'HierarchyState', 'HierarchyCity'].includes(role)
     || role === 'CountryManager'
@@ -187,19 +253,45 @@ export default function GeoCascadeSelect({
   useEffect(() => {
     if (!value.country_name) {
       setCountryManagerName('');
-      return;
+      return undefined;
     }
-    fetch(`/api/geo/manager-slot?role=CountryManager&country_name=${encodeURIComponent(value.country_name)}`)
-      .then((res) => res.json())
-      .then((json) => {
-        if (json.success && json.data.manager_name) {
-          setCountryManagerName(json.data.manager_name);
-        } else {
-          setCountryManagerName('');
-        }
-      })
-      .catch(() => setCountryManagerName(''));
+    let cancelled = false;
+    fetchTerritoryManager('CountryManager', { country_name: value.country_name })
+      .then((name) => { if (!cancelled) setCountryManagerName(name); })
+      .catch(() => { if (!cancelled) setCountryManagerName(''); });
+    return () => { cancelled = true; };
   }, [value.country_name]);
+
+  useEffect(() => {
+    if (!value.country_name || !value.state_name) {
+      setStateManagerName('');
+      return undefined;
+    }
+    let cancelled = false;
+    fetchTerritoryManager('StateManager', {
+      country_name: value.country_name,
+      state_name: value.state_name
+    })
+      .then((name) => { if (!cancelled) setStateManagerName(name); })
+      .catch(() => { if (!cancelled) setStateManagerName(''); });
+    return () => { cancelled = true; };
+  }, [value.country_name, value.state_name]);
+
+  useEffect(() => {
+    if (!value.country_name || !value.state_name || !value.city_name) {
+      setCityManagerName('');
+      return undefined;
+    }
+    let cancelled = false;
+    fetchTerritoryManager('CityManager', {
+      country_name: value.country_name,
+      state_name: value.state_name,
+      city_name: value.city_name
+    })
+      .then((name) => { if (!cancelled) setCityManagerName(name); })
+      .catch(() => { if (!cancelled) setCityManagerName(''); });
+    return () => { cancelled = true; };
+  }, [value.country_name, value.state_name, value.city_name]);
 
   useEffect(() => {
     if (role === 'CountryManager' && value.country_name) {
@@ -226,7 +318,13 @@ export default function GeoCascadeSelect({
     }
   }, [role, value.country_name, value.state_name, value.city_name]);
 
-  const countryHint = countryManagerName ? `Country Manager: ${countryManagerName}` : '';
+  const countryHint = managerHint('Country', countryManagerName);
+  const stateHint = managerHint('State', stateManagerName);
+  const cityHint = managerHint('City', cityManagerName);
+
+  const countryFieldHint = countryHint;
+  const stateFieldHint = stateHint;
+  const cityFieldHint = cityHint;
 
   return (
     <div className={`space-y-4 ${className}`}>
@@ -242,7 +340,7 @@ export default function GeoCascadeSelect({
           })}
           placeholder="Search country worldwide..."
           warning={slotWarning.country}
-          hint={showState || showCity ? countryHint : ''}
+          hint={countryFieldHint}
           loadOptions={loadCountries}
         />
       )}
@@ -254,7 +352,7 @@ export default function GeoCascadeSelect({
           onChange={(option) => patch({ state_name: option.name, city_name: '' })}
           placeholder="Search state..."
           warning={slotWarning.state}
-          hint={countryHint}
+          hint={stateFieldHint}
           loadOptions={loadStates}
         />
       )}
@@ -266,6 +364,7 @@ export default function GeoCascadeSelect({
           onChange={(option) => patch({ city_name: option.name })}
           placeholder="Search city..."
           warning={slotWarning.city}
+          hint={cityFieldHint}
           loadOptions={loadCities}
         />
       )}

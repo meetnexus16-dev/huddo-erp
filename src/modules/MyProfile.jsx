@@ -4,6 +4,7 @@ import {
   User, MapPin, Camera, Trash2, Key, ShieldCheck, Clock, UserCheck
 } from 'lucide-react';
 import { authFetch } from '../utils/authFetch';
+import { useConfirm } from '../context/ConfirmContext';
 
 const displayLabel = (value) => {
   if (value == null || value === '') return '';
@@ -25,6 +26,7 @@ const normalizeProfile = (data) => ({
 });
 
 export default function MyProfile({ showToast, userRole = 'Founder', onSwitchRole }) {
+  const { confirm } = useConfirm();
   const toast = showToast || ((msg, type) => console.log(`[Toast] ${type}: ${msg}`));
   const location = useLocation();
   const [activeSubTab, setActiveSubTab] = useState('overview'); // overview | edit | password
@@ -234,8 +236,14 @@ export default function MyProfile({ showToast, userRole = 'Founder', onSwitchRol
       });
   };
 
-  const handleRemovePhoto = () => {
-    if (!confirm("Are you sure you want to remove your profile photo?")) return;
+  const handleRemovePhoto = async () => {
+    const confirmed = await confirm({
+      title: 'Remove profile photo?',
+      message: 'Are you sure you want to remove your profile photo?',
+      confirmText: 'Remove',
+      isDestructive: true
+    });
+    if (!confirmed) return;
 
     fetch('/api/profile/remove-photo', {
       method: 'POST'

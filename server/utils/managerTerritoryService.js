@@ -355,7 +355,8 @@ export async function getUsersUnderTerritory(user) {
 
   return User.find({
     _id: { $in: Array.from(userIds) },
-    is_deleted: { $ne: true }
+    is_deleted: { $ne: true },
+    approval_status: 'Approved'
   })
     .populate('role')
     .populate('promoted_by', 'name user_code')

@@ -356,6 +356,9 @@ export function Modal({
   confirmText = "Confirm", 
   cancelText = "Cancel",
   isDestructive = false,
+  hideCancel = false,
+  hideFooter = false,
+  footerContent = null,
   maxWidth = "max-w-lg"
 }) {
   if (!isOpen) return null;
@@ -366,14 +369,16 @@ export function Modal({
     }
   };
 
+  const showFooter = footerContent || !hideFooter;
+
   return (
     <div 
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in"
       onClick={handleOverlayClick}
     >
       <div className={`bg-white w-full ${maxWidth} rounded-xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[90vh]`}>
-        {/* Modal Header */}
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+        {/* Modal Header — fixed */}
+        <div className="shrink-0 px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
           <h3 className="text-base font-bold text-slate-900 font-display">{title}</h3>
           <button 
             onClick={onClose}
@@ -383,32 +388,40 @@ export function Modal({
           </button>
         </div>
 
-        {/* Modal Content */}
-        <div className="p-6 overflow-y-auto flex-1">
+        {/* Modal Content — single scroll area */}
+        <div className="flex-1 min-h-0 overflow-y-auto p-6">
           {children}
         </div>
 
-        {/* Modal Actions Footer */}
-        <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
-          <button 
-            onClick={onClose}
-            className="px-4 py-2 border border-slate-200 hover:border-slate-300 rounded-lg text-sm font-semibold text-slate-700 bg-white transition-colors"
-          >
-            {cancelText}
-          </button>
-          {onConfirm && (
-            <button 
-              onClick={onConfirm}
-              className={`px-4 py-2 text-sm font-bold text-white rounded-lg transition-colors shadow-sm ${
-                isDestructive 
-                  ? 'bg-rose-600 hover:bg-rose-700' 
-                  : 'bg-brand-orange hover:bg-brand-orange-hover'
-              }`}
-            >
-              {confirmText}
-            </button>
+        {/* Modal Footer — fixed */}
+        {showFooter && (
+        <div className="shrink-0 px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+          {footerContent || (
+            <>
+              {!hideCancel && (
+                <button 
+                  onClick={onClose}
+                  className="px-4 py-2 border border-slate-200 hover:border-slate-300 rounded-lg text-sm font-semibold text-slate-700 bg-white transition-colors"
+                >
+                  {cancelText}
+                </button>
+              )}
+              {onConfirm && (
+                <button 
+                  onClick={onConfirm}
+                  className={`px-4 py-2 text-sm font-bold text-white rounded-lg transition-colors shadow-sm ${
+                    isDestructive 
+                      ? 'bg-rose-600 hover:bg-rose-700' 
+                      : 'bg-brand-orange hover:bg-brand-orange-hover'
+                  }`}
+                >
+                  {confirmText}
+                </button>
+              )}
+            </>
           )}
         </div>
+        )}
       </div>
     </div>
   );

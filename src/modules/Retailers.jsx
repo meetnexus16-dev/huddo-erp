@@ -4,9 +4,11 @@ import { initialRetailers } from '../mockData';
 import { DataTable, Modal } from '../components/Common';
 import GeoCascadeSelect from '../components/GeoCascadeSelect';
 import { confirmGeoCreation, fetchGeoCreationPreview } from '../utils/geoPreview';
+import { useConfirm } from '../context/ConfirmContext';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
 export default function Retailers({ showToast }) {
+  const { confirm } = useConfirm();
   const [retailers, setRetailers] = useState([]);
   const [promotersList, setPromotersList] = useState([]);
   const [cityManagersList, setCityManagersList] = useState([]);
@@ -187,7 +189,7 @@ export default function Retailers({ showToast }) {
 
     try {
       const preview = await fetchGeoCreationPreview('Retailer', formData);
-      if (!confirmGeoCreation(preview)) return;
+      if (!(await confirmGeoCreation(preview, confirm))) return;
     } catch (err) {
       console.error(err);
       showToast('Could not verify territory.', 'error');
@@ -215,36 +217,15 @@ export default function Retailers({ showToast }) {
         gst_number: formData.gstNo,
         pan_number: formData.panNo,
         aadhaar_number: formData.aadhaarNo,
-        is_verified: true,
-        is_active: true
+        is_verified: false,
+        is_active: false
       })
     })
     .then(res => res.json())
     .then(resData => {
       if (resData.success && resData.data) {
-        const ret = resData.data;
-        const newRetailer = {
-          id: ret._id,
-          shopName: ret.business_name,
-          owner: ret.owner_name,
-          email: ret.email,
-          mobile: ret.mobile,
-          address: ret.shop_address || '',
-          state: ret.state?.name || 'Not Assigned',
-          city: ret.city?.name || 'Not Assigned',
-          category: ret.category || 'Standard',
-          promoter: ret.assigned_promoter?.name || ret.assigned_promoter?.full_name || 'None',
-          cityManager: ret.assigned_city_manager?.name || 'Not Assigned',
-          ordersCount: ret.ordersCount || 0,
-          revenue: ret.revenue || 0,
-          status: ret.is_verified ? 'Approved' : 'Pending Verification',
-          gstNo: ret.gst_number || '',
-          panNo: ret.pan_number || '',
-          aadhaarNo: ret.aadhaar_number || ''
-        };
-        setRetailers(prev => [...prev, newRetailer]);
         setIsAddOpen(false);
-        showToast(`Retailer "${newRetailer.shopName}" registered successfully!`, "success");
+        showToast(resData.message || 'Retailer application submitted for approval.', 'success');
       } else {
         showToast(resData.message || "Failed to register retailer.", "error");
       }
@@ -506,7 +487,7 @@ export default function Retailers({ showToast }) {
         title="Register Retailer Shop"
         onConfirm={handleAddSubmit}
       >
-        <form className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+        <form className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-slate-500 uppercase mb-0.5">Business / Shop Name *</label>
             <input type="text" placeholder="Metro Footwear" value={formData.shopName} onChange={(e) => setFormData({...formData, shopName: e.target.value})} className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-none" />

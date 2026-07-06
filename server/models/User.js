@@ -68,7 +68,11 @@ const userSchema = new mongoose.Schema({
     shop_address: { type: String },
     gst_number: { type: String },
     pan_number: { type: String },
-    aadhaar_number: { type: String }
+    aadhaar_number: { type: String },
+    owner_name: { type: String },
+    category: { type: String },
+    assigned_promoter: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    assigned_city_manager: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
   }
 }, { timestamps: true });
 

@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { Shield, UserPlus, FileText, CheckSquare, XSquare, Plus, Edit2 } from 'lucide-react';
+import { Shield, UserPlus, FileText, CheckSquare, XSquare, Plus, Edit2, Eye } from 'lucide-react';
 import { initialUsers, STANDARD_ROLES, MODULES_LIST, PERMISSIONS_LIST, initialRolePermissions } from '../mockData';
 import { DataTable, Modal, DefaultPasswordNotice } from '../components/Common';
+import OnboardingApplicationDetailModal from '../components/OnboardingApplicationDetailModal';
 import GeoCascadeSelect from '../components/GeoCascadeSelect';
 import { confirmGeoCreation, fetchGeoCreationPreview } from '../utils/geoPreview';
+import { useConfirm } from '../context/ConfirmContext';
 import { DEFAULT_USER_PASSWORD, getUserCreatedMessage } from '../constants/defaultCredentials';
 
 const ROLE_DISPLAY_MAP = {
@@ -69,9 +71,11 @@ const mapUserFromApi = (u) => ({
   stateId: u.state?._id?.toString() || (typeof u.state === 'string' ? u.state : ''),
   stateName: u.state?.name || '',
   cityId: u.city?._id?.toString() || (typeof u.city === 'string' ? u.city : ''),
-  cityName: u.city?.name || ''
+  cityName: u.city?.name || '',
+  raw: u
 });
 export default function UserRoleManagement({ showToast }) {
+  const { confirm } = useConfirm();
   const [activeTab, setActiveTab] = useState('users'); // users | roles
   const [users, setUsers] = useState([]);
   const [rolePermissions, setRolePermissions] = useState(initialRolePermissions);
@@ -111,6 +115,22 @@ export default function UserRoleManagement({ showToast }) {
     ...emptyGeo()
   });
   const [editLoading, setEditLoading] = useState(false);
+  const [viewUser, setViewUser] = useState(null);
+  const [viewLoading, setViewLoading] = useState(false);
+  const openViewUser = (row) => {
+    setViewLoading(true);
+    setViewUser(row.raw || null);
+    fetch(`/api/users/${row.id}`)
+      .then((res) => res.json())
+      .then((resData) => {
+        if (resData.success && resData.data) {
+          setViewUser(resData.data);
+        }
+      })
+      .catch((err) => console.error('Failed to load user details:', err))
+      .finally(() => setViewLoading(false));
+  };
+
   // Custom Role Creator State
   const [isCustomRoleOpen, setIsCustomRoleOpen] = useState(false);
   const [customRoleName, setCustomRoleName] = useState('');
@@ -178,7 +198,7 @@ export default function UserRoleManagement({ showToast }) {
     try {
       if (isGeoManagerRole(newUserData.role) && newUserData.country_name) {
         const preview = await fetchGeoCreationPreview(toApiRoleName(newUserData.role), newUserData);
-        if (!confirmGeoCreation(preview)) return;
+        if (!(await confirmGeoCreation(preview, confirm))) return;
       }
 
       const payload = appendGeoPayload({
@@ -209,8 +229,7 @@ export default function UserRoleManagement({ showToast }) {
         name: '', email: '', mobile: '', role: 'Team Member', department: 'Sales', status: 'Active',
         ...emptyGeo()
       });
-      showToast(resData.message || getUserCreatedMessage('User added successfully!'), 'success');
-      loadUsers();
+      showToast(resData.message || 'User created successfully.', 'success');
     } catch (err) {
       console.error("Failed to save user to backend:", err);
       showToast("Failed to add user.", "error");
@@ -244,7 +263,7 @@ export default function UserRoleManagement({ showToast }) {
     try {
       if (isGeoManagerRole(editUserData.role) && editUserData.country_name) {
         const preview = await fetchGeoCreationPreview(toApiRoleName(editUserData.role), editUserData);
-        if (!confirmGeoCreation(preview)) {
+        if (!(await confirmGeoCreation(preview, confirm))) {
           setEditLoading(false);
           return;
         }
@@ -397,6 +416,15 @@ export default function UserRoleManagement({ showToast }) {
     )},
     { header: "Actions", accessor: "id", sortable: false, render: (val, row) => (
       <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => openViewUser(row)}
+          className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-slate-200 text-slate-600 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200 transition-colors"
+          title="View user details"
+          aria-label={`View details for ${row.name}`}
+        >
+          <Eye className="w-4 h-4" />
+        </button>
         <button
           onClick={() => openEditUser(row)}
           className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-brand-orange"
@@ -768,6 +796,14 @@ export default function UserRoleManagement({ showToast }) {
           </div>
         </div>
       )}
+
+      <OnboardingApplicationDetailModal
+        isOpen={!!viewUser}
+        onClose={() => setViewUser(null)}
+        application={viewUser}
+        title="User Details"
+        loading={viewLoading}
+      />
     </div>
   );
 }

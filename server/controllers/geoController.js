@@ -4,6 +4,7 @@ import {
   annotateWorldCities,
   annotateWorldCountries,
   annotateWorldStates,
+  lookupTerritoryManager,
   resolveManagerSlotMessage
 } from '../utils/geoWorldAnnotate.js';
 
@@ -61,6 +62,12 @@ export const getManagerSlotStatus = async (req, res, next) => {
       cityName
     });
 
+    const managerName = await lookupTerritoryManager(role, {
+      countryName,
+      stateName,
+      cityName
+    });
+
     const isBlocked = message && (
       message.includes('already has manager') ||
       message.includes('already in the hierarchy')
@@ -68,14 +75,9 @@ export const getManagerSlotStatus = async (req, res, next) => {
 
     const result = {
       available: !isBlocked,
-      manager_name: null,
+      manager_name: managerName,
       message
     };
-
-    if (message?.includes('already has manager')) {
-      const match = message.match(/already has manager (.+)\.$/);
-      result.manager_name = match?.[1] || null;
-    }
 
     res.status(200).json({ success: true, data: result });
   } catch (error) {

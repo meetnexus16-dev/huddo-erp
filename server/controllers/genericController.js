@@ -23,6 +23,20 @@ export const genericController = (Model, populateOptions = []) => {
         // Build query criteria
         const criteria = { is_deleted: { $ne: true } };
 
+        if (Model.modelName === 'User' && filters.include_pending !== 'true' && !filters.approval_status) {
+          criteria.approval_status = 'Approved';
+        }
+        if (filters.include_pending === 'true') {
+          delete filters.include_pending;
+        }
+
+        if (Model.modelName === 'Retailer' && filters.include_unverified !== 'true' && filters.is_verified === undefined) {
+          criteria.is_verified = true;
+        }
+        if (filters.include_unverified === 'true') {
+          delete filters.include_unverified;
+        }
+
         // Handle multi-tenancy if company_id is provided
         if (req.user && req.user.company_id) {
           criteria.company_id = req.user.company_id;
@@ -210,28 +224,24 @@ export const genericController = (Model, populateOptions = []) => {
         }
 
         if (Model.modelName === 'Retailer') {
-          const { resolveRetailerGeo } = await import('../utils/geoResolve.js');
-          try {
-            const { countryId, stateId, cityId } = await resolveRetailerGeo(req.body);
-            req.body.state = stateId;
-            req.body.city = cityId;
-            if (countryId) req.body.country = countryId;
-          } catch (geoError) {
-            return res.status(400).json({ success: false, message: geoError.message, data: null });
-          }
+          req.body.is_verified = false;
+          req.body.is_active = false;
           delete req.body.country_id;
           delete req.body.state_id;
           delete req.body.city_id;
-          delete req.body.country_name;
-          delete req.body.state_name;
-          delete req.body.city_name;
-          delete req.body.country_iso;
         }
+
+        let skipManagerAssignmentOnCreate = false;
+        let pendingApprovalMessage = null;
 
         if (Model.modelName === 'User') {
           const { normalizeRoleName } = await import('../utils/roleUtils.js');
           const Role = mongoose.model('Role');
           const { resolveOnboardingTerritory } = await import('../utils/geoResolve.js');
+          const {
+            buildPendingUserPayload,
+            PENDING_APPROVAL_MESSAGE
+          } = await import('../utils/pendingUserApplication.js');
 
           const assignedCountryId = req.body.assigned_country_id || req.body.country_id || req.body.country || null;
           const assignedStateId = req.body.assigned_state_id || req.body.state_id || req.body.state || null;
@@ -269,47 +279,76 @@ export const genericController = (Model, populateOptions = []) => {
             req.body.designationName = 'City Manager';
           }
 
-          const roleNameForGeo = req.body.roleName;
-          if (['CountryManager', 'StateManager', 'CityManager'].includes(roleNameForGeo)) {
-            try {
-              const territory = await resolveOnboardingTerritory(roleNameForGeo, {
-                requested_country: assignedCountryId,
-                requested_state: assignedStateId,
-                requested_city: assignedCityId,
-                requested_country_name: req.body.country_name,
-                requested_state_name: req.body.state_name,
-                requested_city_name: req.body.city_name,
-                requested_country_iso: req.body.country_iso
-              });
-              if (territory.countryId) req.body.country = territory.countryId;
-              if (territory.stateId) req.body.state = territory.stateId;
-              if (territory.cityId) req.body.city = territory.cityId;
-            } catch (geoError) {
-              return res.status(400).json({ success: false, message: geoError.message, data: null });
+          if (!req.body.password) {
+            req.body.password = DEFAULT_USER_PASSWORD;
+          }
+
+          const adminDirectCreate = isAdminUser(req.user);
+
+          if (adminDirectCreate) {
+            req.body.approval_status = 'Approved';
+            req.body.is_verified = true;
+            req.body.is_active = true;
+            req.body.status = 'Active';
+            req.body.onboarding_source = 'admin';
+
+            const roleNameForGeo = req.body.roleName;
+            if (['CountryManager', 'StateManager', 'CityManager'].includes(roleNameForGeo)) {
+              try {
+                const territory = await resolveOnboardingTerritory(roleNameForGeo, {
+                  requested_country: assignedCountryId,
+                  requested_state: assignedStateId,
+                  requested_city: assignedCityId,
+                  requested_country_name: req.body.country_name,
+                  requested_state_name: req.body.state_name,
+                  requested_city_name: req.body.city_name,
+                  requested_country_iso: req.body.country_iso
+                });
+                if (territory.countryId) req.body.country = territory.countryId;
+                if (territory.stateId) req.body.state = territory.stateId;
+                if (territory.cityId) req.body.city = territory.cityId;
+              } catch (geoError) {
+                return res.status(400).json({ success: false, message: geoError.message, data: null });
+              }
             }
+
+            skipManagerAssignmentOnCreate = false;
+          } else {
+            const pendingPayload = await buildPendingUserPayload(req.body, {
+              onboardingSource: 'admin',
+              roleName: req.body.roleName
+            });
+            Object.assign(req.body, pendingPayload);
+            skipManagerAssignmentOnCreate = true;
+            pendingApprovalMessage = PENDING_APPROVAL_MESSAGE;
           }
 
           delete req.body.country_name;
           delete req.body.state_name;
           delete req.body.city_name;
           delete req.body.country_iso;
-
-          if (!req.body.password) {
-            req.body.password = DEFAULT_USER_PASSWORD;
-          }
         }
 
         // If creating a User or Employee, check if we need to auto-link
         const doc = new Model(req.body);
         await doc.save();
 
-        // Auto-create a linked User account when a Retailer is created
+        if (Model.modelName === 'User' && isAdminUser(req.user) && !doc.user_code) {
+          const { generateUniqueUserCode } = await import('../utils/userCode.js');
+          doc.user_code = await generateUniqueUserCode('USR');
+          doc.employee_id = doc.user_code;
+          await doc.save();
+        }
+
+        // Create a pending user application when a retailer is registered
         if (Model.modelName === 'Retailer') {
           try {
+            const { buildPendingUserPayload, PENDING_APPROVAL_MESSAGE } = await import('../utils/pendingUserApplication.js');
             const RetailerRole = mongoose.model('Role');
+            const UserModel = mongoose.model('User');
             const retailerRole = await RetailerRole.findOne({ name: 'Retailer' });
 
-            const existingUser = await mongoose.model('User').findOne({
+            const existingUser = await UserModel.findOne({
               $or: [
                 { email: req.body.email },
                 { mobile: req.body.mobile }
@@ -317,8 +356,21 @@ export const genericController = (Model, populateOptions = []) => {
               is_deleted: { $ne: true }
             });
 
-            if (!existingUser && retailerRole && req.body.email && req.body.mobile) {
-              const newUser = new (mongoose.model('User'))({
+            if (existingUser) {
+              return res.status(400).json({
+                success: false,
+                message: 'A user with this email or mobile already exists.',
+                data: null
+              });
+            }
+
+            if (retailerRole && req.body.email && req.body.mobile) {
+              const pendingPayload = await buildPendingUserPayload(req.body, {
+                onboardingSource: 'admin',
+                roleName: 'Retailer'
+              });
+
+              const newUser = new UserModel({
                 name: req.body.owner_name || req.body.business_name,
                 email: req.body.email,
                 mobile: req.body.mobile,
@@ -326,29 +378,25 @@ export const genericController = (Model, populateOptions = []) => {
                 role: retailerRole._id,
                 roleName: 'Retailer',
                 designationName: 'Retailer',
-                status: 'Active',
-                is_verified: true,
-                is_active: true,
-                country: req.body.country || undefined,
-                state: req.body.state || undefined,
-                city: req.body.city || undefined
+                ...pendingPayload
               });
               await newUser.save();
 
-              // Link the user back to the retailer
               await mongoose.model('Retailer').findByIdAndUpdate(doc._id, { user: newUser._id });
               doc.user = newUser._id;
-            } else if (existingUser) {
-              // Link existing user if not already linked
-              await mongoose.model('Retailer').findByIdAndUpdate(doc._id, { user: existingUser._id });
-              doc.user = existingUser._id;
+              pendingApprovalMessage = PENDING_APPROVAL_MESSAGE;
             }
           } catch (userCreateErr) {
-            console.warn('[genericController] Could not auto-create user for retailer:', userCreateErr.message);
+            await Model.findByIdAndDelete(doc._id);
+            return res.status(400).json({
+              success: false,
+              message: userCreateErr.message || 'Could not submit retailer application.',
+              data: null
+            });
           }
         }
 
-        if (Model.modelName === 'User' && req.body.roleName === 'CountryManager' && req.body.country) {
+        if (!skipManagerAssignmentOnCreate && Model.modelName === 'User' && req.body.roleName === 'CountryManager' && req.body.country) {
           const {
             assignCountryManager,
             validateCountryAvailable
@@ -368,7 +416,7 @@ export const genericController = (Model, populateOptions = []) => {
           }
         }
 
-        if (Model.modelName === 'User' && req.body.roleName === 'StateManager' && req.body.state) {
+        if (!skipManagerAssignmentOnCreate && Model.modelName === 'User' && req.body.roleName === 'StateManager' && req.body.state) {
           const { assignStateManager } = await import('../utils/managerAssignment.js');
           try {
             await assignStateManager(req.body.state, doc._id);
@@ -378,7 +426,7 @@ export const genericController = (Model, populateOptions = []) => {
           }
         }
 
-        if (Model.modelName === 'User' && req.body.roleName === 'CityManager' && req.body.city) {
+        if (!skipManagerAssignmentOnCreate && Model.modelName === 'User' && req.body.roleName === 'CityManager' && req.body.city) {
           const { assignCityManager } = await import('../utils/managerAssignment.js');
           try {
             await assignCityManager(req.body.city, doc._id);
@@ -403,8 +451,13 @@ export const genericController = (Model, populateOptions = []) => {
           data: responseData
         };
         if (Model.modelName === 'User') {
-          createPayload.default_password = DEFAULT_USER_PASSWORD;
-          createPayload.message = `User created successfully. Default login password: ${DEFAULT_USER_PASSWORD}.`;
+          createPayload.message = pendingApprovalMessage || `User created successfully. Default login password: ${DEFAULT_USER_PASSWORD}.`;
+          if (!pendingApprovalMessage) {
+            createPayload.default_password = DEFAULT_USER_PASSWORD;
+          }
+        }
+        if (Model.modelName === 'Retailer' && pendingApprovalMessage) {
+          createPayload.message = pendingApprovalMessage;
         }
         res.status(201).json(createPayload);
       } catch (error) {
@@ -538,22 +591,26 @@ export const genericController = (Model, populateOptions = []) => {
           }
 
           if (['CountryManager', 'StateManager', 'CityManager'].includes(nextRoleName)) {
-            const { resolveOnboardingTerritory } = await import('../utils/geoResolve.js');
-            try {
-              const territory = await resolveOnboardingTerritory(nextRoleName, {
-                requested_country: assignedCountryId,
-                requested_state: assignedStateId,
-                requested_city: assignedCityId,
-                requested_country_name: req.body.country_name,
-                requested_state_name: req.body.state_name,
-                requested_city_name: req.body.city_name,
-                requested_country_iso: req.body.country_iso
-              });
-              if (territory.countryId) req.body.country = territory.countryId;
-              if (territory.stateId) req.body.state = territory.stateId;
-              if (territory.cityId) req.body.city = territory.cityId;
-            } catch (geoError) {
-              return res.status(400).json({ success: false, message: geoError.message, data: null });
+            const { resolveOnboardingTerritory, hasTerritoryIntent } = await import('../utils/geoResolve.js');
+            const territoryMeta = {
+              requested_country: assignedCountryId,
+              requested_state: assignedStateId,
+              requested_city: assignedCityId,
+              requested_country_name: req.body.country_name,
+              requested_state_name: req.body.state_name,
+              requested_city_name: req.body.city_name,
+              requested_country_iso: req.body.country_iso
+            };
+
+            if (hasTerritoryIntent(nextRoleName, territoryMeta)) {
+              try {
+                const territory = await resolveOnboardingTerritory(nextRoleName, territoryMeta);
+                if (territory.countryId) req.body.country = territory.countryId;
+                if (territory.stateId) req.body.state = territory.stateId;
+                if (territory.cityId) req.body.city = territory.cityId;
+              } catch (geoError) {
+                return res.status(400).json({ success: false, message: geoError.message, data: null });
+              }
             }
           }
 

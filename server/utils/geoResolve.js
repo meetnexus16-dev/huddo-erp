@@ -94,8 +94,9 @@ export async function findOrCreateCity(name, stateId) {
 }
 
 async function resolveCountryId(countryId, countryName, countryIso = null) {
-  if (countryId && mongoose.isValidObjectId(countryId)) {
-    const country = await Country.findById(countryId);
+  const rawId = countryId?._id || countryId;
+  if (rawId && mongoose.isValidObjectId(rawId)) {
+    const country = await Country.findById(rawId);
     if (!country) throw new Error('Selected country was not found.');
     return country._id;
   }
@@ -106,8 +107,9 @@ async function resolveCountryId(countryId, countryName, countryIso = null) {
 }
 
 async function resolveStateId(stateId, stateName, countryId) {
-  if (stateId && mongoose.isValidObjectId(stateId)) {
-    const state = await State.findById(stateId);
+  const rawId = stateId?._id || stateId;
+  if (rawId && mongoose.isValidObjectId(rawId)) {
+    const state = await State.findById(rawId);
     if (!state) throw new Error('Selected state was not found.');
     if (state.country.toString() !== countryId.toString()) {
       throw new Error('Selected state does not belong to the chosen country.');
@@ -121,8 +123,9 @@ async function resolveStateId(stateId, stateName, countryId) {
 }
 
 async function resolveCityId(cityId, cityName, stateId) {
-  if (cityId && mongoose.isValidObjectId(cityId)) {
-    const city = await City.findById(cityId);
+  const rawId = cityId?._id || cityId;
+  if (rawId && mongoose.isValidObjectId(rawId)) {
+    const city = await City.findById(rawId);
     if (!city) throw new Error('Selected city was not found.');
     if (city.state.toString() !== stateId.toString()) {
       throw new Error('Selected city does not belong to the chosen state.');
@@ -233,6 +236,71 @@ export async function resolveOnboardingTerritory(roleName, meta = {}) {
   }
 
   return result;
+}
+
+function toRefId(value) {
+  if (!value) return null;
+  const raw = value._id || value;
+  return mongoose.isValidObjectId(raw) ? raw : null;
+}
+
+function toRefName(value, explicitName) {
+  if (explicitName) return explicitName;
+  if (value && typeof value === 'object' && value.name) return value.name;
+  return undefined;
+}
+
+export function hasTerritoryIntent(roleName, meta = {}) {
+  if (!['CountryManager', 'StateManager', 'CityManager', 'Retailer'].includes(roleName)) {
+    return false;
+  }
+  return Boolean(
+    toRefId(meta.requested_country)
+    || meta.requested_country_name
+    || toRefId(meta.requested_state)
+    || meta.requested_state_name
+    || toRefId(meta.requested_city)
+    || meta.requested_city_name
+  );
+}
+
+export async function normalizeOnboardingMeta(meta = {}) {
+  const normalized = {
+    ...meta,
+    requested_country: toRefId(meta.requested_country),
+    requested_state: toRefId(meta.requested_state),
+    requested_city: toRefId(meta.requested_city),
+    requested_country_name: toRefName(meta.requested_country, meta.requested_country_name),
+    requested_state_name: toRefName(meta.requested_state, meta.requested_state_name),
+    requested_city_name: toRefName(meta.requested_city, meta.requested_city_name)
+  };
+
+  if (normalized.requested_city && (!normalized.requested_state || !normalized.requested_country)) {
+    const city = await City.findById(normalized.requested_city);
+    if (city) {
+      normalized.requested_city_name = normalized.requested_city_name || city.name;
+      if (!normalized.requested_state) {
+        normalized.requested_state = city.state;
+      }
+    }
+  }
+
+  if (normalized.requested_state && (!normalized.requested_country || !normalized.requested_state_name)) {
+    const state = await State.findById(normalized.requested_state);
+    if (state) {
+      normalized.requested_state_name = normalized.requested_state_name || state.name;
+      if (!normalized.requested_country) {
+        normalized.requested_country = state.country;
+      }
+    }
+  }
+
+  if (normalized.requested_country && !normalized.requested_country_name) {
+    const country = await Country.findById(normalized.requested_country);
+    if (country) normalized.requested_country_name = country.name;
+  }
+
+  return normalized;
 }
 
 export async function prepareHierarchyGeoCreate(modelName, body = {}) {
