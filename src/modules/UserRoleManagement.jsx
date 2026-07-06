@@ -309,6 +309,18 @@ export default function UserRoleManagement({ showToast }) {
 
   const handleToggleUserStatus = async (user) => {
     const newStatus = user.status === 'Active' ? 'Inactive' : 'Active';
+    const isDeactivating = newStatus === 'Inactive';
+
+    const confirmed = await confirm({
+      title: isDeactivating ? 'Deactivate user?' : 'Activate user?',
+      message: isDeactivating
+        ? `Are you sure you want to set ${user.name} to Inactive? They will not be able to sign in.`
+        : `Are you sure you want to set ${user.name} to Active?`,
+      confirmText: isDeactivating ? 'Deactivate' : 'Activate',
+      isDestructive: isDeactivating
+    });
+    if (!confirmed) return;
+
     try {
       const res = await fetch(`/api/users/${user.id}`, {
         method: 'PUT',
@@ -409,10 +421,19 @@ export default function UserRoleManagement({ showToast }) {
       </span>
     )},
     { header: "Department", accessor: "department" },
-    { header: "Status", accessor: "status", render: (val) => (
-      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${val === 'Active' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}`}>
+    { header: "Status", accessor: "status", render: (val, row) => (
+      <button
+        type="button"
+        onClick={() => handleToggleUserStatus(row)}
+        title={`Click to set ${val === 'Active' ? 'Inactive' : 'Active'}`}
+        className={`px-2 py-0.5 rounded-full text-xs font-semibold cursor-pointer transition-colors hover:ring-2 hover:ring-offset-1 ${
+          val === 'Active'
+            ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 hover:ring-emerald-300'
+            : 'bg-slate-100 text-slate-700 hover:bg-slate-200 hover:ring-slate-300'
+        }`}
+      >
         {val}
-      </span>
+      </button>
     )},
     { header: "Actions", accessor: "id", sortable: false, render: (val, row) => (
       <div className="flex items-center gap-3">
@@ -432,12 +453,6 @@ export default function UserRoleManagement({ showToast }) {
         >
           <Edit2 className="w-3.5 h-3.5" />
           Edit
-        </button>
-        <button
-          onClick={() => handleToggleUserStatus(row)}
-          className="text-xs font-bold text-brand-orange hover:underline"
-        >
-          Toggle Status
         </button>
       </div>
     )}
