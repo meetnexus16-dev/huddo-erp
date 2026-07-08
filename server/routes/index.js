@@ -318,7 +318,9 @@ router.post('/upload/single', verifyJWT, upload.single('file'), async (req, res,
       return res.status(400).json({ success: false, message: 'No file uploaded.' });
     }
 
-    const fileUrl = await saveFileToDisk(req.file, 'general');
+    // Allow callers to choose a target sub-folder (sanitized to prevent path traversal).
+    const folder = String(req.body.folder || 'general').replace(/[^a-z0-9-_]/gi, '') || 'general';
+    const fileUrl = await saveFileToDisk(req.file, folder);
 
     res.status(200).json({
       success: true,

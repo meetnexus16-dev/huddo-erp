@@ -247,45 +247,63 @@ export default function PlaceOrder({ showToast, onNavigate }) {
     }
   };
 
-  const handleCheckoutSubmit = (e) => {
+  const handleCheckoutSubmit = async (e) => {
     e.preventDefault();
     if (!utrNumber.trim()) {
       showToast("Please enter a valid UTR transaction number.", "error");
       return;
     }
-    if (!screenshotPreview) {
+    if (!paymentScreenshot) {
       showToast("Please upload payment receipt screenshot.", "error");
       return;
     }
 
     setSubmitting(true);
 
-    const payload = {
-      retailer: user.id,
-      created_by: user.rawUser?._id || user.id,
-      items: cart.map(item => ({
-        product_variant: item.variant.id,
-        quantity: item.quantity,
-        unit_price: item.variant.price,
-        total_price: item.variant.price * item.quantity
-      })),
-      subtotal: subtotal,
-      tax_amount: 0,
-      discount_amount: 0,
-      grand_total: subtotal,
-      utr_number: utrNumber,
-      payment_screenshot: screenshotPreview,
-      payment_status: "Pending",
-      status: "Submitted"
-    };
+    try {
+      // Upload the receipt file to disk (server/uploads/payments) and use the returned URL.
+      const uploadForm = new FormData();
+      uploadForm.append('file', paymentScreenshot);
+      uploadForm.append('folder', 'payments');
 
-    fetch('/api/orders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    })
-    .then(res => res.json())
-    .then(data => {
+      const uploadRes = await fetch('/api/upload/single', {
+        method: 'POST',
+        body: uploadForm
+      });
+      const uploadData = await uploadRes.json();
+
+      if (!uploadData.success || !uploadData.data?.url) {
+        showToast(uploadData.message || "Failed to upload payment screenshot.", "error");
+        setSubmitting(false);
+        return;
+      }
+
+      const payload = {
+        retailer: user.id,
+        created_by: user.rawUser?._id || user.id,
+        items: cart.map(item => ({
+          product_variant: item.variant.id,
+          quantity: item.quantity,
+          unit_price: item.variant.price,
+          total_price: item.variant.price * item.quantity
+        })),
+        subtotal: subtotal,
+        tax_amount: 0,
+        discount_amount: 0,
+        grand_total: subtotal,
+        utr_number: utrNumber,
+        payment_screenshot: uploadData.data.url,
+        payment_status: "Pending",
+        status: "Submitted"
+      };
+
+      const res = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+
       if (data.success) {
         showToast(`Order submitted successfully! Pending approval.`, "success");
         setCart([]);
@@ -298,14 +316,12 @@ export default function PlaceOrder({ showToast, onNavigate }) {
       } else {
         showToast(data.message || "Failed to place order.", "error");
       }
-    })
-    .catch(err => {
+    } catch (err) {
       console.error(err);
       showToast("Error submitting order.", "error");
-    })
-    .finally(() => {
+    } finally {
       setSubmitting(false);
-    });
+    }
   };
 
   if (loading) {
