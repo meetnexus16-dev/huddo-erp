@@ -180,11 +180,17 @@ const seedRoles = async () => {
     await mongoose.connect(connStr);
     console.log('[Seeder] Connected successfully.');
 
-    console.log('[Seeder] Deleting existing roles...');
-    await Role.deleteMany({ is_custom: false });
-
-    console.log('[Seeder] Inserting default roles and permission matrices...');
-    await Role.insertMany(defaultRoles);
+    // Upsert by name so existing role _id values are preserved. Deleting and
+    // re-inserting would orphan every user's `role` reference (they point to
+    // the old _id), which breaks login and permission checks.
+    console.log('[Seeder] Upserting default roles and permission matrices...');
+    for (const role of defaultRoles) {
+      await Role.updateOne(
+        { name: role.name },
+        { $set: { permissions: role.permissions, is_custom: role.is_custom } },
+        { upsert: true }
+      );
+    }
     console.log('[Seeder] Roles seeded successfully.');
 
     await mongoose.disconnect();

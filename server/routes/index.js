@@ -402,7 +402,14 @@ const modules = [
   { path: 'employees', model: Employee, populate: ['user', 'department', 'designation', 'reporting_manager'] },
   { path: 'retailers', model: Retailer, populate: ['user', 'state', 'city', 'assigned_promoter', 'assigned_city_manager'] },
   { path: 'product-variants', model: ProductVariant, populate: ['product'] },
-  { path: 'orders', model: Order, populate: ['retailer', 'items.product_variant', 'created_by'] },
+  { path: 'orders', model: Order, populate: [
+    { path: 'retailer', populate: [
+      { path: 'city', populate: { path: 'state', populate: { path: 'country' } } },
+      { path: 'state', populate: { path: 'country' } }
+    ] },
+    { path: 'items.product_variant', populate: { path: 'product' } },
+    'created_by'
+  ] },
   { path: 'invoices', model: Invoice, populate: ['order', 'retailer'] },
   { path: 'commission-structures', model: CommissionStructure, populate: ['product'] },
   { path: 'commission-records', model: CommissionRecord, populate: ['user', 'order'] },

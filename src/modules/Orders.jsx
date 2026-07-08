@@ -12,10 +12,19 @@ export default function Orders({ showToast }) {
       .then(res => res.json())
       .then(resData => {
         if (resData.success && Array.isArray(resData.data)) {
-          const mapped = resData.data.map(o => ({
+          const mapped = resData.data.map(o => {
+            const cityName = o.retailer?.city?.name || '';
+            const stateName = o.retailer?.state?.name || o.retailer?.city?.state?.name || '';
+            const countryName = o.retailer?.state?.country?.name
+              || o.retailer?.city?.state?.country?.name || '';
+            const locationParts = [cityName, stateName, countryName].filter(Boolean);
+            return {
             id: o.order_number || o._id,
             retailerName: o.retailer?.business_name || 'Walk Easy Footwear',
-            city: o.retailer?.city?.name || o.retailer?.city || 'Mumbai',
+            city: cityName || '—',
+            state: stateName || '—',
+            country: countryName || '—',
+            location: locationParts.length ? locationParts.join(', ') : '—',
             productsCount: o.items?.length || 0,
             amount: o.subtotal,
             paymentStatus: o.payment_status || 'Pending',
@@ -36,7 +45,8 @@ export default function Orders({ showToast }) {
               adminApproved: o.status === 'Approved' || o.status === 'Delivered'
             },
             proofImage: o.payment_screenshot || ''
-          }));
+          };
+          });
           setOrders(mapped);
         } else {
           setOrders(initialOrders);
@@ -330,7 +340,12 @@ export default function Orders({ showToast }) {
                 <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl text-xs">
                   <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">Retailer Outlet</h4>
                   <p className="font-bold text-slate-800 text-sm font-display">{viewingOrder.retailerName}</p>
-                  <p className="text-slate-500 mt-1">Location: {viewingOrder.city}</p>
+                  <p className="text-slate-500 mt-1">Location: {viewingOrder.location}</p>
+                  <div className="mt-1 space-y-0.5 text-slate-500">
+                    <p>City: <span className="font-semibold text-slate-700">{viewingOrder.city}</span></p>
+                    <p>State: <span className="font-semibold text-slate-700">{viewingOrder.state}</span></p>
+                    <p>Country: <span className="font-semibold text-slate-700">{viewingOrder.country}</span></p>
+                  </div>
                 </div>
                 <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl text-xs">
                   <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">Bank Ledger Match</h4>

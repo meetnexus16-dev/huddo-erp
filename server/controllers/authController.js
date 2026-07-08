@@ -225,7 +225,15 @@ export const login = async (req, res, next) => {
     }
 
     // Generate tokens
-    const roleName = user.role.name;
+    const roleName = user.role?.name || user.roleName;
+    if (!roleName) {
+      await logAuditEvent(user._id, 'login-failed-no-role', 'auth', null, null, { email }, req);
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied: No role assigned to this account. Please contact an administrator.',
+        data: null
+      });
+    }
     const accessToken = generateAccessToken(user._id, user.email, roleName);
     const refreshToken = generateRefreshToken(user._id);
 

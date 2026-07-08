@@ -8,6 +8,24 @@ import { Html5QrcodeScanner } from 'html5-qrcode';
 import { useRetailerAuth } from '../context/RetailerAuthContext';
 import CustomModal from '../components/CustomModal';
 
+// Map stored hex color codes back to their human-readable names.
+const COLOR_NAME_MAP = {
+  '#EF4444': 'Red',
+  '#1F2937': 'Black',
+  '#3B82F6': 'Blue',
+  '#10B981': 'Green',
+  '#9CA3AF': 'Grey',
+  '#1E3A8A': 'Navy',
+  '#F59E0B': 'Yellow',
+  '#8B4513': 'Brown',
+  '#FFFFFF': 'White'
+};
+
+const getColorName = (color) => {
+  if (!color) return '';
+  return COLOR_NAME_MAP[String(color).toUpperCase()] || color;
+};
+
 export default function PlaceOrder({ showToast, onNavigate }) {
   const { user } = useRetailerAuth();
   const [products, setProducts] = useState([]);
@@ -16,8 +34,8 @@ export default function PlaceOrder({ showToast, onNavigate }) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   
-  // Selected variant tracking per product (keys: product.id, value: variant.id)
-  const [selectedVariants, setSelectedVariants] = useState({});
+  // Selected size/color per product (keys: product.id, value: { size, color })
+  const [selectedOptions, setSelectedOptions] = useState({});
 
   // Shopping Cart state: array of items: { product, variant, quantity }
   const [cart, setCart] = useState([]);
@@ -64,7 +82,10 @@ export default function PlaceOrder({ showToast, onNavigate }) {
               id: variant._id || variant.id,
               size: variant.size,
               color: variant.color,
-              price: variant.selling_price || 0,
+              // Retailer is billed at cost price; selling price & MRP are shown for reference.
+              price: variant.cost_price || 0,
+              sellingPrice: variant.selling_price || 0,
+              mrp: variant.mrp || 0,
               stock: variant.stock_quantity || 0,
               sku: variant.sku_variant
             });
@@ -73,13 +94,15 @@ export default function PlaceOrder({ showToast, onNavigate }) {
           const productList = Object.values(productMap);
           setProducts(productList);
 
-          // Set default variants
-          const initialVariants = {};
+          // Set default size/color selection (prefer first in-stock variant)
+          const initialOptions = {};
           productList.forEach(p => {
-            const inStock = p.variants.find(v => v.stock > 0);
-            initialVariants[p.id] = inStock ? inStock.id : p.variants[0]?.id;
+            const preferred = p.variants.find(v => v.stock > 0) || p.variants[0];
+            if (preferred) {
+              initialOptions[p.id] = { size: preferred.size, color: preferred.color };
+            }
           });
-          setSelectedVariants(initialVariants);
+          setSelectedOptions(initialOptions);
         }
       })
       .catch(err => {
@@ -102,11 +125,19 @@ export default function PlaceOrder({ showToast, onNavigate }) {
     return matchesSearch && matchesCat;
   });
 
-  const handleVariantChange = (productId, variantId) => {
-    setSelectedVariants(prev => ({
-      ...prev,
-      [productId]: variantId
-    }));
+  // Selecting a size keeps the current color if still available for that size,
+  // otherwise falls back to the first available (or first) color of that size.
+  const handleSizeChange = (product, size) => {
+    setSelectedOptions(prev => {
+      const current = prev[product.id] || {};
+      const variantsForSize = product.variants.filter(v => v.size === size);
+      const keepColor = variantsForSize.find(v => v.color === current.color && v.stock > 0);
+      const fallback = variantsForSize.find(v => v.stock > 0) || variantsForSize[0];
+      return {
+        ...prev,
+        [product.id]: { size, color: keepColor ? current.color : fallback?.color }
+      };
+    });
   };
 
   const handleAddToCart = (product, variant) => {
@@ -231,6 +262,7 @@ export default function PlaceOrder({ showToast, onNavigate }) {
 
     const payload = {
       retailer: user.id,
+      created_by: user.rawUser?._id || user.id,
       items: cart.map(item => ({
         product_variant: item.variant.id,
         quantity: item.quantity,
@@ -344,8 +376,18 @@ export default function PlaceOrder({ showToast, onNavigate }) {
           {filteredProducts.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {filteredProducts.map(product => {
-                const activeVariantId = selectedVariants[product.id];
-                const activeVariant = product.variants.find(v => v.id === activeVariantId) || product.variants[0];
+                const option = selectedOptions[product.id] || {};
+                const activeVariant = product.variants.find(
+                  v => v.size === option.size && v.color === option.color
+                ) || null;
+
+                // Unique sizes (numeric-aware sort) and colors for this product
+                const sizes = [...new Set(product.variants.map(v => v.size))].sort((a, b) => {
+                  const na = parseFloat(a), nb = parseFloat(b);
+                  if (!isNaN(na) && !isNaN(nb)) return na - nb;
+                  return String(a).localeCompare(String(b));
+                });
+                const colors = [...new Set(product.variants.map(v => v.color))];
 
                 return (
                   <div key={product.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col justify-between hover:shadow-md transition-shadow">
@@ -367,23 +409,55 @@ export default function PlaceOrder({ showToast, onNavigate }) {
                           <p className="text-[10px] text-slate-400 font-medium line-clamp-2 mt-0.5">{product.description}</p>
                         </div>
 
-                        {/* Variants details */}
+                        {/* Size selector */}
                         <div className="space-y-1.5 border-t border-slate-100 pt-2">
-                          <label className="block text-[9px] font-bold text-slate-400 uppercase">Select Color & Size Variant</label>
+                          <label className="block text-[9px] font-bold text-slate-400 uppercase">Select Size</label>
                           <div className="flex flex-wrap gap-1.5">
-                            {product.variants.map(v => (
-                              <button
-                                key={v.id}
-                                onClick={() => handleVariantChange(product.id, v.id)}
-                                className={`px-2 py-1 text-[10px] font-bold border rounded-md transition-colors ${
-                                  v.id === activeVariantId
-                                    ? 'border-brand-orange bg-orange-50/20 text-brand-orange'
-                                    : 'border-slate-200 text-slate-600 hover:border-slate-350'
-                                } ${v.stock === 0 ? 'opacity-40 line-through' : ''}`}
-                              >
-                                {v.color} / S-{v.size}
-                              </button>
-                            ))}
+                            {sizes.map(sz => {
+                              const sizeStock = product.variants
+                                .filter(v => v.size === sz)
+                                .reduce((sum, v) => sum + v.stock, 0);
+                              const isActive = option.size === sz;
+                              return (
+                                <button
+                                  key={sz}
+                                  onClick={() => handleSizeChange(product, sz)}
+                                  disabled={sizeStock === 0}
+                                  className={`min-w-[2rem] px-2 py-1 text-[10px] font-bold border rounded-md transition-colors ${
+                                    isActive
+                                      ? 'border-brand-orange bg-orange-50/20 text-brand-orange'
+                                      : 'border-slate-200 text-slate-600 hover:border-slate-350'
+                                  } ${sizeStock === 0 ? 'opacity-40 line-through cursor-not-allowed' : ''}`}
+                                >
+                                  {sz}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Available color names for the selected size (display only) */}
+                        <div className="space-y-1.5">
+                          <label className="block text-[9px] font-bold text-slate-400 uppercase">Available Colors</label>
+                          <div className="flex flex-wrap gap-1.5">
+                            {(() => {
+                              const availableColors = colors.filter(col =>
+                                product.variants.some(
+                                  v => v.size === option.size && v.color === col && v.stock > 0
+                                )
+                              );
+                              if (availableColors.length === 0) {
+                                return <span className="text-[10px] font-semibold text-slate-400">No colors in stock for this size.</span>;
+                              }
+                              return availableColors.map(col => (
+                                <span
+                                  key={col}
+                                  className="px-2 py-1 text-[10px] font-bold border border-slate-200 text-slate-600 rounded-md bg-slate-50"
+                                >
+                                  {getColorName(col)}
+                                </span>
+                              ));
+                            })()}
                           </div>
                         </div>
                       </div>
@@ -392,8 +466,12 @@ export default function PlaceOrder({ showToast, onNavigate }) {
                     {/* Footer / Cart controls */}
                     <div className="p-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/50">
                       <div>
-                        <span className="text-xs text-slate-400 font-bold">Dealer Price</span>
+                        <span className="text-[9px] text-slate-400 font-bold uppercase">Your Cost Price</span>
                         <p className="text-base font-extrabold text-slate-850 font-display">₹{(activeVariant?.price || 0).toLocaleString('en-IN')}</p>
+                        <div className="text-[9px] font-bold text-slate-400 mt-0.5 space-x-2">
+                          <span>Sell: ₹{(activeVariant?.sellingPrice || 0).toLocaleString('en-IN')}</span>
+                          <span>MRP: ₹{(activeVariant?.mrp || 0).toLocaleString('en-IN')}</span>
+                        </div>
                       </div>
 
                       <div className="text-right">
@@ -453,7 +531,7 @@ export default function PlaceOrder({ showToast, onNavigate }) {
                 <div key={idx} className="p-4 flex items-start justify-between gap-3 bg-white">
                   <div className="text-xs">
                     <h4 className="font-extrabold text-slate-800 font-display line-clamp-1">{item.product.name}</h4>
-                    <p className="text-[10px] text-slate-400 font-bold mt-0.5 uppercase">{item.variant.color} / Size {item.variant.size}</p>
+                    <p className="text-[10px] text-slate-400 font-bold mt-0.5 uppercase">{getColorName(item.variant.color)} / Size {item.variant.size}</p>
                     <span className="text-[11px] font-bold text-slate-700 mt-1 block">₹{item.variant.price} × {item.quantity}</span>
                   </div>
 
