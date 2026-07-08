@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   ShoppingBag, Trash2, CreditCard, ChevronRight, CheckCircle2, 
-  Upload, Search, Filter, AlertTriangle, AlertCircle, ShoppingCart, RefreshCw
+  Upload, Search, Filter, AlertTriangle, AlertCircle, ShoppingCart, RefreshCw, ScanLine
 } from 'lucide-react';
+import { Html5QrcodeScanner } from 'html5-qrcode';
 
 import { useRetailerAuth } from '../context/RetailerAuthContext';
 import CustomModal from '../components/CustomModal';
@@ -27,6 +28,12 @@ export default function PlaceOrder({ showToast, onNavigate }) {
   const [orderNotes, setOrderNotes] = useState('');
   const [paymentScreenshot, setPaymentScreenshot] = useState(null);
   const [screenshotPreview, setScreenshotPreview] = useState('');
+
+  // Barcode scan-to-bill controls
+  const [isScanOpen, setIsScanOpen] = useState(false);
+  const [scanTab, setScanTab] = useState('manual'); // manual | camera
+  const [manualCode, setManualCode] = useState('');
+  const lastScanRef = useRef({ code: '', at: 0 });
 
   // Fetch product variants from the backend
   useEffect(() => {
@@ -123,6 +130,53 @@ export default function PlaceOrder({ showToast, onNavigate }) {
     }
     showToast(`Added ${product.name} to cart.`, "success");
   };
+
+  // Resolve a scanned barcode (sku_variant) to a product + variant
+  const findVariantByBarcode = (code) => {
+    const norm = String(code || '').trim().toUpperCase();
+    if (!norm) return null;
+    for (const product of products) {
+      const variant = product.variants.find((v) => (v.sku || '').toUpperCase() === norm);
+      if (variant) return { product, variant };
+    }
+    return null;
+  };
+
+  const handleBarcodeScan = (code, { closeAfter = false } = {}) => {
+    const match = findVariantByBarcode(code);
+    if (!match) {
+      showToast(`No product found for barcode "${code}".`, 'error');
+      return;
+    }
+    handleAddToCart(match.product, match.variant);
+    if (closeAfter) setIsScanOpen(false);
+  };
+
+  const handleManualScanSubmit = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!manualCode.trim()) return;
+    handleBarcodeScan(manualCode);
+    setManualCode('');
+  };
+
+  // Initialize the camera scanner when the scan modal is on the camera tab
+  useEffect(() => {
+    if (!isScanOpen || scanTab !== 'camera') return undefined;
+    let scanner = null;
+    const onScanSuccess = (decodedText) => {
+      const now = Date.now();
+      // Debounce repeated decodes of the same code within 2s
+      if (lastScanRef.current.code === decodedText && now - lastScanRef.current.at < 2000) return;
+      lastScanRef.current = { code: decodedText, at: now };
+      handleBarcodeScan(decodedText);
+    };
+    scanner = new Html5QrcodeScanner('retailer-scan-reader', { fps: 10, qrbox: 250 }, false);
+    scanner.render(onScanSuccess, () => {});
+    return () => {
+      if (scanner) scanner.clear().catch(() => {});
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isScanOpen, scanTab, products]);
 
   const updateCartQuantity = (variantId, amount) => {
     const itemIndex = cart.findIndex(item => item.variant.id === variantId);
@@ -247,15 +301,25 @@ export default function PlaceOrder({ showToast, onNavigate }) {
           
           {/* Controls: Search and Filter Tabs */}
           <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs flex flex-col md:flex-row gap-4 items-center justify-between">
-            <div className="relative w-full md:w-72">
-              <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search products..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9 pr-4 py-2 w-full text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange/20 focus:border-brand-orange bg-white font-medium text-slate-700"
-              />
+            <div className="flex items-center gap-2 w-full md:w-auto">
+              <div className="relative w-full md:w-64">
+                <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search products..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9 pr-4 py-2 w-full text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange/20 focus:border-brand-orange bg-white font-medium text-slate-700"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => { setIsScanOpen(true); setScanTab('manual'); }}
+                className="shrink-0 flex items-center gap-1.5 px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold rounded-lg transition-colors"
+              >
+                <ScanLine className="w-4 h-4" />
+                <span>Scan to Bill</span>
+              </button>
             </div>
             
             {/* Category tabs */}
@@ -515,6 +579,69 @@ export default function PlaceOrder({ showToast, onNavigate }) {
           </div>
 
         </form>
+      </CustomModal>
+
+      {/* Scan-to-Bill Modal */}
+      <CustomModal
+        isOpen={isScanOpen}
+        onClose={() => setIsScanOpen(false)}
+        title="Scan Barcode to Add"
+        hideFooter
+      >
+        <div className="space-y-4">
+          <div className="flex gap-2 bg-slate-100 rounded-lg p-1">
+            <button
+              type="button"
+              onClick={() => setScanTab('manual')}
+              className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${scanTab === 'manual' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500'}`}
+            >
+              Enter / USB Scanner
+            </button>
+            <button
+              type="button"
+              onClick={() => setScanTab('camera')}
+              className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-colors ${scanTab === 'camera' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500'}`}
+            >
+              Camera
+            </button>
+          </div>
+
+          {scanTab === 'manual' ? (
+            <form onSubmit={handleManualScanSubmit} className="space-y-3">
+              <div className="bg-orange-50 border border-orange-100 rounded-lg p-3 text-[11px] text-orange-800 flex gap-2">
+                <ScanLine className="w-4 h-4 shrink-0 mt-0.5" />
+                <p>Point a USB/Bluetooth barcode scanner at the field below, or type the barcode printed on the product label, then press Enter. Each scan adds one unit to the cart.</p>
+              </div>
+              <input
+                autoFocus
+                type="text"
+                value={manualCode}
+                onChange={(e) => setManualCode(e.target.value)}
+                placeholder="Scan or type barcode (e.g. HDO-AC-01-EF4444-SZ8)"
+                className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white font-mono focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
+              />
+              <button
+                type="submit"
+                className="w-full py-2.5 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-lg shadow-sm flex items-center justify-center gap-1.5"
+              >
+                <ShoppingCart className="w-4 h-4" /> Add to Cart
+              </button>
+            </form>
+          ) : (
+            <div className="space-y-3">
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-2">
+                <div id="retailer-scan-reader" className="w-full" />
+              </div>
+              <p className="text-[11px] text-slate-400 text-center">Allow camera access and hold the product barcode steady in frame.</p>
+            </div>
+          )}
+
+          {cart.length > 0 && (
+            <div className="border-t border-slate-100 pt-3 text-xs text-slate-600">
+              <span className="font-bold">{cart.length}</span> item(s) in cart · Subtotal <span className="font-bold text-slate-900">₹{subtotal.toLocaleString('en-IN')}</span>
+            </div>
+          )}
+        </div>
       </CustomModal>
 
     </div>

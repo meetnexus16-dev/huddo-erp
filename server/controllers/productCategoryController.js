@@ -51,9 +51,43 @@ const serializeCategory = async (categoryDoc) => {
 
   return {
     ...doc,
+    has_sizes: doc.has_sizes !== false,
+    has_colors: doc.has_colors !== false,
+    size_options: Array.isArray(doc.size_options) ? doc.size_options : [],
+    color_options: Array.isArray(doc.color_options) ? doc.color_options : [],
     commissions: resolveCommissionsFromCategory(doc),
     product_count: productCount
   };
+};
+
+const normalizeAttributeConfig = (body = {}) => {
+  const config = {};
+
+  if (body.has_sizes !== undefined) {
+    config.has_sizes = body.has_sizes === true || body.has_sizes === 'true';
+  }
+  if (body.has_colors !== undefined) {
+    config.has_colors = body.has_colors === true || body.has_colors === 'true';
+  }
+
+  if (body.size_options !== undefined) {
+    const sizes = Array.isArray(body.size_options) ? body.size_options : [];
+    config.size_options = sizes
+      .map((s) => String(s).trim())
+      .filter(Boolean);
+  }
+
+  if (body.color_options !== undefined) {
+    const colors = Array.isArray(body.color_options) ? body.color_options : [];
+    config.color_options = colors
+      .map((c) => ({
+        name: String(c?.name || '').trim(),
+        hex: String(c?.hex || '').trim()
+      }))
+      .filter((c) => c.name || c.hex);
+  }
+
+  return config;
 };
 
 export const getAllProductCategories = async (req, res, next) => {
@@ -108,12 +142,17 @@ export const createProductCategory = async (req, res, next) => {
     }
 
     const commissions = parseCommissionPayload(req.body);
+    const attributeConfig = normalizeAttributeConfig(req.body);
 
     const category = new ProductCategory({
       name: name.trim(),
       code: code?.trim()?.toUpperCase() || undefined,
       description: description?.trim() || '',
       commissions,
+      has_sizes: attributeConfig.has_sizes !== undefined ? attributeConfig.has_sizes : true,
+      has_colors: attributeConfig.has_colors !== undefined ? attributeConfig.has_colors : true,
+      size_options: attributeConfig.size_options || [],
+      color_options: attributeConfig.color_options || [],
       is_active: isActive !== false
     });
 
@@ -147,6 +186,7 @@ export const updateProductCategory = async (req, res, next) => {
     if (req.body.code !== undefined) update.code = req.body.code?.trim()?.toUpperCase() || undefined;
     if (req.body.description !== undefined) update.description = req.body.description?.trim() || '';
     if (req.body.is_active !== undefined) update.is_active = req.body.is_active === true || req.body.is_active === 'true';
+    Object.assign(update, normalizeAttributeConfig(req.body));
 
     if (req.body.commissions || req.body.retailer !== undefined) {
       const existing = await ProductCategory.findById(id);

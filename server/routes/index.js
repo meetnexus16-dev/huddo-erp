@@ -79,6 +79,17 @@ import {
   getBillingPercentage
 } from '../controllers/customController.js';
 
+// Inventory add + label batch controller
+import {
+  addInventory,
+  getInventoryTransactions,
+  getLabelBatches,
+  getLabelBatchById,
+  markLabelBatchPrinted,
+  markLabelBatchDownloaded,
+  getStockLevels
+} from '../controllers/inventoryController.js';
+
 // Upload Middleware import
 import upload from '../middleware/upload.js';
 
@@ -239,6 +250,15 @@ router.post('/inventory/qr-in', verifyJWT, qrIn);
 router.post('/inventory/qr-out', verifyJWT, qrOut);
 router.get('/inventory/return-stock', verifyJWT, getReturnStock);
 router.post('/inventory/return-stock', verifyJWT, addReturnStock);
+
+// Inventory add + history + barcode label batches
+router.post('/inventory/add', verifyJWT, checkPermission('stock-records', 'create'), addInventory);
+router.get('/inventory/stock-levels', verifyJWT, checkPermission('stock-records', 'view'), getStockLevels);
+router.get('/inventory/transactions', verifyJWT, checkPermission('stock-records', 'view'), getInventoryTransactions);
+router.get('/inventory/label-batches', verifyJWT, checkPermission('stock-records', 'view'), getLabelBatches);
+router.get('/inventory/label-batches/:id', verifyJWT, checkPermission('stock-records', 'view'), getLabelBatchById);
+router.post('/inventory/label-batches/:id/printed', verifyJWT, checkPermission('stock-records', 'view'), markLabelBatchPrinted);
+router.post('/inventory/label-batches/:id/downloaded', verifyJWT, checkPermission('stock-records', 'view'), markLabelBatchDownloaded);
 
 // Customers Directory
 router.get('/customers', verifyJWT, getCustomers);

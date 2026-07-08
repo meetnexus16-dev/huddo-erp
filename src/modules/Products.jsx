@@ -236,7 +236,10 @@ export default function Products({ showToast, onNavigate }) {
     const categoryName = foundCat.name;
 
     const marginVal = Math.round(((Number(formData.mrp) - Number(formData.costPrice)) / Number(formData.mrp)) * 100);
-    const resolvedColors = formData.colors.length > 0 ? formData.colors : ["#EF4444", "#1F2937"];
+    const catHasSizes = foundCat.has_sizes !== false;
+    const catHasColors = foundCat.has_colors !== false;
+    const resolvedColors = catHasColors ? formData.colors : [];
+    const resolvedSizes = catHasSizes ? formData.sizes : [];
     const resolvedColour = resolvedColors.map(c => COLOR_NAMES[c] || c).join(" / ");
 
     const fd = new FormData();
@@ -245,7 +248,7 @@ export default function Products({ showToast, onNavigate }) {
     fd.append('description', formData.description);
     fd.append('is_active', formData.status === 'Active' ? 'true' : 'false');
     fd.append('category', resolvedCategory);
-    fd.append('sizes', JSON.stringify(formData.sizes));
+    fd.append('sizes', JSON.stringify(resolvedSizes));
     fd.append('colors', JSON.stringify(resolvedColors));
     fd.append('colour', resolvedColour);
     fd.append('mrp', String(formData.mrp));
@@ -408,7 +411,10 @@ export default function Products({ showToast, onNavigate }) {
     const categoryName = foundCat.name;
 
     const marginVal = Math.round(((Number(formData.mrp) - Number(formData.costPrice)) / Number(formData.mrp)) * 100);
-    const resolvedColors = formData.colors.length > 0 ? formData.colors : ["#EF4444", "#1F2937"];
+    const catHasSizes = foundCat.has_sizes !== false;
+    const catHasColors = foundCat.has_colors !== false;
+    const resolvedColors = catHasColors ? formData.colors : [];
+    const resolvedSizes = catHasSizes ? formData.sizes : [];
     const resolvedColour = resolvedColors.map(c => COLOR_NAMES[c] || c).join(" / ");
 
     const fd = new FormData();
@@ -417,7 +423,7 @@ export default function Products({ showToast, onNavigate }) {
     fd.append('description', formData.description);
     fd.append('is_active', formData.status === 'Active' ? 'true' : 'false');
     fd.append('category', resolvedCategory);
-    fd.append('sizes', JSON.stringify(formData.sizes));
+    fd.append('sizes', JSON.stringify(resolvedSizes));
     fd.append('colors', JSON.stringify(resolvedColors));
     fd.append('colour', resolvedColour);
     fd.append('mrp', String(formData.mrp));
@@ -513,8 +519,9 @@ export default function Products({ showToast, onNavigate }) {
   };
 
   const toggleSizeCheckbox = (sz) => {
-    if (formData.sizes.includes(sz)) {
-      setFormData({ ...formData, sizes: formData.sizes.filter(s => s !== sz) });
+    const key = String(sz);
+    if (formData.sizes.map(String).includes(key)) {
+      setFormData({ ...formData, sizes: formData.sizes.filter(s => String(s) !== key) });
     } else {
       setFormData({ ...formData, sizes: [...formData.sizes, sz] });
     }
@@ -592,6 +599,19 @@ export default function Products({ showToast, onNavigate }) {
       </div>
     )}
   ];
+
+  // Dynamic attribute config derived from the selected category
+  const selectedCategory = categories.find(
+    (c) => c._id === formData.category || c.name === formData.category
+  );
+  const categoryHasSizes = selectedCategory ? selectedCategory.has_sizes !== false : true;
+  const categoryHasColors = selectedCategory ? selectedCategory.has_colors !== false : true;
+  const categorySizeOptions = selectedCategory?.size_options?.length
+    ? selectedCategory.size_options
+    : [5, 6, 7, 8, 9, 10, 11, 12];
+  const categoryColorOptions = selectedCategory?.color_options?.length
+    ? selectedCategory.color_options.map((c) => [c.hex, c.name])
+    : Object.entries(COLOR_NAMES);
 
   return (
     <div className="space-y-6">
@@ -770,17 +790,24 @@ export default function Products({ showToast, onNavigate }) {
 
             <CategoryCommissionPreview categoryId={formData.category} categories={categories} />
 
+            {!selectedCategory && (
+              <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-3 text-xs text-slate-500 font-semibold">
+                Select a category to configure sizes and colors.
+              </div>
+            )}
+
+            {categoryHasSizes && (
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Select Available UK Sizes</label>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Select Available Sizes</label>
               <div className="flex gap-1.5 flex-wrap bg-slate-50 border border-slate-100 rounded-xl p-3">
-                {[5, 6, 7, 8, 9, 10, 11, 12].map(sz => {
-                  const isSelected = formData.sizes.includes(sz);
+                {categorySizeOptions.map(sz => {
+                  const isSelected = formData.sizes.map(String).includes(String(sz));
                   return (
                     <button 
                       key={sz}
                       type="button"
                       onClick={() => toggleSizeCheckbox(sz)}
-                      className={`w-9 h-9 rounded-lg text-xs border font-bold transition-all cursor-pointer ${
+                      className={`min-w-9 h-9 px-2 rounded-lg text-xs border font-bold transition-all cursor-pointer ${
                         isSelected 
                           ? 'bg-brand-orange border-brand-orange text-white shadow-xs font-extrabold' 
                           : 'bg-white border-slate-200 text-slate-650 hover:bg-slate-50'
@@ -792,11 +819,13 @@ export default function Products({ showToast, onNavigate }) {
                 })}
               </div>
             </div>
+            )}
 
+            {categoryHasColors && (
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Select Available Colors</label>
               <div className="flex gap-2 flex-wrap bg-slate-50 border border-slate-100 rounded-xl p-3">
-                {Object.entries(COLOR_NAMES).map(([hex, name]) => {
+                {categoryColorOptions.map(([hex, name]) => {
                   const isSelected = formData.colors.includes(hex);
                   return (
                     <button
@@ -819,8 +848,9 @@ export default function Products({ showToast, onNavigate }) {
                 })}
               </div>
             </div>
+            )}
 
-            {formData.colors.length > 0 && (
+            {categoryHasColors && formData.colors.length > 0 && (
               <div className="space-y-2">
                 <label className="block text-xs font-bold text-slate-500 uppercase">Color-specific Configurations</label>
                 <div className="grid grid-cols-1 gap-2.5 max-h-56 overflow-y-auto pr-1">

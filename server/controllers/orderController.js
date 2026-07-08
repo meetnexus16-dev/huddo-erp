@@ -1,5 +1,7 @@
 import Order from '../models/Order.js';
+import ProductVariant from '../models/ProductVariant.js';
 import { calculateAndStoreOrderCommissions } from '../utils/commissionEngine.js';
+import { adjustVariantStock } from '../utils/inventoryService.js';
 
 const APPROVER_ROLES = ['CityManager', 'StateManager', 'CountryManager', 'Founder', 'Admin'];
 
@@ -43,10 +45,57 @@ export const approveOrder = async (req, res, next) => {
       });
     }
 
+    // Validate stock availability across all order items before approving.
+    const variantMap = new Map();
+    const shortages = [];
+    for (const item of order.items) {
+      const variant = await ProductVariant.findById(item.product_variant).populate('product', 'name sku');
+      if (!variant) {
+        shortages.push(`Variant ${item.product_variant} not found`);
+        continue;
+      }
+      variantMap.set(String(item.product_variant), variant);
+      const available = Number(variant.stock_quantity) || 0;
+      if (available < item.quantity) {
+        shortages.push(
+          `${variant.product?.name || variant.sku_variant} (${variant.color}/${variant.size}): need ${item.quantity}, only ${available} in stock`
+        );
+      }
+    }
+
+    if (shortages.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Insufficient stock to approve this order. ${shortages.join('; ')}.`,
+        data: { shortages }
+      });
+    }
+
     const wasApproved = order.status === 'Approved';
     order.status = 'Approved';
     order.cancelled_reason = undefined;
     await order.save();
+
+    // Deduct inventory and record a transaction per item.
+    for (const item of order.items) {
+      const variant = variantMap.get(String(item.product_variant));
+      if (!variant) continue;
+      try {
+        await adjustVariantStock({
+          variant,
+          delta: -Math.abs(item.quantity),
+          type: 'deduct',
+          source: 'order',
+          referenceType: 'order',
+          referenceId: order._id,
+          referenceLabel: order.order_number,
+          note: `Order ${order.order_number} approved`,
+          user: req.user
+        });
+      } catch (stockError) {
+        console.error('[Inventory] Failed to deduct stock for order item:', stockError.message);
+      }
+    }
 
     if (!wasApproved && !order.commissions_calculated) {
       try {

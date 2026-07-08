@@ -10,6 +10,7 @@ export default function CustomModal({
   confirmText = "Confirm", 
   cancelText = "Cancel",
   isDestructive = false,
+  hideFooter = false,
   size = "md" // md | lg | xl
 }) {
   useEffect(() => {
@@ -59,6 +60,7 @@ export default function CustomModal({
         </div>
 
         {/* Modal Actions Footer */}
+        {!hideFooter && (
         <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
           <button 
             onClick={onClose}
@@ -79,6 +81,7 @@ export default function CustomModal({
             </button>
           )}
         </div>
+        )}
       </div>
     </div>
   );

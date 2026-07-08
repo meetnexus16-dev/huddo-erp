@@ -1,14 +1,55 @@
 import React, { useState, useEffect } from 'react';
-import { Archive, Plus, RefreshCw, AlertTriangle, Layers, Save, HelpCircle, Send } from 'lucide-react';
+import { Archive, Plus, RefreshCw, AlertTriangle, Layers, PackagePlus, History, Tag, Printer } from 'lucide-react';
 import { DataTable, Modal } from '../components/Common';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+import { useConfirm } from '../context/ConfirmContext';
+import BarcodeLabelBatchModal from '../components/BarcodeLabelBatchModal';
+
+const COLOR_NAMES = {
+  '#EF4444': 'Red',
+  '#1F2937': 'Black',
+  '#3B82F6': 'Blue',
+  '#10B981': 'Green',
+  '#9CA3AF': 'Grey',
+  '#1E3A8A': 'Navy',
+  '#F59E0B': 'Yellow',
+  '#8B4513': 'Brown',
+  '#FFFFFF': 'White'
+};
+
+const colorLabel = (color) => {
+  if (!color) return '';
+  return COLOR_NAMES[String(color).toUpperCase()] || COLOR_NAMES[color] || color;
+};
+
+// Threshold used to flag a variant as "low stock" in the live stock ledger.
+const LOW_STOCK_THRESHOLD = 10;
 
 export default function Inventory({ showToast }) {
-  const [activeTab, setActiveTab] = useState('stock'); // stock | alerts | transfer | warehouses | returns | reports
+  const { confirm } = useConfirm();
+  const [activeTab, setActiveTab] = useState('stock'); // stock | add | history | labels | alerts | transfer | warehouses | returns
   const [stock, setStock] = useState([]);
   const [whList, setWhList] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [productVariants, setProductVariants] = useState([]);
+  const [stockLevels, setStockLevels] = useState([]);
+
+  // Add-inventory + barcode label state
+  const [categories, setCategories] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [addForm, setAddForm] = useState({ category: '', product: '', size: '', quantity: '' });
+  const [addingStock, setAddingStock] = useState(false);
+  const [inventoryTxns, setInventoryTxns] = useState([]);
+  const [labelBatches, setLabelBatches] = useState([]);
+  const [activeBatch, setActiveBatch] = useState(null);
+  const [labelModalOpen, setLabelModalOpen] = useState(false);
+  const [isAddInventoryOpen, setIsAddInventoryOpen] = useState(false);
+  const [addVariants, setAddVariants] = useState([]);
+  const [variantsLoading, setVariantsLoading] = useState(false);
+
+  // Filters for Current Stock Levels and Inventory History
+  const [stockFilters, setStockFilters] = useState({ category: '', product: '', size: '' });
+  const [historyFilters, setHistoryFilters] = useState({ category: '', product: '', size: '' });
 
   // Modals state
   const [isAddWhOpen, setIsAddWhOpen] = useState(false);
@@ -68,6 +109,42 @@ export default function Inventory({ showToast }) {
     status: t.status || 'Completed'
   });
 
+  const loadStockLevels = () => {
+    fetch('/api/inventory/stock-levels')
+      .then((res) => res.json())
+      .then((resData) => {
+        if (resData.success && Array.isArray(resData.data)) {
+          setStockLevels(resData.data);
+        }
+      })
+      .catch((err) => console.error('Error loading stock levels:', err));
+  };
+
+  const loadAddVariantsForProduct = (productId) => {
+    if (!productId) {
+      setAddVariants([]);
+      return Promise.resolve();
+    }
+    setVariantsLoading(true);
+    return fetch(`/api/products/${productId}`)
+      .then((res) => res.json())
+      .then((resData) => {
+        if (resData.success && Array.isArray(resData.data?.variants)) {
+          const variants = resData.data.variants
+            .filter((v) => !v.is_deleted)
+            .sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+          setAddVariants(variants);
+        } else {
+          setAddVariants([]);
+        }
+      })
+      .catch((err) => {
+        console.error('Error loading product variants:', err);
+        setAddVariants([]);
+      })
+      .finally(() => setVariantsLoading(false));
+  };
+
   const loadInventoryData = () => {
     fetch('/api/stock-records')
       .then(res => res.json())
@@ -116,27 +193,150 @@ export default function Inventory({ showToast }) {
       })
       .catch(err => console.error("Error loading employees:", err));
 
-    fetch('/api/product-variants')
+    fetch('/api/product-variants?limit=500')
       .then(res => res.json())
       .then(resData => {
         if (resData.success && Array.isArray(resData.data)) {
           setProductVariants(resData.data);
           if (resData.data.length > 0) {
-            setTransferData(prev => ({ ...prev, product: resData.data[0].sku }));
+            setTransferData(prev => ({ ...prev, product: resData.data[0].sku_variant || resData.data[0].sku }));
           }
         }
       })
       .catch(err => console.error("Error loading product variants:", err));
 
+    loadStockLevels();
+
     fetch('/api/inventory/return-stock')
       .then(res => res.json())
       .then(data => setReturnHistory(data))
       .catch(err => console.error("Error loading return logs", err));
+
+    fetch('/api/product-categories')
+      .then(res => res.json())
+      .then(resData => {
+        if (resData.success && Array.isArray(resData.data)) setCategories(resData.data);
+      })
+      .catch(err => console.error("Error loading categories:", err));
+
+    fetch('/api/products?limit=500')
+      .then(res => res.json())
+      .then(resData => {
+        if (resData.success && Array.isArray(resData.data)) setProducts(resData.data);
+      })
+      .catch(err => console.error("Error loading products:", err));
+
+    fetch('/api/inventory/transactions')
+      .then(res => res.json())
+      .then(resData => {
+        if (resData.success && Array.isArray(resData.data)) setInventoryTxns(resData.data);
+      })
+      .catch(err => console.error("Error loading inventory transactions:", err));
+
+    fetch('/api/inventory/label-batches')
+      .then(res => res.json())
+      .then(resData => {
+        if (resData.success && Array.isArray(resData.data)) setLabelBatches(resData.data);
+      })
+      .catch(err => console.error("Error loading label batches:", err));
   };
 
   useEffect(() => {
     loadInventoryData();
   }, []);
+
+  // Load sizes for the selected product (stock is tracked per size, not per color)
+  useEffect(() => {
+    loadAddVariantsForProduct(addForm.product);
+  }, [addForm.product]);
+
+  const sizeOptions = React.useMemo(() => {
+    const bySize = new Map();
+    for (const v of addVariants) {
+      const size = String(v.size);
+      if (!bySize.has(size)) {
+        bySize.set(size, {
+          size,
+          totalStock: Number(v.stock_quantity) || 0
+        });
+      }
+    }
+    return Array.from(bySize.values()).sort((a, b) => {
+      const na = parseFloat(a.size);
+      const nb = parseFloat(b.size);
+      if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+      return a.size.localeCompare(b.size);
+    });
+  }, [addVariants]);
+
+  const selectedSizeEntry = sizeOptions.find((s) => s.size === addForm.size);
+
+  const filteredProducts = addForm.category
+    ? products.filter((p) => (p.category?._id || p.category) === addForm.category)
+    : products;
+
+  const handleAddInventorySubmit = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!addForm.product || !addForm.size) {
+      showToast('Please select a product and size.', 'error');
+      return;
+    }
+    const qty = Number(addForm.quantity);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      showToast('Enter a valid quantity greater than zero.', 'error');
+      return;
+    }
+
+    const product = products.find((p) => p._id === addForm.product);
+    const confirmed = await confirm({
+      title: 'Add inventory?',
+      message: `Add ${qty} unit(s) of ${product?.name || 'product'} (UK ${addForm.size}) to stock? Barcode labels will be generated for printing.`,
+      confirmText: 'Add & Generate Labels'
+    });
+    if (!confirmed) return;
+
+    const productId = addForm.product;
+    setAddingStock(true);
+    try {
+      const res = await fetch('/api/inventory/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product: addForm.product, size: addForm.size, quantity: qty })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        showToast(data.message || 'Failed to add inventory.', 'error');
+        return;
+      }
+      showToast(data.message || 'Inventory added.', 'success');
+
+      // Open the barcode label batch popup immediately
+      if (data.data?.batch) {
+        setActiveBatch({
+          ...data.data.batch,
+          product_name: data.data.batch.product_name || product?.name,
+          article_no: data.data.batch.article_no || product?.sku
+        });
+        setLabelModalOpen(true);
+      }
+
+      setAddForm({ ...addForm, size: '', quantity: '' });
+      setIsAddInventoryOpen(false);
+      loadStockLevels();
+      loadInventoryData();
+      if (productId) loadAddVariantsForProduct(productId);
+    } catch (err) {
+      console.error('Add inventory failed:', err);
+      showToast('Network error while adding inventory.', 'error');
+    } finally {
+      setAddingStock(false);
+    }
+  };
+
+  const openBatchLabels = (batch) => {
+    setActiveBatch(batch);
+    setLabelModalOpen(true);
+  };
 
   const handleReturnStockSubmit = async (e) => {
     e.preventDefault();
@@ -175,34 +375,6 @@ export default function Inventory({ showToast }) {
     } catch (err) {
       console.error(err);
       showToast("Error processing return", "error");
-    }
-  };
-
-  const handleUpdateReorder = (id, newVal) => {
-    setStock(stock.map(item => 
-      item.id === id ? { 
-        ...item, 
-        reorderLevel: Number(newVal),
-        status: item.stockLevel <= Number(newVal) ? (item.stockLevel === 0 ? 'Out of Stock' : 'Low Stock') : 'Normal'
-      } : item
-    ));
-  };
-
-  const handleSaveReorder = async () => {
-    try {
-      const promises = stock.map(item => 
-        fetch(`/api/stock-records/${item.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reorder_level: item.reorderLevel })
-        })
-      );
-      await Promise.all(promises);
-      showToast("Reorder levels saved and sync'd to database successfully.", "success");
-      loadInventoryData();
-    } catch (err) {
-      console.error(err);
-      showToast("Failed to save reorder levels.", "error");
     }
   };
 
@@ -289,6 +461,93 @@ export default function Inventory({ showToast }) {
       .catch(err => console.error(err));
   };
 
+  const openHistoryForStockRow = (row) => {
+    setHistoryFilters({
+      category: row.categoryId || '',
+      product: row.productId || '',
+      size: row.size || ''
+    });
+    setActiveTab('history');
+  };
+
+  const sortSizes = (a, b) => {
+    const na = parseFloat(a);
+    const nb = parseFloat(b);
+    if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+    return String(a).localeCompare(String(b));
+  };
+
+  // Live stock ledger — one row per product + size (inventory is not tracked per color)
+  const liveStock = stockLevels.map((row) => {
+    const prod = row.product && typeof row.product === 'object' ? row.product : null;
+    const level = Number(row.stock_quantity) || 0;
+    const categoryId = prod?.category?._id || prod?.category || '';
+    return {
+      id: row._id,
+      productId: String(prod?._id || ''),
+      categoryId: String(categoryId),
+      name: prod?.name || 'Product',
+      articleSku: prod?.sku || '—',
+      category: prod?.category?.name || 'Uncategorized',
+      size: row.size,
+      stockLevel: level,
+      status: level === 0 ? 'Out of Stock' : level <= LOW_STOCK_THRESHOLD ? 'Low Stock' : 'Normal'
+    };
+  });
+
+  const stockFilterProducts = stockFilters.category
+    ? products.filter((p) => String(p.category?._id || p.category) === stockFilters.category)
+    : products;
+
+  const historyFilterProducts = historyFilters.category
+    ? products.filter((p) => String(p.category?._id || p.category) === historyFilters.category)
+    : products;
+
+  const stockFilterSizeOptions = React.useMemo(() => {
+    const sizes = new Set();
+    liveStock.forEach((row) => {
+      if (stockFilters.category && row.categoryId !== stockFilters.category) return;
+      if (stockFilters.product && row.productId !== stockFilters.product) return;
+      sizes.add(String(row.size));
+    });
+    return Array.from(sizes).sort(sortSizes);
+  }, [liveStock, stockFilters.category, stockFilters.product]);
+
+  const historyFilterSizeOptions = React.useMemo(() => {
+    const sizes = new Set();
+    liveStock.forEach((row) => {
+      if (historyFilters.category && row.categoryId !== historyFilters.category) return;
+      if (historyFilters.product && row.productId !== historyFilters.product) return;
+      sizes.add(String(row.size));
+    });
+    inventoryTxns.forEach((txn) => {
+      const prodId = String(txn.product?._id || txn.product || '');
+      const prod = products.find((p) => p._id === prodId) || txn.product;
+      const categoryId = String(prod?.category?._id || prod?.category || '');
+      if (historyFilters.category && categoryId !== historyFilters.category) return;
+      if (historyFilters.product && prodId !== historyFilters.product) return;
+      if (txn.product_variant?.size) sizes.add(String(txn.product_variant.size));
+    });
+    return Array.from(sizes).sort(sortSizes);
+  }, [liveStock, historyFilters.category, historyFilters.product, inventoryTxns, products]);
+
+  const filteredLiveStock = liveStock.filter((row) => {
+    if (stockFilters.category && row.categoryId !== stockFilters.category) return false;
+    if (stockFilters.product && row.productId !== stockFilters.product) return false;
+    if (stockFilters.size && String(row.size) !== stockFilters.size) return false;
+    return true;
+  });
+
+  const filteredInventoryTxns = inventoryTxns.filter((txn) => {
+    const prodId = String(txn.product?._id || txn.product || '');
+    const prod = products.find((p) => p._id === prodId) || (typeof txn.product === 'object' ? txn.product : null);
+    const categoryId = String(prod?.category?._id || prod?.category || '');
+    if (historyFilters.category && categoryId !== historyFilters.category) return false;
+    if (historyFilters.product && prodId !== historyFilters.product) return false;
+    if (historyFilters.size && String(txn.product_variant?.size) !== historyFilters.size) return false;
+    return true;
+  });
+
   const transferColumns = [
     { header: "Transfer ID", accessor: "id", render: (val) => <span className="font-bold text-slate-800 font-mono text-[11px]">{val}</span> },
     { header: "Product Model", accessor: "product", render: (val) => <span className="font-bold text-slate-800 font-display">{val}</span> },
@@ -305,27 +564,15 @@ export default function Inventory({ showToast }) {
     )}
   ];
 
-  // Low stock filters
-  const lowStockItems = stock.filter(item => item.stockLevel <= item.reorderLevel);
+  // Low stock filters (based on filtered live stock)
+  const lowStockItems = filteredLiveStock.filter((item) => item.stockLevel <= LOW_STOCK_THRESHOLD);
 
-  const stockColumns = [
-    { header: "Footwear Product", accessor: "name", render: (val) => <span className="font-bold text-slate-800 font-display">{val}</span> },
-    { header: "SKU Code", accessor: "sku", render: (val) => <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-[10px] text-slate-600 font-bold">{val}</code> },
+  const liveStockColumns = [
+    { header: "Product", accessor: "name", render: (val) => <span className="font-bold text-slate-800 font-display">{val}</span> },
+    { header: "Article No.", accessor: "articleSku", render: (val) => <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-[10px] text-slate-600 font-bold">{val}</code> },
     { header: "Category", accessor: "category" },
-    { header: "Size/Color", accessor: "id", render: (val, row) => <span>UK {row.size} / {row.color}</span> },
-    { header: "Stock Level", accessor: "stockLevel", render: (val) => <span className={`font-bold ${val === 0 ? 'text-rose-600' : val <= 40 ? 'text-amber-500' : 'text-slate-800'}`}>{val} pairs</span> },
-    { header: "Warehouse Link", accessor: "warehouse" },
-    { header: "Reorder Level (Editable)", accessor: "reorderLevel", render: (val, row) => (
-      <div className="flex items-center gap-1">
-        <input 
-          type="number"
-          value={val}
-          onChange={(e) => handleUpdateReorder(row.id, e.target.value)}
-          className="border border-slate-200 text-slate-800 rounded p-1 w-16 text-right font-bold focus:outline-none"
-        />
-        <span className="text-[10px] text-slate-400">units</span>
-      </div>
-    )},
+    { header: "Size", accessor: "size", render: (val) => <span className="font-bold text-slate-800">UK {val}</span> },
+    { header: "Current Stock", accessor: "stockLevel", render: (val) => <span className={`font-bold ${val === 0 ? 'text-rose-600' : val <= LOW_STOCK_THRESHOLD ? 'text-amber-500' : 'text-slate-800'}`}>{val} pairs</span> },
     { header: "Status", accessor: "status", render: (val) => (
       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
         val === 'Normal' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
@@ -334,8 +581,72 @@ export default function Inventory({ showToast }) {
       }`}>
         {val}
       </span>
+    )},
+    { header: "Actions", accessor: "id", sortable: false, render: (val, row) => (
+      <button
+        type="button"
+        onClick={() => openHistoryForStockRow(row)}
+        className="inline-flex items-center gap-1 text-xs font-bold text-brand-orange hover:underline"
+      >
+        <History className="w-3.5 h-3.5" /> History
+      </button>
     )}
   ];
+
+  const renderInventoryFilters = (filters, setFilters, filterProducts, sizeOptions, onClear) => (
+    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="flex-1 min-w-[140px]">
+          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Category</label>
+          <select
+            value={filters.category}
+            onChange={(e) => setFilters({ category: e.target.value, product: '', size: '' })}
+            className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white text-slate-800"
+          >
+            <option value="">All categories</option>
+            {categories.map((c) => (
+              <option key={c._id} value={c._id}>{c.name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex-1 min-w-[160px]">
+          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Product</label>
+          <select
+            value={filters.product}
+            onChange={(e) => setFilters({ ...filters, product: e.target.value, size: '' })}
+            className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white text-slate-800"
+          >
+            <option value="">All products</option>
+            {filterProducts.map((p) => (
+              <option key={p._id} value={p._id}>{p.name} ({p.sku})</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex-1 min-w-[120px]">
+          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Size</label>
+          <select
+            value={filters.size}
+            onChange={(e) => setFilters({ ...filters, size: e.target.value })}
+            className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white text-slate-800"
+          >
+            <option value="">All sizes</option>
+            {sizeOptions.map((s) => (
+              <option key={s} value={s}>UK {s}</option>
+            ))}
+          </select>
+        </div>
+        {(filters.category || filters.product || filters.size) && (
+          <button
+            type="button"
+            onClick={onClear}
+            className="px-3 py-2.5 text-xs font-bold text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50"
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
+    </div>
+  );
 
   const whColumns = [
     { header: "Warehouse ID", accessor: "id" },
@@ -362,8 +673,8 @@ export default function Inventory({ showToast }) {
             <Archive className="w-6 h-6 text-brand-orange" />
           </span>
           <div>
-            <span className="text-[10px] text-slate-400 uppercase font-semibold">Total Stock SKUs</span>
-            <h3 className="text-xl font-bold text-slate-800 font-display mt-0.5">{stock.length} Active</h3>
+            <span className="text-[10px] text-slate-400 uppercase font-semibold">Total Stock Lines</span>
+            <h3 className="text-xl font-bold text-slate-800 font-display mt-0.5">{liveStock.length} Active</h3>
           </div>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex items-center gap-4">
@@ -380,8 +691,8 @@ export default function Inventory({ showToast }) {
             <AlertTriangle className="w-6 h-6" />
           </span>
           <div>
-            <span className="text-[10px] text-slate-400 uppercase font-semibold">Out of Stock SKU</span>
-            <h3 className="text-xl font-bold text-rose-600 font-display mt-0.5">{stock.filter(i => i.stockLevel === 0).length} Models</h3>
+            <span className="text-[10px] text-slate-400 uppercase font-semibold">Out of Stock</span>
+            <h3 className="text-xl font-bold text-rose-600 font-display mt-0.5">{liveStock.filter(i => i.stockLevel === 0).length} Lines</h3>
           </div>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex items-center gap-4">
@@ -402,13 +713,29 @@ export default function Inventory({ showToast }) {
           <p className="text-xs text-slate-500 font-semibold">Perform warehouse balance checks, authorize inbound transfers, and update auto-reordering limits.</p>
         </div>
         <div className="flex gap-2 self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={() => {
+              setAddForm({
+                category: stockFilters.category || '',
+                product: stockFilters.product || '',
+                size: stockFilters.size || '',
+                quantity: ''
+              });
+              setIsAddInventoryOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 bg-brand-orange hover:bg-brand-orange-hover text-white rounded-lg text-xs font-bold transition-all shadow-sm"
+          >
+            <PackagePlus className="w-3.5 h-3.5" />
+            <span>Add Inventory</span>
+          </button>
           {activeTab === 'stock' && (
             <button 
-              onClick={handleSaveReorder}
+              onClick={loadStockLevels}
               className="flex items-center gap-1.5 px-3 py-2 bg-brand-dark text-white rounded-lg text-xs font-bold transition-all shadow-xs"
             >
-              <Save className="w-3.5 h-3.5" />
-              <span>Save Reorder Levels</span>
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Refresh Stock</span>
             </button>
           )}
         </div>
@@ -420,7 +747,19 @@ export default function Inventory({ showToast }) {
           onClick={() => setActiveTab('stock')}
           className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'stock' ? 'border-brand-orange text-brand-orange' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
         >
-          Warehouse Stock Ledger ({stock.length})
+          Current Stock Levels ({liveStock.length})
+        </button>
+        <button 
+          onClick={() => setActiveTab('history')}
+          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${activeTab === 'history' ? 'border-brand-orange text-brand-orange' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+        >
+          <History className="w-4 h-4" /> Inventory History ({inventoryTxns.length})
+        </button>
+        <button 
+          onClick={() => setActiveTab('labels')}
+          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${activeTab === 'labels' ? 'border-brand-orange text-brand-orange' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+        >
+          <Tag className="w-4 h-4" /> Barcode Labels ({labelBatches.length})
         </button>
         <button 
           onClick={() => setActiveTab('alerts')}
@@ -474,18 +813,91 @@ export default function Inventory({ showToast }) {
 
       {/* Contents */}
       {activeTab === 'stock' ? (
-        <DataTable 
-          columns={stockColumns} 
-          data={stock} 
-          searchKeys={["name", "sku", "warehouse"]}
-          searchPlaceholder="Search warehouse stock ledger..."
+        <div className="space-y-4">
+          {renderInventoryFilters(
+            stockFilters,
+            setStockFilters,
+            stockFilterProducts,
+            stockFilterSizeOptions,
+            () => setStockFilters({ category: '', product: '', size: '' })
+          )}
+          <DataTable 
+          columns={liveStockColumns} 
+          data={filteredLiveStock} 
+          searchKeys={["name", "articleSku", "category", "size"]}
+          searchPlaceholder="Search current stock by product, article no. or size..."
+          emptyStateText="No stock lines match the selected filters."
+        />
+        </div>
+      ) : activeTab === 'history' ? (
+        <div className="space-y-4">
+          {renderInventoryFilters(
+            historyFilters,
+            setHistoryFilters,
+            historyFilterProducts,
+            historyFilterSizeOptions,
+            () => setHistoryFilters({ category: '', product: '', size: '' })
+          )}
+          <DataTable
+          columns={[
+            { header: 'Date', accessor: 'createdAt', render: (val) => <span className="text-slate-600">{new Date(val).toLocaleString()}</span> },
+            { header: 'Product', accessor: 'product', render: (val) => <span className="font-bold text-slate-800">{val?.name || '—'}</span> },
+            { header: 'Size', accessor: 'product_variant', render: (val) => <span className="text-slate-600">{val ? `UK ${val.size}` : '—'}</span> },
+            { header: 'SKU', accessor: 'product_variant', render: (val) => <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-[10px]">{val?.sku_variant || '—'}</code> },
+            { header: 'Type', accessor: 'type', render: (val) => (
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                val === 'add' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                val === 'deduct' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                'bg-slate-100 text-slate-600 border-slate-200'
+              }`}>{val === 'add' ? 'Stock In' : val === 'deduct' ? 'Stock Out' : 'Adjust'}</span>
+            )},
+            { header: 'Quantity', accessor: 'quantity', render: (val, row) => (
+              <span className={`font-bold ${row.type === 'add' ? 'text-emerald-600' : row.type === 'deduct' ? 'text-rose-600' : 'text-slate-700'}`}>
+                {row.type === 'deduct' ? '-' : '+'}{val}
+              </span>
+            )},
+            { header: 'Balance After', accessor: 'balance_after', render: (val) => <span className="font-bold text-slate-900">{val}</span> },
+            { header: 'Reference', accessor: 'reference_label', render: (val, row) => <span className="text-[11px] text-slate-500">{val || row.source || '—'}</span> },
+            { header: 'By', accessor: 'performed_by_name', render: (val) => <span className="text-slate-600">{val || 'System'}</span> }
+          ]}
+          data={filteredInventoryTxns}
+          searchKeys={[(r) => r.product?.name, (r) => r.product_variant?.sku_variant, 'type', 'reference_label']}
+          searchPlaceholder="Search inventory movement history..."
+          emptyStateText="No inventory movements match the selected filters."
+        />
+        </div>
+      ) : activeTab === 'labels' ? (
+        <DataTable
+          columns={[
+            { header: 'Batch', accessor: 'batch_number', render: (val) => <span className="font-bold text-slate-800 font-mono text-[11px]">{val}</span> },
+            { header: 'Date', accessor: 'createdAt', render: (val) => <span className="text-slate-600">{new Date(val).toLocaleString()}</span> },
+            { header: 'Product', accessor: 'product_name', render: (val, row) => <span className="font-bold text-slate-800">{val || row.product?.name}</span> },
+            { header: 'Size', accessor: 'size', render: (val) => <span className="text-slate-600">UK {val}</span> },
+            { header: 'Barcode', accessor: 'barcode_value', render: (val) => <code className="bg-slate-100 px-1 py-0.5 rounded font-mono text-[10px]">{val}</code> },
+            { header: 'Labels', accessor: 'quantity', render: (val) => <span className="font-bold text-slate-900">{val}</span> },
+            { header: 'Printed', accessor: 'print_count', render: (val) => <span className="text-slate-600">{val || 0}×</span> },
+            { header: 'Downloaded', accessor: 'download_count', render: (val) => <span className="text-slate-600">{val || 0}×</span> },
+            { header: 'Actions', accessor: '_id', sortable: false, render: (val, row) => (
+              <button
+                onClick={() => openBatchLabels(row)}
+                className="inline-flex items-center gap-1 text-xs font-bold text-brand-orange hover:underline"
+              >
+                <Printer className="w-3.5 h-3.5" /> Print / Download
+              </button>
+            )}
+          ]}
+          data={labelBatches}
+          searchKeys={['batch_number', 'product_name', 'barcode_value']}
+          searchPlaceholder="Search barcode label batches..."
+          emptyStateText="No label batches yet. Add inventory to generate barcode labels."
         />
       ) : activeTab === 'alerts' ? (
         <DataTable 
-          columns={stockColumns} 
+          columns={liveStockColumns} 
           data={lowStockItems} 
-          searchKeys={["name", "sku", "warehouse"]}
-          searchPlaceholder="Search alert items..."
+          searchKeys={["name", "articleSku", "category", "size"]}
+          searchPlaceholder="Search low-stock items..."
+          emptyStateText="No low-stock variants. All stock is above the threshold."
         />
       ) : activeTab === 'transfer' ? (
         <DataTable 
@@ -689,6 +1101,106 @@ export default function Inventory({ showToast }) {
           </div>
         </form>
       </Modal>
+
+      {/* Add Inventory Modal */}
+      <Modal
+        isOpen={isAddInventoryOpen}
+        onClose={() => !addingStock && setIsAddInventoryOpen(false)}
+        title="Add Stock & Generate Barcode Labels"
+        maxWidth="max-w-2xl"
+        onConfirm={handleAddInventorySubmit}
+        confirmText={addingStock ? 'Adding...' : 'Add Inventory'}
+        cancelText="Cancel"
+      >
+        <div className="space-y-4 text-left">
+          <p className="text-xs text-slate-500 font-semibold">
+            Select a category, product, size and quantity. On confirmation stock is added, history is recorded, and a printable barcode label batch opens.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">1. Product Category</label>
+              <select
+                value={addForm.category}
+                onChange={(e) => setAddForm({ ...addForm, category: e.target.value, product: '', size: '' })}
+                className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white text-slate-800"
+              >
+                <option value="">All categories</option>
+                {categories.map((c) => (
+                  <option key={c._id} value={c._id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">2. Product</label>
+              <select
+                value={addForm.product}
+                onChange={(e) => setAddForm({ ...addForm, product: e.target.value, size: '' })}
+                className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white text-slate-800"
+              >
+                <option value="">Select product</option>
+                {filteredProducts.map((p) => (
+                  <option key={p._id} value={p._id}>{p.name} ({p.sku})</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">3. Size</label>
+              <select
+                value={addForm.size}
+                onChange={(e) => setAddForm({ ...addForm, size: e.target.value })}
+                disabled={!addForm.product || variantsLoading}
+                className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white text-slate-800 disabled:bg-slate-100"
+              >
+                <option value="">
+                  {!addForm.product
+                    ? 'Select a product first'
+                    : variantsLoading
+                      ? 'Loading sizes...'
+                      : sizeOptions.length === 0
+                        ? 'No sizes for this product'
+                        : 'Select size'}
+                </option>
+                {sizeOptions.map((opt) => (
+                  <option key={opt.size} value={opt.size}>
+                    UK {opt.size} — in stock: {opt.totalStock}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">4. Quantity to Add</label>
+              <input
+                type="number"
+                min="1"
+                value={addForm.quantity}
+                onChange={(e) => setAddForm({ ...addForm, quantity: e.target.value })}
+                placeholder="e.g. 50"
+                className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white text-slate-800"
+              />
+            </div>
+          </div>
+          {selectedSizeEntry && (
+            <div className="bg-slate-50 border border-slate-150 rounded-lg p-3 text-xs text-slate-600 flex items-center justify-between">
+              <span>Current stock for UK {selectedSizeEntry.size}: <b className="text-slate-900">{selectedSizeEntry.totalStock}</b></span>
+              {addForm.quantity && Number(addForm.quantity) > 0 && (
+                <span className="text-emerald-600 font-bold">
+                  → After add: {selectedSizeEntry.totalStock + Number(addForm.quantity)}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      {/* Barcode Label Batch Popup */}
+      <BarcodeLabelBatchModal
+        isOpen={labelModalOpen}
+        onClose={() => setLabelModalOpen(false)}
+        batch={activeBatch}
+        showToast={showToast}
+      />
 
     </div>
   );

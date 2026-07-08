@@ -226,9 +226,14 @@ export const createProduct = async (req, res, next) => {
     const product = new Product(req.body);
     await product.save();
 
+    // Variants require a size and color. When the category has no sizes/colors,
+    // fall back to a single placeholder so a scannable variant still exists.
+    const effectiveSizes = Array.isArray(sizes) && sizes.length > 0 ? sizes : ['One Size'];
+    const effectiveColors = Array.isArray(colors) && colors.length > 0 ? colors : ['Default'];
+
     // Generate variants for each size/color combination
     const variants = [];
-    for (const color of colors) {
+    for (const color of effectiveColors) {
       // Determine image for this color
       let colorImages = [];
       if (colorConfigs && colorConfigs[color] && colorConfigs[color].image) {
@@ -237,7 +242,7 @@ export const createProduct = async (req, res, next) => {
         colorImages = [product.image];
       }
 
-      for (const size of sizes) {
+      for (const size of effectiveSizes) {
         const skuVariant = generateVariantSku(product.sku, color, size);
         
         const variant = new ProductVariant({
@@ -250,7 +255,7 @@ export const createProduct = async (req, res, next) => {
           margin_percentage: margin || 0,
           sku_variant: skuVariant,
           images: colorImages,
-          stock_quantity: 100, // standard default initial stock
+          stock_quantity: 0, // starts empty; stock is added via Add Inventory
           is_active: true
         });
 
@@ -329,6 +334,9 @@ export const updateProduct = async (req, res, next) => {
     const categoryCommissions = await getCategoryCommissions(product.category);
     const retailerMargin = categoryCommissions.retailer;
 
+    const effectiveSizes = Array.isArray(sizes) && sizes.length > 0 ? sizes : ['One Size'];
+    const effectiveColors = Array.isArray(colors) && colors.length > 0 ? colors : ['Default'];
+
     const existingVariants = await ProductVariant.find({ product: id });
     const existingMap = new Map();
     existingVariants.forEach(v => {
@@ -338,7 +346,7 @@ export const updateProduct = async (req, res, next) => {
     const activeKeys = new Set();
     const updatedVariants = [];
 
-    for (const color of colors) {
+    for (const color of effectiveColors) {
       // Determine image for this color
       let colorImages = [];
       if (colorConfigs && colorConfigs[color] && colorConfigs[color].image) {
@@ -347,7 +355,7 @@ export const updateProduct = async (req, res, next) => {
         colorImages = [product.image];
       }
 
-      for (const size of sizes) {
+      for (const size of effectiveSizes) {
         const key = `${color}-${size}`;
         activeKeys.add(key);
 
@@ -377,7 +385,7 @@ export const updateProduct = async (req, res, next) => {
             margin_percentage: margin || 0,
             sku_variant: skuVariant,
             images: colorImages,
-            stock_quantity: 100,
+            stock_quantity: 0, // starts empty; stock is added via Add Inventory
             is_active: true
           });
           await variant.save();

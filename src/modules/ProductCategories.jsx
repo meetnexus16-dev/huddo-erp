@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Layers, Plus, Edit2, Trash2, Percent, Users } from 'lucide-react';
+import { Layers, Plus, Edit2, Trash2, Percent, Users, Ruler, Palette } from 'lucide-react';
 import { DataTable, Modal } from '../components/Common';
 import { useConfirm } from '../context/ConfirmContext';
 
@@ -10,11 +10,27 @@ const DEFAULT_PROMOTER_COMMISSIONS = {
   countryManager: 5.5
 };
 
+const COLOR_PALETTE = [
+  { name: 'Red', hex: '#EF4444' },
+  { name: 'Black', hex: '#1F2937' },
+  { name: 'Blue', hex: '#3B82F6' },
+  { name: 'Green', hex: '#10B981' },
+  { name: 'Grey', hex: '#9CA3AF' },
+  { name: 'Navy', hex: '#1E3A8A' },
+  { name: 'Yellow', hex: '#F59E0B' },
+  { name: 'Brown', hex: '#8B4513' },
+  { name: 'White', hex: '#FFFFFF' }
+];
+
 const EMPTY_FORM = {
   name: '',
   code: '',
   description: '',
   is_active: true,
+  has_sizes: true,
+  has_colors: true,
+  size_options: '',
+  color_options: [],
   cityManager: 2,
   stateManager: 1,
   countryManager: 0.5,
@@ -78,6 +94,10 @@ export default function ProductCategories({ showToast }) {
       code: row.code || '',
       description: row.description || '',
       is_active: row.is_active !== false,
+      has_sizes: row.has_sizes !== false,
+      has_colors: row.has_colors !== false,
+      size_options: Array.isArray(row.size_options) ? row.size_options.join(', ') : '',
+      color_options: Array.isArray(row.color_options) ? row.color_options : [],
       cityManager: commissions.cityManager ?? 2,
       stateManager: commissions.stateManager ?? 1,
       countryManager: commissions.countryManager ?? 0.5,
@@ -87,6 +107,18 @@ export default function ProductCategories({ showToast }) {
       promoterCountryManager: promoter.countryManager ?? DEFAULT_PROMOTER_COMMISSIONS.countryManager
     });
     setModalOpen(true);
+  };
+
+  const toggleColorOption = (color) => {
+    setFormData((prev) => {
+      const exists = prev.color_options.some((c) => c.hex === color.hex);
+      return {
+        ...prev,
+        color_options: exists
+          ? prev.color_options.filter((c) => c.hex !== color.hex)
+          : [...prev.color_options, color]
+      };
+    });
   };
 
   const buildCommissionsPayload = () => ({
@@ -109,11 +141,22 @@ export default function ProductCategories({ showToast }) {
 
     setSaving(true);
     try {
+      const sizeOptions = formData.has_sizes
+        ? formData.size_options
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
+
       const payload = {
         name: formData.name.trim(),
         code: formData.code.trim(),
         description: formData.description.trim(),
         is_active: formData.is_active,
+        has_sizes: formData.has_sizes,
+        has_colors: formData.has_colors,
+        size_options: sizeOptions,
+        color_options: formData.has_colors ? formData.color_options : [],
         commissions: buildCommissionsPayload()
       };
 
@@ -303,6 +346,85 @@ export default function ProductCategories({ showToast }) {
               className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white"
               placeholder="Optional description for this category"
             />
+          </div>
+
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-4">
+            <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-2">
+              <Ruler className="w-3.5 h-3.5 text-brand-orange" />
+              Product Attributes
+            </h4>
+            <p className="text-[10px] text-slate-500 -mt-2">
+              Controls which fields appear on the product form for this category.
+            </p>
+
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-sm font-semibold text-slate-700">Has size options</span>
+                <p className="text-[10px] text-slate-500">Products in this category can have multiple sizes.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, has_sizes: !formData.has_sizes })}
+                className={`w-12 h-6 flex items-center rounded-full p-1 transition-colors ${formData.has_sizes ? 'bg-emerald-500' : 'bg-slate-300'}`}
+              >
+                <span className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${formData.has_sizes ? 'translate-x-6' : ''}`} />
+              </button>
+            </div>
+
+            {formData.has_sizes && (
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Allowed Sizes (comma separated)</label>
+                <input
+                  type="text"
+                  value={formData.size_options}
+                  onChange={(e) => setFormData({ ...formData, size_options: e.target.value })}
+                  className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white"
+                  placeholder="e.g. 5, 6, 7, 8, 9, 10  (leave blank to use default UK sizes)"
+                />
+              </div>
+            )}
+
+            <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+              <div>
+                <span className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+                  <Palette className="w-3.5 h-3.5 text-brand-orange" /> Has color options
+                </span>
+                <p className="text-[10px] text-slate-500">Products in this category can have multiple colors.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, has_colors: !formData.has_colors })}
+                className={`w-12 h-6 flex items-center rounded-full p-1 transition-colors ${formData.has_colors ? 'bg-emerald-500' : 'bg-slate-300'}`}
+              >
+                <span className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${formData.has_colors ? 'translate-x-6' : ''}`} />
+              </button>
+            </div>
+
+            {formData.has_colors && (
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Allowed Colors (leave none to use defaults)</label>
+                <div className="flex gap-2 flex-wrap">
+                  {COLOR_PALETTE.map((color) => {
+                    const isSelected = formData.color_options.some((c) => c.hex === color.hex);
+                    return (
+                      <button
+                        key={color.hex}
+                        type="button"
+                        onClick={() => toggleColorOption(color)}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs border font-bold transition-all ${
+                          isSelected
+                            ? 'bg-white border-brand-orange text-slate-800 ring-2 ring-brand-orange/20'
+                            : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
+                        }`}
+                      >
+                        <span className="w-3.5 h-3.5 rounded-full border border-slate-300" style={{ backgroundColor: color.hex }} />
+                        <span>{color.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">

@@ -46,6 +46,15 @@ const productCategorySchema = new mongoose.Schema({
   code: { type: String, trim: true, uppercase: true, sparse: true, unique: true },
   description: { type: String },
   commissions: commissionFields,
+  // Dynamic attribute configuration — controls which fields the product form shows.
+  has_sizes: { type: Boolean, default: true },
+  has_colors: { type: Boolean, default: true },
+  // Optional predefined option lists for this category. When empty the UI falls back to defaults.
+  size_options: [{ type: String, trim: true }],
+  color_options: [{
+    name: { type: String, trim: true },
+    hex: { type: String, trim: true }
+  }],
   is_active: { type: Boolean, default: true }
 }, { timestamps: true });
 
