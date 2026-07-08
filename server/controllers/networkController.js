@@ -7,6 +7,7 @@ import City from '../models/City.js';
 import State from '../models/State.js';
 import Country from '../models/Country.js';
 import { getManagedGeoIds, getUsersUnderTerritory } from '../utils/managerTerritoryService.js';
+import { previewUserCommissionForOrder } from '../utils/commissionEngine.js';
 
 async function getRetailerIdsUnderUser(user) {
   const geo = await getManagedGeoIds(user);
@@ -156,6 +157,11 @@ export const getNetworkOrders = async (req, res, next) => {
       is_deleted: { $ne: true }
     })
       .populate('retailer', 'business_name owner_name')
+      .populate({
+        path: 'items.product_variant',
+        select: 'sku_variant size color product',
+        populate: { path: 'product', select: 'name franchise_points' }
+      })
       .sort({ createdAt: -1 });
 
     const orderIds = orders.map((o) => o._id);
@@ -173,11 +179,27 @@ export const getNetworkOrders = async (req, res, next) => {
       return acc;
     }, {});
 
-    const data = orders.map((order) => ({
-      ...order.toObject(),
-      my_commission: commissionByOrder[order._id.toString()]?.total || 0,
-      commission_details: commissionByOrder[order._id.toString()]?.rows || []
-    }));
+    const data = await Promise.all(
+      orders.map(async (order) => {
+        const earned = commissionByOrder[order._id.toString()];
+        // Projected commission = what the user will earn once the order is approved.
+        const projection = await previewUserCommissionForOrder(
+          { items: order.items, retailer: order.retailer?._id || order.retailer },
+          req.user._id
+        );
+        return {
+          ...order.toObject(),
+          // Actual earned commission (0 until the order is approved/confirmed).
+          my_commission: earned?.total || 0,
+          commission_details: earned?.rows || [],
+          // Projected values shown before confirmation.
+          projected_points: projection.total_points,
+          projected_percentage: projection.percentage,
+          projected_commission: projection.amount,
+          projected_commission_lines: projection.lines
+        };
+      })
+    );
 
     res.status(200).json({ success: true, data });
   } catch (error) {

@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { 
-  Home, Layers, CheckSquare, Target, Users, BarChart3, Bell, 
+  Home, Layers, Target, Users, BarChart3, Bell, 
   TrendingUp, ShoppingCart, Store
 } from 'lucide-react';
 
@@ -16,7 +16,6 @@ import MyProfile from '../MyProfile';
 import NetworkWorkspace from '../network/NetworkWorkspace';
 import { NETWORK_SIDEBAR_SECTION, getNetworkTab, isNetworkScreen } from '../network/networkSidebarConfig';
 import ManagerOrdersLive from '../manager/ManagerOrdersLive';
-import ManagerApprovalsLive from '../manager/ManagerApprovalsLive';
 import ManagerCityManagersView from '../manager/ManagerCityManagersView';
 import ManagerRetailersView from '../manager/ManagerRetailersView';
 import ManagerStateManagersView from '../manager/ManagerStateManagersView';
@@ -137,8 +136,7 @@ export default function CountryManagerModule({ userRole = 'Founder', showToast, 
     {
       section: 'OPERATIONS',
       items: [
-        { id: 'Orders', label: 'Orders', icon: ShoppingCart },
-        { id: 'Approvals', label: 'Approvals Queue', icon: CheckSquare, badge: stats.pendingApprovals }
+        { id: 'Orders', label: 'Orders', icon: ShoppingCart }
       ]
     },
     {
@@ -200,14 +198,6 @@ export default function CountryManagerModule({ userRole = 'Founder', showToast, 
         return resolvedCmId
           ? <CountryManagerDetail cmId={resolvedCmId} onNavigate={() => {}} showToast={safeShowToast} userRole={userRole} initialTab="States" />
           : null;
-      case 'Approvals':
-        return (
-          <ManagerApprovalsLive
-            showToast={safeShowToast}
-            title="Order Approvals Queue"
-            onPendingCountChange={handlePendingCountChange}
-          />
-        );
       case 'Targets':
         return resolvedCmId
           ? <CountryManagerDetail cmId={resolvedCmId} onNavigate={() => {}} showToast={safeShowToast} userRole={userRole} initialTab="Targets" />

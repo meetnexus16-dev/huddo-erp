@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Navigate } from 'react-router-dom';
 import { 
-  Home, Store, UserPlus, Clock, ShoppingCart, CheckSquare, 
+  Home, Store, UserPlus, Clock, ShoppingCart, 
   MapPin, Lightbulb, Award, TrendingUp, Target, Percent, BarChart3, Bell
 } from 'lucide-react';
 
@@ -31,7 +31,6 @@ import {
 import Dashboard from './pages/Dashboard';
 import Retailers from './pages/Retailers';
 import Orders from './pages/Orders';
-import Approvals from './pages/Approvals';
 import VisitLogs from './pages/VisitLogs';
 import Leads from './pages/Leads';
 import PromoterView from './pages/PromoterView';
@@ -44,7 +43,6 @@ import NetworkWorkspace from '../modules/network/NetworkWorkspace';
 import { NETWORK_SIDEBAR_SECTION, getNetworkTab, isNetworkScreen } from '../modules/network/networkSidebarConfig';
 import OnboardSharePanel from '../modules/network/OnboardSharePanel';
 import ManagerOrdersLive from '../modules/manager/ManagerOrdersLive';
-import ManagerApprovalsLive from '../modules/manager/ManagerApprovalsLive';
 import { fetchPendingOrderCount } from '../modules/manager/pendingOrderUtils';
 import { fetchTerritoryRetailers } from '../modules/manager/territoryTeamApi';
 
@@ -520,14 +518,6 @@ export default function CityManagerModule({ showToast: parentShowToast, onSwitch
             onPendingCountChange={setPendingOrderCount}
           />
         );
-      case 'Approvals':
-        return (
-          <ManagerApprovalsLive
-            showToast={showToast}
-            title="Order Approvals"
-            onPendingCountChange={setPendingOrderCount}
-          />
-        );
       case 'Visit Logs':
         return (
           <VisitLogs
@@ -615,7 +605,7 @@ export default function CityManagerModule({ showToast: parentShowToast, onSwitch
             retailerSalesData={retailerSalesData}
             onApprove={handleApproveApproval}
             onReject={(id) => {
-              handleTabChange('Approvals');
+              handleTabChange('Orders');
               showToast(`Review pending items to reject ID ${id}`, 'info');
             }}
             onNavigate={handleTabChange}
@@ -624,7 +614,6 @@ export default function CityManagerModule({ showToast: parentShowToast, onSwitch
     }
   };
 
-  const pendingApprovalsCount = pendingOrderCount;
   const unreadNotificationsCount = notifications.filter(n => !n.read).length;
   const pendingRetailersCount = retailers.filter(r => r.status === 'Pending Verification').length;
 
@@ -647,8 +636,7 @@ export default function CityManagerModule({ showToast: parentShowToast, onSwitch
     {
       section: "OPERATIONS",
       items: [
-        { id: "Orders", label: "Orders", icon: ShoppingCart },
-        { id: "Approvals", label: "Approvals", icon: CheckSquare, badge: pendingApprovalsCount || undefined }
+        { id: "Orders", label: "Orders", icon: ShoppingCart }
       ]
     },
     {

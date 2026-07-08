@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Navigate } from 'react-router-dom';
 import { 
-  Home, Users, Store, ShoppingCart, CheckSquare, 
+  Home, Users, Store, ShoppingCart, 
   TrendingUp, Target, MapPin, Percent, BarChart3, Bell
 } from 'lucide-react';
 
@@ -39,7 +39,6 @@ import MyIncentive from './pages/MyIncentive';
 import Reports from './pages/Reports';
 import NotificationsPage from './pages/NotificationsPage';
 import ManagerOrdersLive from '../modules/manager/ManagerOrdersLive';
-import ManagerApprovalsLive from '../modules/manager/ManagerApprovalsLive';
 import { fetchPendingOrderCount } from '../modules/manager/pendingOrderUtils';
 import { authFetch } from '../utils/authFetch';
 import { fetchTerritoryRetailers } from '../modules/manager/territoryTeamApi';
@@ -398,8 +397,7 @@ export default function StateManagerModule({ showToast: parentShowToast, onSwitc
     {
       section: "OPERATIONS",
       items: [
-        { id: "Orders", label: "Orders", icon: ShoppingCart },
-        { id: "Approvals", label: "Approvals", icon: CheckSquare, badge: pendingApprovalsCount }
+        { id: "Orders", label: "Orders", icon: ShoppingCart }
       ]
     },
     {
@@ -491,14 +489,6 @@ export default function StateManagerModule({ showToast: parentShowToast, onSwitc
           <ManagerOrdersLive
             showToast={showToast}
             title="State Orders"
-            onPendingCountChange={setPendingOrderCount}
-          />
-        );
-      case 'Approvals':
-        return (
-          <ManagerApprovalsLive
-            showToast={showToast}
-            title="Order Approvals"
             onPendingCountChange={setPendingOrderCount}
           />
         );

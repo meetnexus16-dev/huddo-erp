@@ -8,25 +8,34 @@ import Target from '../models/Target.js';
 
 export const APPROVED_ORDER_STATUSES = ['Approved', 'Processing', 'Packed', 'Shipped', 'Delivered'];
 
+// Extracts the ObjectId string whether the field is a populated document or a raw ObjectId.
+function toIdString(value) {
+  if (!value) return null;
+  if (value._id) return value._id.toString();
+  return value.toString();
+}
+
 export async function getManagedGeoIds(user) {
   const roleName = user.roleName || user.role?.name;
   const result = { cityIds: [], stateIds: [], countryIds: [] };
 
   if (roleName === 'CityManager' && user.city) {
-    result.cityIds = [user.city.toString()];
+    result.cityIds = [toIdString(user.city)];
     return result;
   }
 
   if (roleName === 'StateManager' && user.state) {
-    result.stateIds = [user.state.toString()];
-    const cities = await City.find({ state: user.state, is_deleted: { $ne: true } }).select('_id');
+    const stateId = toIdString(user.state);
+    result.stateIds = [stateId];
+    const cities = await City.find({ state: stateId, is_deleted: { $ne: true } }).select('_id');
     result.cityIds = cities.map((c) => c._id.toString());
     return result;
   }
 
   if (roleName === 'CountryManager' && user.country) {
-    result.countryIds = [user.country.toString()];
-    const states = await State.find({ country: user.country, is_deleted: { $ne: true } }).select('_id');
+    const countryId = toIdString(user.country);
+    result.countryIds = [countryId];
+    const states = await State.find({ country: countryId, is_deleted: { $ne: true } }).select('_id');
     result.stateIds = states.map((s) => s._id.toString());
     if (result.stateIds.length) {
       const cities = await City.find({ state: { $in: result.stateIds }, is_deleted: { $ne: true } }).select('_id');

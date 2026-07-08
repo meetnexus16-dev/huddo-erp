@@ -294,3 +294,100 @@ export async function calculateAndStoreOrderCommissions(orderId) {
 
   return { order, recordsCreated: recordRows.length };
 }
+
+/**
+ * Computes what a specific user would earn on an order WITHOUT persisting anything.
+ * Used to preview a manager's/promoter's projected commission before an order is
+ * approved. Returns the order's total franchise points, the user's effective
+ * commission percentage, and the projected commission amount.
+ */
+export async function previewUserCommissionForOrder(order, userId) {
+  const empty = { total_points: 0, percentage: 0, amount: 0, lines: [] };
+  const uid = userId?.toString();
+  if (!order || !uid || !Array.isArray(order.items)) return empty;
+
+  const ctx = await loadRetailerContext(order.retailer);
+  if (!ctx) return empty;
+
+  const { retailer, city, state, country } = ctx;
+  const referrerRecipients = await findReferrerBonusRecipients(retailer, city, state, country);
+
+  let totalOrderPoints = 0;
+  let userPointsBasis = 0;
+  let userAmount = 0;
+  const lines = [];
+
+  for (const item of order.items) {
+    const variantId = item.product_variant?._id || item.product_variant;
+    const variant = await ProductVariant.findById(variantId).populate({
+      path: 'product',
+      populate: { path: 'category' }
+    });
+    const productDoc = variant?.product;
+    if (!productDoc) continue;
+
+    const category = productDoc.category;
+    const commissions = resolveCommissionsFromCategory(category);
+    const franchisePoints = Number(productDoc.franchise_points || 0);
+    const qty = Number(item.quantity || 0);
+    const pointsBasis = franchisePoints * qty;
+    totalOrderPoints += pointsBasis;
+
+    const baseLabel = `${productDoc.name} (${franchisePoints} pts × ${qty})`;
+
+    // Manager incentive if this user is the responsible geo manager for the order.
+    let managerPct = 0;
+    let managerRole = null;
+    if (city?.manager?._id?.toString() === uid) {
+      managerPct = commissions.cityManager;
+      managerRole = 'City Manager';
+    } else if (state?.manager?._id?.toString() === uid) {
+      managerPct = commissions.stateManager;
+      managerRole = 'State Manager';
+    } else if (country?.manager?._id?.toString() === uid) {
+      managerPct = commissions.countryManager;
+      managerRole = 'Country Manager';
+    }
+
+    if (managerRole && managerPct > 0) {
+      const amt = calculateLineCommission(franchisePoints, qty, managerPct);
+      if (amt > 0) {
+        userAmount += amt;
+        userPointsBasis += pointsBasis;
+        lines.push({
+          description: `${managerRole} incentive (${managerPct}%) on ${baseLabel}`,
+          amount: amt,
+          percentage: managerPct
+        });
+      }
+    }
+
+    // Referrer / promoter commission if this user referred someone in the chain.
+    for (const entry of referrerRecipients) {
+      if (entry.user?._id?.toString() !== uid) continue;
+      if (!isReferrerEligibleForOrder(entry, retailer, city, state, country)) continue;
+
+      const totalPct = await getReferrerCommissionPercentage(category, entry.promotedRole);
+      const amt = calculateLineCommission(franchisePoints, qty, totalPct);
+      if (amt <= 0) continue;
+
+      const roleLabel = PROMOTED_ROLE_LABELS[entry.promotedRole] || entry.promotedRole;
+      userAmount += amt;
+      userPointsBasis += pointsBasis;
+      lines.push({
+        description: `Referrer commission (${totalPct}% for promoted ${roleLabel}) on ${baseLabel}`,
+        amount: amt,
+        percentage: totalPct
+      });
+    }
+  }
+
+  const percentage = userPointsBasis > 0 ? roundAmount((userAmount / userPointsBasis) * 100) : 0;
+
+  return {
+    total_points: totalOrderPoints,
+    percentage,
+    amount: roundAmount(userAmount),
+    lines
+  };
+}
