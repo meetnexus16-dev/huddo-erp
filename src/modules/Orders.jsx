@@ -3,6 +3,17 @@ import { ShoppingCart, FileText, CheckCircle2, AlertTriangle, Eye, HelpCircle, X
 import { initialOrders, initialWorkflowConfig } from '../mockData';
 import { DataTable, Modal } from '../components/Common';
 
+// Format a date value as e.g. "08 Jul 2026, 3:14 PM"
+const formatDateTime = (value) => {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true
+  });
+};
+
 export default function Orders({ showToast }) {
   const [orders, setOrders] = useState([]);
   const [workflowConfig, setWorkflowConfig] = useState(initialWorkflowConfig);
@@ -20,17 +31,43 @@ export default function Orders({ showToast }) {
             const locationParts = [cityName, stateName, countryName].filter(Boolean);
             return {
             id: o.order_number || o._id,
+            mongoId: o._id,
             retailerName: o.retailer?.business_name || 'Walk Easy Footwear',
             city: cityName || '—',
             state: stateName || '—',
             country: countryName || '—',
             location: locationParts.length ? locationParts.join(', ') : '—',
+            retailerInfo: {
+              businessName: o.retailer?.business_name || '—',
+              ownerName: o.retailer?.owner_name || '—',
+              mobile: o.retailer?.mobile || '—',
+              email: o.retailer?.email || '—',
+              address: o.retailer?.shop_address || '—',
+              gst: o.retailer?.gst_number || '—',
+              pan: o.retailer?.pan_number || '—',
+              category: o.retailer?.category || '—',
+              creditAmount: o.retailer?.credit_limit?.amount || 0,
+              creditEnabled: o.retailer?.credit_limit?.is_enabled || false,
+              verified: o.retailer?.is_verified || false,
+              city: cityName || '—',
+              state: stateName || '—',
+              country: countryName || '—'
+            },
             productsCount: o.items?.length || 0,
             amount: o.subtotal,
             paymentStatus: o.payment_status || 'Pending',
             utrNo: o.utr_number || '',
             date: o.createdAt ? new Date(o.createdAt).toISOString().split('T')[0] : '2026-06-08',
+            createdAt: o.createdAt,
             status: o.status || 'Submitted',
+            history: Array.isArray(o.status_history) && o.status_history.length > 0
+              ? o.status_history.map(h => ({
+                  status: h.status,
+                  at: h.changed_at,
+                  note: h.note || '',
+                  by: h.changed_by?.name || ''
+                }))
+              : [{ status: o.status || 'Submitted', at: o.createdAt, note: 'Order created', by: '' }],
             items: o.items?.map(item => ({
               name: item.product_variant?.product?.name || 'Huddo Air Classic',
               size: item.product_variant?.size || '9',
@@ -62,8 +99,12 @@ export default function Orders({ showToast }) {
 
   // Modals / Details view
   const [viewingOrder, setViewingOrder] = useState(null);
+  const [drawerTab, setDrawerTab] = useState('details'); // details | history
+  const [showRetailerInfo, setShowRetailerInfo] = useState(false);
+  const [isApproveOpen, setIsApproveOpen] = useState(false);
   const [isRejectOpen, setIsRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
   const [verifyUtrVal, setVerifyUtrVal] = useState('');
 
   // Save workflow toggles
@@ -79,65 +120,103 @@ export default function Orders({ showToast }) {
     showToast(`Workflow level "${key.toUpperCase()} Manager Approval" toggled.`, "success");
   };
 
-  const handleApproveOrder = (id) => {
-    fetch(`/api/orders/${id}/approve`, { method: 'POST' })
-      .catch(err => console.error("Failed to approve order:", err));
-
-    setOrders(orders.map(o => {
-      if (o.id === id) {
-        showToast(`Order ${id} approved by Admin.`, "success");
-        return {
-          ...o,
-          status: "Approved",
-          paymentStatus: "Verified",
-          workflow: { ...o.workflow, adminApproved: true }
-        };
+  const handleApproveOrder = async () => {
+    if (!viewingOrder) return;
+    const orderMongoId = viewingOrder.mongoId;
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/orders/${orderMongoId}/approve`, { method: 'POST' });
+      const data = await res.json();
+      if (!data.success) {
+        showToast(data.message || "Failed to approve order.", "error");
+        return;
       }
-      return o;
-    }));
-    setViewingOrder(null);
+      setOrders(orders.map(o => (
+        o.mongoId === orderMongoId
+          ? { ...o, status: "Approved", paymentStatus: "Verified" }
+          : o
+      )));
+      showToast(`Order ${viewingOrder.id} approved.`, "success");
+      setIsApproveOpen(false);
+      setViewingOrder(null);
+    } catch (err) {
+      console.error("Failed to approve order:", err);
+      showToast("Error approving order.", "error");
+    } finally {
+      setActionLoading(false);
+    }
   };
 
-  const handleRejectOrder = () => {
-    if (!rejectReason) {
+  const handleRejectOrder = async () => {
+    if (!rejectReason.trim()) {
       showToast("Please specify rejection reason.", "error");
       return;
     }
-
-    fetch(`/api/orders/${viewingOrder.id}/reject`, {
-      method: 'POST',
-      body: JSON.stringify({ reason: rejectReason })
-    }).catch(err => console.error("Failed to reject order:", err));
-
-    setOrders(orders.map(o => {
-      if (o.id === viewingOrder.id) {
-        showToast(`Order ${viewingOrder.id} rejected: ${rejectReason}`, "error");
-        return {
-          ...o,
-          status: "Cancelled",
-          paymentStatus: "Rejected"
-        };
+    const orderMongoId = viewingOrder.mongoId;
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/orders/${orderMongoId}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ remarks: rejectReason })
+      });
+      const data = await res.json();
+      if (!data.success) {
+        showToast(data.message || "Failed to reject order.", "error");
+        return;
       }
-      return o;
-    }));
-    setIsRejectOpen(false);
-    setViewingOrder(null);
-    setRejectReason('');
+      setOrders(orders.map(o => (
+        o.mongoId === orderMongoId
+          ? { ...o, status: "Cancelled", paymentStatus: "Failed" }
+          : o
+      )));
+      showToast(`Order ${viewingOrder.id} rejected.`, "success");
+      setIsRejectOpen(false);
+      setViewingOrder(null);
+      setRejectReason('');
+    } catch (err) {
+      console.error("Failed to reject order:", err);
+      showToast("Error rejecting order.", "error");
+    } finally {
+      setActionLoading(false);
+    }
   };
 
-  const handleUpdateStatus = (id, newStatus) => {
-    fetch(`/api/orders/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify({ status: newStatus })
-    }).catch(err => console.error("Failed to update status:", err));
+  const mapHistory = (o) => (
+    Array.isArray(o.status_history) && o.status_history.length > 0
+      ? o.status_history.map(h => ({ status: h.status, at: h.changed_at, note: h.note || '', by: h.changed_by?.name || '' }))
+      : []
+  );
 
-    setOrders(orders.map(o => {
-      if (o.id === id) {
-        showToast(`Order ${id} status updated to ${newStatus}`, "success");
-        return { ...o, status: newStatus };
+  const handleUpdateStatus = async (order, newStatus) => {
+    const orderMongoId = order.mongoId;
+    try {
+      const res = await fetch(`/api/orders/${orderMongoId}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      const data = await res.json();
+      if (!data.success) {
+        showToast(data.message || "Failed to update status.", "error");
+        return;
       }
-      return o;
-    }));
+      const newHistory = mapHistory(data.data);
+      setOrders(orders.map(o => (
+        o.mongoId === orderMongoId
+          ? { ...o, status: newStatus, history: newHistory.length ? newHistory : o.history }
+          : o
+      )));
+      setViewingOrder(prev => (
+        prev && prev.mongoId === orderMongoId
+          ? { ...prev, status: newStatus, history: newHistory.length ? newHistory : prev.history }
+          : prev
+      ));
+      showToast(`Order ${order.id} status updated to ${newStatus}.`, "success");
+    } catch (err) {
+      console.error("Failed to update status:", err);
+      showToast("Error updating status.", "error");
+    }
   };
   // Filter orders
   const filteredOrders = orders.filter(ord => {
@@ -175,7 +254,7 @@ export default function Orders({ showToast }) {
     )},
     { header: "Actions", accessor: "id", sortable: false, render: (val, row) => (
       <button 
-        onClick={() => { setViewingOrder(row); setVerifyUtrVal(row.utrNo); }}
+        onClick={() => { setViewingOrder(row); setVerifyUtrVal(row.utrNo); setShowRetailerInfo(false); setDrawerTab('details'); }}
         className="px-3 py-1 bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-xs rounded hover:bg-slate-200 transition-colors flex items-center gap-1"
       >
         <Eye className="w-3.5 h-3.5" />
@@ -299,53 +378,124 @@ export default function Orders({ showToast }) {
                 <h3 className="text-base font-bold text-slate-900 font-display">Order Inspection: {viewingOrder.id}</h3>
                 <p className="text-xs text-slate-500">Submitted on: {viewingOrder.date} • Current Status: <strong>{viewingOrder.status}</strong></p>
               </div>
-              <button onClick={() => setViewingOrder(null)} className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-400">
+              <button onClick={() => { setViewingOrder(null); setShowRetailerInfo(false); }} className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-400">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
+            {/* Drawer tabs */}
+            <div className="flex border-b border-slate-100 px-6 bg-white">
+              {[
+                { key: 'details', label: 'Details' },
+                { key: 'history', label: 'History Log' }
+              ].map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => setDrawerTab(tab.key)}
+                  className={`px-4 py-2.5 text-xs font-bold border-b-2 transition-colors ${
+                    drawerTab === tab.key
+                      ? 'border-brand-orange text-brand-orange'
+                      : 'border-transparent text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
             {/* Content info */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {/* Timeline nodes */}
+             {drawerTab === 'details' && (
+              <>
+              {/* Order lifecycle timeline: from placed to delivered */}
               <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl space-y-3">
-                <h4 className="text-xs font-bold text-slate-500 uppercase">Approval Pipeline Levels</h4>
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-col items-center flex-1">
-                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${viewingOrder.workflow.cityApproved ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>✓</span>
-                    <span className="text-[9px] text-slate-500 font-bold mt-1">City Mgr</span>
+                <h4 className="text-xs font-bold text-slate-500 uppercase">Order Timeline</h4>
+                {viewingOrder.status === 'Cancelled' ? (
+                  <div className="flex items-center gap-2 text-rose-600 text-xs font-bold">
+                    <span className="w-6 h-6 rounded-full bg-rose-500 text-white flex items-center justify-center">✕</span>
+                    <span>This order was cancelled.</span>
                   </div>
-                  <div className="h-0.5 bg-slate-200 flex-1 -mt-4"></div>
-                  
-                  <div className="flex flex-col items-center flex-1">
-                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${viewingOrder.workflow.stateApproved ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>✓</span>
-                    <span className="text-[9px] text-slate-500 font-bold mt-1">State Mgr</span>
-                  </div>
-                  <div className="h-0.5 bg-slate-200 flex-1 -mt-4"></div>
-
-                  <div className="flex flex-col items-center flex-1">
-                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${viewingOrder.workflow.countryApproved ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>✓</span>
-                    <span className="text-[9px] text-slate-500 font-bold mt-1">Country Mgr</span>
-                  </div>
-                  <div className="h-0.5 bg-slate-200 flex-1 -mt-4"></div>
-
-                  <div className="flex flex-col items-center flex-1">
-                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${viewingOrder.workflow.adminApproved ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>✓</span>
-                    <span className="text-[9px] text-slate-500 font-bold mt-1">Founder</span>
-                  </div>
-                </div>
+                ) : (() => {
+                  const stages = [
+                    { key: 'Submitted', label: 'Placed' },
+                    { key: 'Approved', label: 'Approved' },
+                    { key: 'Processing', label: 'Processing' },
+                    { key: 'Packed', label: 'Packed' },
+                    { key: 'Shipped', label: 'Shipped' },
+                    { key: 'Delivered', label: 'Delivered' }
+                  ];
+                  const currentIdx = stages.findIndex(s => s.key === viewingOrder.status);
+                  return (
+                    <div className="flex items-center justify-between">
+                      {stages.map((stage, idx) => {
+                        const done = currentIdx >= idx && currentIdx !== -1;
+                        return (
+                          <React.Fragment key={stage.key}>
+                            <div className="flex flex-col items-center">
+                              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${done ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                                {done ? '✓' : idx + 1}
+                              </span>
+                              <span className={`text-[9px] font-bold mt-1 ${done ? 'text-slate-700' : 'text-slate-400'}`}>{stage.label}</span>
+                            </div>
+                            {idx < stages.length - 1 && (
+                              <div className={`h-0.5 flex-1 -mt-4 ${currentIdx > idx ? 'bg-emerald-500' : 'bg-slate-200'}`}></div>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Retailer Card & Bank info */}
               <div className="grid grid-cols-2 gap-4">
-                <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl text-xs">
+                <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl text-xs relative">
                   <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">Retailer Outlet</h4>
-                  <p className="font-bold text-slate-800 text-sm font-display">{viewingOrder.retailerName}</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowRetailerInfo(v => !v)}
+                    className="font-bold text-slate-800 text-sm font-display text-left hover:text-brand-orange transition-colors underline decoration-dotted underline-offset-2 cursor-pointer"
+                    title="Click to view full retailer details"
+                  >
+                    {viewingOrder.retailerName}
+                  </button>
                   <p className="text-slate-500 mt-1">Location: {viewingOrder.location}</p>
                   <div className="mt-1 space-y-0.5 text-slate-500">
                     <p>City: <span className="font-semibold text-slate-700">{viewingOrder.city}</span></p>
                     <p>State: <span className="font-semibold text-slate-700">{viewingOrder.state}</span></p>
                     <p>Country: <span className="font-semibold text-slate-700">{viewingOrder.country}</span></p>
                   </div>
+
+                  {/* Retailer full-details popover */}
+                  {showRetailerInfo && viewingOrder.retailerInfo && (
+                    <div className="absolute z-20 top-10 left-4 right-4 sm:left-4 sm:right-auto sm:w-80 bg-white border border-slate-200 rounded-xl shadow-2xl p-4 text-xs animate-fade-in">
+                      <div className="flex items-start justify-between mb-2">
+                        <div>
+                          <p className="font-bold text-slate-900 text-sm font-display">{viewingOrder.retailerInfo.businessName}</p>
+                          <p className="text-slate-500">{viewingOrder.retailerInfo.ownerName}</p>
+                        </div>
+                        <button onClick={() => setShowRetailerInfo(false)} className="p-1 hover:bg-slate-100 rounded text-slate-400">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">{viewingOrder.retailerInfo.category}</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${viewingOrder.retailerInfo.verified ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-amber-100 text-amber-800 border-amber-200'}`}>
+                          {viewingOrder.retailerInfo.verified ? 'Verified' : 'Unverified'}
+                        </span>
+                      </div>
+                      <div className="space-y-1.5 text-slate-600">
+                        <div className="flex justify-between gap-3"><span className="text-slate-400 font-semibold">Mobile</span><span className="font-semibold text-slate-800 text-right">{viewingOrder.retailerInfo.mobile}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-slate-400 font-semibold">Email</span><span className="font-semibold text-slate-800 text-right break-all">{viewingOrder.retailerInfo.email}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-slate-400 font-semibold">GST</span><span className="font-semibold text-slate-800 text-right">{viewingOrder.retailerInfo.gst}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-slate-400 font-semibold">PAN</span><span className="font-semibold text-slate-800 text-right">{viewingOrder.retailerInfo.pan}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-slate-400 font-semibold">Location</span><span className="font-semibold text-slate-800 text-right">{[viewingOrder.retailerInfo.city, viewingOrder.retailerInfo.state, viewingOrder.retailerInfo.country].filter(x => x && x !== '—').join(', ') || '—'}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-slate-400 font-semibold">Address</span><span className="font-semibold text-slate-800 text-right">{viewingOrder.retailerInfo.address}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-slate-400 font-semibold">Credit Limit</span><span className="font-semibold text-slate-800 text-right">{viewingOrder.retailerInfo.creditEnabled ? `₹${Number(viewingOrder.retailerInfo.creditAmount).toLocaleString('en-IN')}` : 'Disabled'}</span></div>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl text-xs">
                   <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">Bank Ledger Match</h4>
@@ -404,15 +554,16 @@ export default function Orders({ showToast }) {
                 </div>
               )}
 
-              {/* Pipeline transitions controller */}
-              {viewingOrder.status !== 'Delivered' && viewingOrder.status !== 'Cancelled' && (
+              {/* Pipeline transitions controller: only after order is approved AND payment verified */}
+              {viewingOrder.paymentStatus === 'Verified'
+                && ['Approved', 'Processing', 'Packed', 'Shipped'].includes(viewingOrder.status) && (
                 <div className="border-t border-slate-100 pt-4 space-y-3">
                   <h4 className="text-xs font-bold text-slate-500 uppercase">Transition Order Status Pipeline</h4>
                   <div className="flex gap-2 flex-wrap">
                     {['Processing', 'Packed', 'Shipped', 'Delivered'].map(st => (
                       <button 
                         key={st}
-                        onClick={() => handleUpdateStatus(viewingOrder.id, st)}
+                        onClick={() => handleUpdateStatus(viewingOrder, st)}
                         className={`px-3 py-1.5 text-xs font-bold border rounded transition-colors ${
                           viewingOrder.status === st 
                             ? 'bg-brand-orange text-white border-brand-orange' 
@@ -425,7 +576,33 @@ export default function Orders({ showToast }) {
                   </div>
                 </div>
               )}
+              </>
+             )}
 
+             {drawerTab === 'history' && (
+              <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl space-y-3">
+                <h4 className="text-xs font-bold text-slate-500 uppercase">Order History Log</h4>
+                {Array.isArray(viewingOrder.history) && viewingOrder.history.length > 0 ? (
+                  <ol className="relative border-l border-slate-200 ml-1.5 space-y-4">
+                    {[...viewingOrder.history]
+                      .sort((a, b) => new Date(a.at) - new Date(b.at))
+                      .map((h, idx) => (
+                      <li key={idx} className="ml-4">
+                        <span className={`absolute -left-[5px] w-2.5 h-2.5 rounded-full ${h.status === 'Cancelled' ? 'bg-rose-500' : 'bg-emerald-500'}`}></span>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-bold text-slate-800 font-display">{h.status}</span>
+                          <span className="text-[10px] text-slate-400 font-semibold">{formatDateTime(h.at)}</span>
+                        </div>
+                        {h.note && <p className="text-[11px] text-slate-500 mt-0.5">{h.note}</p>}
+                        {h.by && <p className="text-[10px] text-slate-400 mt-0.5">by {h.by}</p>}
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p className="text-xs text-slate-400 font-semibold py-4 text-center">No history recorded for this order yet.</p>
+                )}
+              </div>
+             )}
             </div>
 
             {/* Footer Buttons */}
@@ -438,7 +615,7 @@ export default function Orders({ showToast }) {
                   Reject Order
                 </button>
                 <button 
-                  onClick={() => handleApproveOrder(viewingOrder.id)}
+                  onClick={() => setIsApproveOpen(true)}
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-colors"
                 >
                   Approve Order & Verify Payment
@@ -448,6 +625,25 @@ export default function Orders({ showToast }) {
           </div>
         </div>
       )}
+
+      {/* Approve Order Confirmation Modal */}
+      <Modal
+        isOpen={isApproveOpen}
+        onClose={() => setIsApproveOpen(false)}
+        title="Approve Order & Verify Payment"
+        onConfirm={handleApproveOrder}
+        confirmText={actionLoading ? "Approving..." : "Yes, Approve Order"}
+      >
+        <div className="space-y-2 text-sm text-slate-600">
+          <p>
+            Are you sure you want to approve order <strong className="text-slate-900">{viewingOrder?.id}</strong> for
+            <strong className="text-slate-900"> {viewingOrder?.retailerName}</strong>?
+          </p>
+          <p className="text-xs text-slate-500">
+            This will verify the payment, deduct stock, and make the order eligible for dispatch. This action cannot be undone.
+          </p>
+        </div>
+      </Modal>
 
       {/* Reject Order Modal */}
       <Modal

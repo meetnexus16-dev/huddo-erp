@@ -91,15 +91,40 @@ export default function MyOrders({ showToast }) {
     showToast(`Downloading invoice...`, "success");
   };
 
+  const formatDT = (value) => {
+    if (!value) return '—';
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleString('en-IN', {
+      day: '2-digit', month: 'short', year: 'numeric',
+      hour: 'numeric', minute: '2-digit', hour12: true
+    });
+  };
+
   const getTimeline = (order) => {
-    const timeline = [];
-    const createdTime = new Date(order.createdAt).toLocaleString();
-    const updatedTime = new Date(order.updatedAt).toLocaleString();
-    
-    timeline.push({ status: "Submitted", timestamp: createdTime, description: "Order submitted with UTR proof by Retailer" });
-    
+    // Prefer the persisted status history (with real timestamps) when available.
+    if (Array.isArray(order.status_history) && order.status_history.length > 0) {
+      return [...order.status_history]
+        .sort((a, b) => new Date(a.changed_at) - new Date(b.changed_at))
+        .map(h => ({
+          status: h.status,
+          timestamp: formatDT(h.changed_at),
+          description: h.note || `Order status updated to ${h.status}`
+        }));
+    }
+
+    // Fallback for older orders created before history tracking existed.
+    const timeline = [{
+      status: "Submitted",
+      timestamp: formatDT(order.createdAt),
+      description: "Order submitted with UTR proof by Retailer"
+    }];
     if (order.status !== 'Submitted' && order.status !== 'Draft') {
-      timeline.push({ status: order.status, timestamp: updatedTime, description: `Order status updated to ${order.status}` });
+      timeline.push({
+        status: order.status,
+        timestamp: formatDT(order.updatedAt),
+        description: `Order status updated to ${order.status}`
+      });
     }
     return timeline;
   };

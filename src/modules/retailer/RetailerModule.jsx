@@ -150,7 +150,6 @@ function RetailerPanelLayout({ userRole, showToast, onSwitchRole }) {
     { id: 'Billing & Invoices', label: 'Billing & Invoices', icon: CreditCard },
     { id: 'Inventory', label: 'Inventory', icon: Archive },
     { id: 'Schemes & Discounts', label: 'Schemes & Discounts', icon: Tag },
-    { id: 'Commission & Rewards', label: 'Commission & Rewards', icon: Award },
     { id: 'Profile', label: 'Profile', icon: User },
     { id: 'Notifications', label: 'Notifications', icon: Bell, badge: unreadCount }
   ]);
@@ -176,7 +175,10 @@ function RetailerPanelLayout({ userRole, showToast, onSwitchRole }) {
       case 'Schemes & Discounts':
         return <Schemes />;
       case 'Commission & Rewards':
-        return <CommissionRewards />;
+        // Commission ledger is only available to distributors, not retailers.
+        return isDistributor
+          ? <CommissionRewards />
+          : <Navigate to={buildPath(ROUTES.RETAILER, 'Dashboard', RETAILER_ROUTES)} replace />;
       case 'Profile':
         return <Profile showToast={showToast} userRole={userRole} onSwitchRole={onSwitchRole} />;
       case 'Notifications':

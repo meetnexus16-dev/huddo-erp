@@ -32,7 +32,7 @@ import {
 } from '../controllers/authController.js';
 
 // Order Controller imports
-import { approveOrder, rejectOrder } from '../controllers/orderController.js';
+import { approveOrder, rejectOrder, updateOrderStatus } from '../controllers/orderController.js';
 
 // Dashboard Controller imports
 import {
@@ -228,6 +228,7 @@ router.get('/reports/:type', verifyJWT, checkPermission('reports', 'export'), ge
 // ==========================================
 router.post('/orders/:id/approve', verifyJWT, checkPermission('orders', 'approve'), approveOrder);
 router.post('/orders/:id/reject', verifyJWT, checkPermission('orders', 'reject'), rejectOrder);
+router.post('/orders/:id/status', verifyJWT, checkPermission('orders', 'edit'), updateOrderStatus);
 
 // Hierarchy Revenue & Manager Assignment
 router.get('/hierarchy/state/:id/revenue', verifyJWT, getStateRevenue);
@@ -409,7 +410,8 @@ const modules = [
       { path: 'city', populate: { path: 'state', populate: { path: 'country' } } },
       { path: 'state', populate: { path: 'country' } }
     ] },
-    { path: 'items.product_variant', populate: { path: 'product' } },
+    { path: 'items.product_variant', populate: { path: 'product', populate: { path: 'category' } } },
+    { path: 'status_history.changed_by', select: 'name roleName' },
     'created_by'
   ] },
   { path: 'invoices', model: Invoice, populate: ['order', 'retailer'] },

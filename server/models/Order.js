@@ -8,6 +8,13 @@ const orderItemSchema = new mongoose.Schema({
   total_price: amountSchemaType
 }, { _id: false });
 
+const statusHistorySchema = new mongoose.Schema({
+  status: { type: String, required: true },
+  changed_at: { type: Date, default: Date.now },
+  changed_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  note: { type: String }
+}, { _id: false });
+
 const approvalStageSchema = new mongoose.Schema({
   level: { 
     type: String, 
@@ -42,6 +49,7 @@ const orderSchema = new mongoose.Schema({
     default: 'Draft' 
   },
   approval_chain: [approvalStageSchema],
+  status_history: [statusHistorySchema],
   dispatch_details: {
     courier: { type: String },
     tracking_number: { type: String },
@@ -97,6 +105,58 @@ orderSchema.pre('save', async function (next) {
     this.order_number = `ORD-${dateString}-${randomSuffix}`;
   }
   next();
+});
+
+// Maintain a status history log with timestamps on create and on every status change.
+orderSchema.pre('save', function (next) {
+  if (!Array.isArray(this.status_history)) {
+    this.status_history = [];
+  }
+
+  const changedBy = this.$locals?.statusChangedBy || this.created_by || null;
+
+  if (this.isNew) {
+    if (this.status_history.length === 0) {
+      this.status_history.push({
+        status: this.status,
+        changed_at: new Date(),
+        changed_by: changedBy,
+        note: this.$locals?.statusNote || 'Order created'
+      });
+    }
+  } else if (this.isModified('status')) {
+    this.status_history.push({
+      status: this.status,
+      changed_at: new Date(),
+      changed_by: changedBy,
+      note: this.$locals?.statusNote || `Status changed to ${this.status}`
+    });
+  }
+
+  next();
+});
+
+// Capture status changes made via findOneAndUpdate / findByIdAndUpdate (e.g. generic PUT).
+orderSchema.pre('findOneAndUpdate', async function (next) {
+  try {
+    const update = this.getUpdate() || {};
+    const newStatus = update.status ?? update.$set?.status;
+    if (!newStatus) return next();
+
+    const current = await this.model.findOne(this.getQuery()).select('status');
+    if (current && current.status === newStatus) return next();
+
+    if (!update.$push) update.$push = {};
+    update.$push.status_history = {
+      status: newStatus,
+      changed_at: new Date(),
+      note: `Status changed to ${newStatus}`
+    };
+    this.setUpdate(update);
+    next();
+  } catch (error) {
+    next(error);
+  }
 });
 
 orderSchema.index({ order_number: 1 });

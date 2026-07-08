@@ -73,7 +73,13 @@ export const approveOrder = async (req, res, next) => {
 
     const wasApproved = order.status === 'Approved';
     order.status = 'Approved';
+    // Approving an order also verifies its payment so it can proceed to dispatch.
+    order.payment_status = 'Verified';
     order.cancelled_reason = undefined;
+    order.$locals.statusChangedBy = req.user?._id;
+    order.$locals.statusNote = remarks
+      ? `Order approved & payment verified. ${remarks}`
+      : 'Order approved & payment verified';
     await order.save();
 
     // Deduct inventory and record a transaction per item.
@@ -150,13 +156,77 @@ export const rejectOrder = async (req, res, next) => {
     }
 
     order.status = 'Cancelled';
+    order.payment_status = 'Failed';
     order.cancelled_reason = remarks;
+    order.$locals.statusChangedBy = req.user?._id;
+    order.$locals.statusNote = `Order rejected: ${remarks}`;
 
     await order.save();
 
     res.status(200).json({
       success: true,
       message: 'Order rejected and cancelled.',
+      data: order
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Valid dispatch/fulfilment transitions available after approval.
+const DISPATCH_STATUSES = ['Processing', 'Packed', 'Shipped', 'Delivered'];
+
+// POST /api/v1/orders/:id/status — update fulfilment status with history logging
+export const updateOrderStatus = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { status, note } = req.body;
+
+    if (!DISPATCH_STATUSES.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid status. Allowed values: ${DISPATCH_STATUSES.join(', ')}.`,
+        data: null
+      });
+    }
+
+    const order = await Order.findById(id);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found.',
+        data: null
+      });
+    }
+
+    const userRole = req.user.role.name;
+    if (!APPROVER_ROLES.includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied: Only managers and admins can update order status.',
+        data: null
+      });
+    }
+
+    if (order.status !== 'Approved' && !DISPATCH_STATUSES.includes(order.status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Order must be approved before its fulfilment status can be updated.',
+        data: null
+      });
+    }
+
+    order.status = status;
+    if (status === 'Delivered') {
+      order.delivered_at = new Date();
+    }
+    order.$locals.statusChangedBy = req.user?._id;
+    order.$locals.statusNote = note || `Order marked as ${status}`;
+    await order.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Order status updated to ${status}.`,
       data: order
     });
   } catch (error) {

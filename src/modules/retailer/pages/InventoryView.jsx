@@ -1,68 +1,118 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Archive, AlertCircle, HelpCircle, RefreshCw } from 'lucide-react';
-import StatusBadge from '../components/StatusBadge';
+import { Search, Archive, AlertCircle, RefreshCw, Package, Eye, Boxes } from 'lucide-react';
+import { useRetailerAuth } from '../context/RetailerAuthContext';
+import CustomModal from '../components/CustomModal';
+
+// Only orders that are approved (payment verified) onwards count as purchased stock.
+const PURCHASED_STATUSES = ['Approved', 'Processing', 'Packed', 'Shipped', 'Delivered'];
+
+// Map stored hex color codes back to their human-readable names.
+const COLOR_NAME_MAP = {
+  '#EF4444': 'Red',
+  '#1F2937': 'Black',
+  '#3B82F6': 'Blue',
+  '#10B981': 'Green',
+  '#9CA3AF': 'Grey',
+  '#1E3A8A': 'Navy',
+  '#F59E0B': 'Yellow',
+  '#8B4513': 'Brown',
+  '#FFFFFF': 'White'
+};
+
+const getColorName = (color) => {
+  if (!color) return '—';
+  return COLOR_NAME_MAP[String(color).toUpperCase()] || color;
+};
+
+const sortSizes = (a, b) => {
+  const na = parseFloat(a), nb = parseFloat(b);
+  if (!isNaN(na) && !isNaN(nb)) return na - nb;
+  return String(a).localeCompare(String(b));
+};
 
 export default function InventoryView() {
+  const { user } = useRetailerAuth();
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [selectedSize, setSelectedSize] = useState('All');
-  const [selectedColor, setSelectedColor] = useState('All');
-  
-  const [stockList, setStockList] = useState([]);
+  const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedProduct, setSelectedProduct] = useState(null);
 
   useEffect(() => {
+    if (!user?.id) return;
     setLoading(true);
-    fetch('/api/product-variants?limit=500')
+    fetch(`/api/orders?retailer=${user.id}&limit=500`)
       .then(res => res.json())
       .then(res => {
-        if (res.success && Array.isArray(res.data)) {
-          const formatted = res.data.map(v => {
-            const prod = v.product || {};
-            const stockQty = v.stock_quantity || 0;
-            return {
-              sku: v.sku_variant || "SKU-UNKNOWN",
-              name: prod.name || "Footwear",
-              category: prod.category?.name || (typeof prod.category === 'string' ? prod.category : "Footwear"),
-              size: v.size || "",
-              color: v.color || "",
-              stock: stockQty,
-              status: stockQty === 0 ? "Out of Stock" : stockQty <= 5 ? "Low Stock" : "In Stock"
-            };
-          });
-          setStockList(formatted);
+        if (!res.success || !Array.isArray(res.data)) {
+          setProducts([]);
+          return;
         }
+
+        // Aggregate purchased quantities by product -> size/color variant.
+        const map = {};
+        res.data.forEach(order => {
+          if (!PURCHASED_STATUSES.includes(order.status)) return;
+          (order.items || []).forEach(item => {
+            const variant = item.product_variant;
+            if (!variant) return;
+            const prod = variant.product || {};
+            const pid = prod._id || prod.id || variant.product;
+            if (!pid) return;
+
+            if (!map[pid]) {
+              map[pid] = {
+                id: pid,
+                name: prod.name || 'Footwear',
+                category: prod.category?.name || (typeof prod.category === 'string' ? prod.category : 'Footwear'),
+                total: 0,
+                variantMap: {}
+              };
+            }
+            const key = `${variant.size}||${variant.color}`;
+            if (!map[pid].variantMap[key]) {
+              map[pid].variantMap[key] = { size: variant.size, color: variant.color, qty: 0 };
+            }
+            const qty = Number(item.quantity) || 0;
+            map[pid].variantMap[key].qty += qty;
+            map[pid].total += qty;
+          });
+        });
+
+        const list = Object.values(map).map(p => {
+          const variantList = Object.values(p.variantMap);
+          const sizes = [...new Set(variantList.filter(v => v.qty > 0).map(v => v.size))].sort(sortSizes);
+          return {
+            id: p.id,
+            name: p.name,
+            category: p.category,
+            total: p.total,
+            sizes,
+            variantList: variantList.sort((a, b) => sortSizes(a.size, b.size) || getColorName(a.color).localeCompare(getColorName(b.color)))
+          };
+        }).filter(p => p.total > 0);
+
+        setProducts(list);
       })
       .catch(err => {
-        console.error("Error loading inventory stock:", err);
+        console.error("Error loading purchased inventory:", err);
+        setProducts([]);
       })
       .finally(() => {
         setLoading(false);
       });
-  }, []);
+  }, [user?.id]);
 
-  // Extracts lists for filter dropdowns
-  const categories = ['All', ...new Set(stockList.map(item => item.category))];
-  const sizes = ['All', ...new Set(stockList.map(item => item.size))].sort((a,b) => a - b);
-  const colors = ['All', ...new Set(stockList.map(item => item.color))];
-
-  // Filtering stock ledger
-  const filteredStock = stockList.filter(item => {
-    const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          item.sku.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCat = selectedCategory === 'All' || item.category === selectedCategory;
-    const matchesSize = selectedSize === 'All' || item.size === selectedSize;
-    const matchesColor = selectedColor === 'All' || item.color === selectedColor;
-
-    return matchesSearch && matchesCat && matchesSize && matchesColor;
-  });
+  const filteredProducts = products.filter(p =>
+    p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    p.category.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   if (loading) {
     return (
       <div className="w-full bg-white rounded-2xl border border-slate-200 p-6 shadow-xs animate-pulse space-y-4 min-h-[400px] flex flex-col justify-center">
         <div className="flex items-center justify-center gap-2.5 text-slate-400 text-xs font-bold font-display">
           <RefreshCw className="w-5 h-5 text-brand-orange animate-spin" />
-          <span>Loading inventory stock availability...</span>
+          <span>Loading your purchased inventory...</span>
         </div>
       </div>
     );
@@ -72,113 +122,129 @@ export default function InventoryView() {
     <div className="space-y-6">
       {/* Title */}
       <div>
-        <h1 className="text-xl font-bold text-slate-900 font-display">Inventory Stock Availability</h1>
-        <p className="text-xs text-slate-550 font-medium font-sans">View-only real-time SKU stock levels, size allocations, and warehouse status codes.</p>
+        <h1 className="text-xl font-bold text-slate-900 font-display">My Inventory Stock</h1>
+        <p className="text-xs text-slate-550 font-medium font-sans">Stock you have purchased through approved orders. Click a product to see its size-wise breakdown.</p>
       </div>
 
-      {/* Filter panel */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs space-y-4">
-        
-        {/* Search */}
+      {/* Search */}
+      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
         <div className="relative w-full">
           <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
           <input
             type="text"
-            placeholder="Search SKU code or product model name..."
+            placeholder="Search your products by name or category..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-9 pr-4 py-2 w-full text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange/20 focus:border-brand-orange bg-white font-medium text-slate-705"
           />
         </div>
-
-        {/* Dropdown controls */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-semibold text-slate-500">
-          <div>
-            <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Filter by Category</label>
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="w-full border border-slate-200 rounded-lg p-2 bg-white text-slate-705 focus:outline-none"
-            >
-              {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Filter by Size</label>
-            <select
-              value={selectedSize}
-              onChange={(e) => setSelectedSize(e.target.value)}
-              className="w-full border border-slate-200 rounded-lg p-2 bg-white text-slate-705 focus:outline-none"
-            >
-              {sizes.map(size => <option key={size} value={size}>{size === 'All' ? 'All Sizes' : `Size ${size}`}</option>)}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Filter by Color</label>
-            <select
-              value={selectedColor}
-              onChange={(e) => setSelectedColor(e.target.value)}
-              className="w-full border border-slate-200 rounded-lg p-2 bg-white text-slate-705 focus:outline-none"
-            >
-              {colors.map(col => <option key={col} value={col}>{col === 'All' ? 'All Colors' : col}</option>)}
-            </select>
-          </div>
-        </div>
-
       </div>
 
       {/* Info Notice card */}
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex items-center gap-3 text-xs text-slate-650">
         <AlertCircle className="w-5 h-5 text-slate-400 shrink-0" />
         <p className="font-semibold text-slate-600">
-          <span className="font-bold text-slate-800">Notice:</span> Stock levels are synchronized in real-time with our distribution centers. Invoices will deduct stock counts instantly. As a dealer/retailer, this dashboard is <span className="font-bold text-brand-orange">Read-Only</span>.
+          <span className="font-bold text-slate-800">Notice:</span> This inventory reflects only the products you have purchased via approved orders. Totals are aggregated across all your orders.
         </p>
       </div>
 
-      {/* Stock Table Grid */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs font-semibold text-slate-750">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[10px]">
-                <th className="px-5 py-3">SKU Identifier</th>
-                <th className="px-5 py-3">Product Model Name</th>
-                <th className="px-5 py-3">Category</th>
-                <th className="px-5 py-3 text-center">Shoe Size</th>
-                <th className="px-5 py-3">Color Variant</th>
-                <th className="px-5 py-3 text-center">Stock Quantity</th>
-                <th className="px-5 py-3 text-right font-bold">Status Badge</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredStock.length > 0 ? (
-                filteredStock.map((item) => (
-                  <tr key={item.sku} className="hover:bg-slate-50/40">
-                    <td className="px-5 py-3.5 font-mono font-bold tracking-wide text-slate-800">{item.sku}</td>
-                    <td className="px-5 py-3.5 font-bold text-slate-900">{item.name}</td>
-                    <td className="px-5 py-3.5 text-slate-450 uppercase">{item.category}</td>
-                    <td className="px-5 py-3.5 text-center font-bold">S-{item.size}</td>
-                    <td className="px-5 py-3.5 font-bold text-slate-605">{item.color}</td>
-                    <td className="px-5 py-3.5 text-center font-extrabold text-slate-850">{item.stock} pairs</td>
-                    <td className="px-5 py-3.5 text-right"><StatusBadge status={item.status} /></td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan="7" className="px-5 py-12 text-center">
-                    <div className="flex flex-col items-center justify-center gap-3">
-                      <Archive className="w-9 h-9 text-slate-300" />
-                      <p className="text-slate-550 text-xs font-semibold">No stock records found matching filters.</p>
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      {/* Product Inventory Grid */}
+      {filteredProducts.length > 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredProducts.map(product => (
+            <button
+              key={product.id}
+              onClick={() => setSelectedProduct(product)}
+              className="text-left bg-white rounded-xl border border-slate-200 p-4 shadow-xs hover:shadow-md hover:border-brand-orange/40 transition-all cursor-pointer flex flex-col gap-3"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-9 h-9 rounded-lg bg-orange-50 text-brand-orange flex items-center justify-center shrink-0">
+                    <Package className="w-4.5 h-4.5" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-800 font-display line-clamp-1">{product.name}</h3>
+                    <span className="text-[10px] text-slate-400 font-semibold uppercase">{product.category}</span>
+                  </div>
+                </div>
+                <Eye className="w-4 h-4 text-slate-300 shrink-0" />
+              </div>
+
+              <div className="flex items-end justify-between">
+                <div>
+                  <span className="text-[9px] font-bold text-slate-400 uppercase block">Total Inventory</span>
+                  <p className="text-lg font-extrabold text-slate-850 font-display">{product.total} <span className="text-xs font-bold text-slate-400">pairs</span></p>
+                </div>
+              </div>
+
+              <div className="border-t border-slate-100 pt-2.5">
+                <span className="text-[9px] font-bold text-slate-400 uppercase block mb-1.5">Sizes Available</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {product.sizes.map(sz => (
+                    <span key={sz} className="px-2 py-0.5 text-[10px] font-bold border border-slate-200 text-slate-600 rounded-md bg-slate-50">
+                      {sz}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </button>
+          ))}
         </div>
-      </div>
+      ) : (
+        <div className="bg-white border border-slate-200 rounded-xl p-12 text-center">
+          <Archive className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+          <p className="text-slate-550 text-xs font-semibold">You have no purchased stock yet. Approved orders will appear here.</p>
+        </div>
+      )}
+
+      {/* Size-wise breakdown popup */}
+      {selectedProduct && (
+        <CustomModal
+          isOpen={!!selectedProduct}
+          onClose={() => setSelectedProduct(null)}
+          title={`Size-wise Inventory · ${selectedProduct.name}`}
+          size="lg"
+          hideFooter
+        >
+          <div className="space-y-4">
+            <div className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-lg p-3">
+              <div className="flex items-center gap-2 text-xs">
+                <Boxes className="w-4 h-4 text-brand-orange" />
+                <span className="font-semibold text-slate-600 uppercase">{selectedProduct.category}</span>
+              </div>
+              <div className="text-right">
+                <span className="text-[9px] font-bold text-slate-400 uppercase block">Total</span>
+                <p className="text-sm font-extrabold text-slate-850">{selectedProduct.total} pairs</p>
+              </div>
+            </div>
+
+            <div className="border border-slate-200 rounded-lg overflow-x-auto">
+              <table className="w-full text-left text-xs font-semibold text-slate-700">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[10px]">
+                  <tr>
+                    <th className="px-4 py-2.5">Size</th>
+                    <th className="px-4 py-2.5">Color</th>
+                    <th className="px-4 py-2.5 text-right">Quantity</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {selectedProduct.variantList.filter(v => v.qty > 0).map((v, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50/40">
+                      <td className="px-4 py-2.5 font-bold text-slate-900">S-{v.size}</td>
+                      <td className="px-4 py-2.5 text-slate-600">{getColorName(v.color)}</td>
+                      <td className="px-4 py-2.5 text-right font-extrabold text-slate-850">{v.qty} pairs</td>
+                    </tr>
+                  ))}
+                  <tr className="bg-slate-50 font-bold text-slate-900">
+                    <td colSpan="2" className="px-4 py-3 text-right">Total</td>
+                    <td className="px-4 py-3 text-right text-brand-orange">{selectedProduct.total} pairs</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </CustomModal>
+      )}
     </div>
   );
 }
