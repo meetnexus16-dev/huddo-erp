@@ -13,6 +13,7 @@ import Notification from '../models/Notification.js';
 import PerformanceReview from '../models/PerformanceReview.js';
 import upload from '../middleware/upload.js';
 import { saveFileToDisk } from '../utils/fileUpload.js';
+import { calculateAndStoreOrderCommissions } from '../utils/commissionEngine.js';
 import { verifyJWT } from '../middleware/auth.js';
 import {
   assignCountryManager,
@@ -1169,9 +1170,33 @@ router.post('/:id/approvals/:queue_id/action', verifyJWT, async (req, res, next)
     } else if (typeof queue_id === 'string' && queue_id.startsWith('O-')) {
       const orderId = queue_id.substring(2);
       if (isValidObjectId(orderId)) {
-        await Order.findByIdAndUpdate(orderId, {
-          status: action === 'Approved' ? 'Approved' : 'Cancelled'
-        });
+        const order = await Order.findById(orderId);
+        if (order && order.status !== 'Approved' && order.status !== 'Cancelled') {
+          if (action === 'Approved') {
+            order.status = 'Approved';
+            // Accepting the order also verifies payment so it can move to dispatch.
+            order.payment_status = 'Verified';
+            order.$locals.statusChangedBy = req.user?._id;
+            order.$locals.statusNote = remarks
+              ? `Order accepted & payment verified. ${remarks}`
+              : 'Order accepted & payment verified';
+            await order.save();
+
+            // Commissions are generated only once the order is accepted (approved).
+            if (!order.commissions_calculated) {
+              try {
+                await calculateAndStoreOrderCommissions(order._id);
+              } catch (commissionError) {
+                console.error('[CommissionEngine] Failed to calculate commissions:', commissionError.message);
+              }
+            }
+          } else {
+            order.status = 'Cancelled';
+            order.$locals.statusChangedBy = req.user?._id;
+            order.$locals.statusNote = remarks ? `Order rejected. ${remarks}` : 'Order rejected';
+            await order.save();
+          }
+        }
       }
     }
     
