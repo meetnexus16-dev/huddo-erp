@@ -1,8 +1,8 @@
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { loadEnv } from './utils/loadEnv.js';
 import connectDB from './config/db.js';
 import router from './routes/index.js';
 import errorHandler from './middleware/errorHandler.js';
@@ -11,8 +11,8 @@ import errorHandler from './middleware/errorHandler.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load environment variables
-dotenv.config();
+// Load environment variables (.env for production, .env.development for local)
+const { name: envName, path: envPath, nodeEnv } = loadEnv();
 
 // Connect to Database
 connectDB();
@@ -34,7 +34,25 @@ app.get('/health', (req, res) => {
     success: true,
     status: 'UP',
     timestamp: new Date(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: nodeEnv
+  });
+});
+
+// Serve built frontend (from `npm run build` → server/frontend)
+const frontendPath = path.join(__dirname, 'frontend');
+app.use(express.static(frontendPath));
+
+// SPA fallback — keep API/uploads/health from being swallowed
+app.get('*', (req, res, next) => {
+  if (
+    req.path.startsWith('/api') ||
+    req.path.startsWith('/uploads') ||
+    req.path === '/health'
+  ) {
+    return next();
+  }
+  res.sendFile(path.join(frontendPath, 'index.html'), (err) => {
+    if (err) next();
   });
 });
 
@@ -42,9 +60,10 @@ app.get('/health', (req, res) => {
 app.use(errorHandler);
 
 // Listen to Port
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || (nodeEnv === 'production' ? 8809 : 5000);
 const server = app.listen(PORT, () => {
-  console.log(`[Server] Running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
+  console.log(`[Server] Using env: ${envName} (${envPath})`);
+  console.log(`[Server] Running in ${nodeEnv} mode on port ${PORT}`);
 });
 
 export { app, server };

@@ -13,6 +13,10 @@ dist-ssr
 *.local
 .env
 .env.*
+!.env.example
+
+# Built frontend served by Express
+server/frontend
 
 # Editor directories and files
 .vscode/*

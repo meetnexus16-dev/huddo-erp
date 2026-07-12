@@ -5,10 +5,10 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js",
-    "seed": "node seeds/databaseSeed.js",
-    "init-db": "node seeds/initFreshDb.js"
+    "start": "node --env-file=.env server.js",
+    "dev": "node --env-file=.env.development --watch server.js",
+    "seed": "node --env-file=.env.development seeds/databaseSeed.js",
+    "init-db": "node --env-file=.env.development seeds/initFreshDb.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

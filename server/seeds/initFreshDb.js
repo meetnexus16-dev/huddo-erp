@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import dotenv from 'dotenv';
+import { loadEnv } from '../utils/loadEnv.js';
 import Role from '../models/Role.js';
 import User from '../models/User.js';
 import Country from '../models/Country.js';
@@ -17,7 +17,7 @@ import WhatsAppSetting from '../models/WhatsAppSetting.js';
 import NotificationTemplate from '../models/NotificationTemplate.js';
 import { encrypt } from '../utils/crypto.js';
 
-dotenv.config();
+loadEnv();
 
 const defaultRoles = [
   { name: 'Founder', permissions: [{ module: '*', actions: ['create', 'view', 'edit', 'delete', 'approve', 'reject', 'export', 'assign'] }], is_custom: false },

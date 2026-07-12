@@ -119,7 +119,8 @@ export function AuthProvider({ children }) {
     if (email) {
       try {
         const fetchMethod = window.originalFetch || window.fetch;
-        const res = await fetchMethod('http://localhost:5000/api/v1/auth/login', {
+        const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+        const res = await fetchMethod(`${apiBase}/api/v1/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password: 'password123' })

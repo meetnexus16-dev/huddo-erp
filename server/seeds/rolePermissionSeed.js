@@ -1,8 +1,8 @@
 import mongoose from 'mongoose';
-import dotenv from 'dotenv';
+import { loadEnv } from '../utils/loadEnv.js';
 import Role from '../models/Role.js';
 
-dotenv.config();
+loadEnv();
 
 const defaultRoles = [
   {

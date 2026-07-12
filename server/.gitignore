@@ -3,6 +3,11 @@ node_modules/
 
 # Local Environment Variables
 .env
+.env.*
+!.env.example
+
+# Built frontend (from root `npm run build`)
+frontend/
 
 # Logs
 logs/
