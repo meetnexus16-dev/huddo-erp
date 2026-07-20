@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, Award, Calendar, Layers, Map, FileSpreadsheet } from 'lucide-react';
+import { TrendingUp, Award, Calendar, Layers, Map, FileSpreadsheet, Package } from 'lucide-react';
 import { DataTable } from '../components/Common';
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
+import ProductPerformanceAnalytics from './ProductPerformanceAnalytics';
 
 export default function Sales({ showToast }) {
+  const [activeTab, setActiveTab] = useState('wholesale'); // wholesale | sellout
   const [orders, setOrders] = useState([]);
   const [retailers, setRetailers] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -202,6 +204,37 @@ export default function Sales({ showToast }) {
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setActiveTab('wholesale')}
+          className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold border transition-colors ${
+            activeTab === 'wholesale'
+              ? 'bg-brand-orange text-white border-brand-orange'
+              : 'bg-white text-slate-600 border-slate-200 hover:border-brand-orange/40'
+          }`}
+        >
+          <TrendingUp className="w-3.5 h-3.5" />
+          Wholesale sales
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('sellout')}
+          className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold border transition-colors ${
+            activeTab === 'sellout'
+              ? 'bg-brand-orange text-white border-brand-orange'
+              : 'bg-white text-slate-600 border-slate-200 hover:border-brand-orange/40'
+          }`}
+        >
+          <Package className="w-3.5 h-3.5" />
+          Product × place analytics
+        </button>
+      </div>
+
+      {activeTab === 'sellout' ? (
+        <ProductPerformanceAnalytics showToast={showToast} />
+      ) : (
+      <>
       {/* Summary Scorecards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex items-center gap-4">
@@ -383,7 +416,8 @@ export default function Sales({ showToast }) {
           searchPlaceholder="Search ledger details..."
         />
       </div>
-
+      </>
+      )}
     </div>
   );
 }

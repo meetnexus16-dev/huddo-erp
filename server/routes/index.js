@@ -176,6 +176,13 @@ import {
   recordRetailerPayment,
   listRetailerPaymentsAdmin
 } from '../controllers/billingController.js';
+import {
+  getMyStock,
+  listMySales,
+  getMySaleById,
+  createSale
+} from '../controllers/retailSaleController.js';
+import { getProductPerformance } from '../controllers/productAnalyticsController.js';
 
 const router = express.Router();
 
@@ -278,6 +285,15 @@ router.patch('/billing/:id/get-percentage', verifyJWT, getBillingPercentage);
 router.get('/billing/retailer/summary', verifyJWT, getRetailerBillingSummary);
 router.post('/billing/retailer/payments', verifyJWT, checkPermission('invoices', 'edit'), recordRetailerPayment);
 router.get('/billing/retailer/payments', verifyJWT, checkPermission('invoices', 'view'), listRetailerPaymentsAdmin);
+
+// Retailer POS sell-out (shop → customer) + stock (purchased − sold)
+router.get('/retailer/stock', verifyJWT, getMyStock);
+router.get('/retailer/sales', verifyJWT, listMySales);
+router.get('/retailer/sales/:id', verifyJWT, getMySaleById);
+router.post('/retailer/sales', verifyJWT, createSale);
+
+// Product performance by country / state / city (from retail sell-out)
+router.get('/analytics/product-performance', verifyJWT, checkPermission('reports', 'view'), getProductPerformance);
 
 router.get('/promoter-bonus-structures', verifyJWT, checkPermission('commission-records', 'view'), listPromoterBonusStructures);
 router.post('/promoter-bonus-structures', verifyJWT, checkPermission('commission-records', 'edit'), upsertPromoterBonusStructure);

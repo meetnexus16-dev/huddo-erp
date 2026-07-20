@@ -17,7 +17,7 @@ import React, { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { 
   Home, ShoppingCart, FileText, CreditCard, Archive, 
-  Tag, Award, User, Bell, Lock, RefreshCw
+  Tag, Award, User, Bell, Lock, RefreshCw, ShoppingBag
 } from 'lucide-react';
 import { DashboardLayout } from '../../components/DesignSystem';
 import { useWorkspaceNav } from '../../hooks/useWorkspaceNav';
@@ -30,6 +30,7 @@ import { mockNotifications as initialNotifications } from './mockData/mockNotifi
 // Subpages
 import Dashboard from './pages/Dashboard';
 import PlaceOrder from './pages/PlaceOrder';
+import CreateSale from './pages/CreateSale';
 import MyOrders from './pages/MyOrders';
 import BillingPayments from './pages/BillingPayments';
 import InventoryView from './pages/InventoryView';
@@ -136,6 +137,7 @@ function RetailerPanelLayout({ userRole, showToast, onSwitchRole }) {
   const SIDEBAR_ITEMS = attachPaths(isDistributor ? [
     { id: 'Dashboard', label: 'Wholesale Dashboard', icon: Home },
     { id: 'Place Order', label: 'Bulk Purchase', icon: ShoppingCart },
+    { id: 'Create Sale', label: 'Create Sale', icon: ShoppingBag },
     { id: 'My Orders', label: 'Bulk Orders', icon: FileText },
     { id: 'Billing & Invoices', label: 'Statement Ledger', icon: CreditCard },
     { id: 'Inventory', label: 'Warehouse Stock', icon: Archive },
@@ -146,6 +148,7 @@ function RetailerPanelLayout({ userRole, showToast, onSwitchRole }) {
   ] : [
     { id: 'Dashboard', label: 'Dashboard', icon: Home },
     { id: 'Place Order', label: 'Place Order', icon: ShoppingCart },
+    { id: 'Create Sale', label: 'Create Sale', icon: ShoppingBag },
     { id: 'My Orders', label: 'My Orders', icon: FileText },
     { id: 'Billing & Invoices', label: 'Billing & Invoices', icon: CreditCard },
     { id: 'Inventory', label: 'Inventory', icon: Archive },
@@ -166,6 +169,8 @@ function RetailerPanelLayout({ userRole, showToast, onSwitchRole }) {
           : <Dashboard onNavigate={handleTabChange} />;
       case 'Place Order':
         return <PlaceOrder showToast={showToast} onNavigate={handleTabChange} />;
+      case 'Create Sale':
+        return <CreateSale showToast={showToast} />;
       case 'My Orders':
         return <MyOrders showToast={showToast} />;
       case 'Billing & Invoices':

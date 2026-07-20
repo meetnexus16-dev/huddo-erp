@@ -171,7 +171,11 @@ const defaultRoles = [
     permissions: [
       { module: 'orders', actions: ['create', 'view'] },
       { module: 'invoices', actions: ['view'] },
-      { module: 'dashboard', actions: ['view'] }
+      { module: 'dashboard', actions: ['view'] },
+      { module: 'product-variants', actions: ['view'] },
+      { module: 'products', actions: ['view'] },
+      { module: 'retailers', actions: ['view'] },
+      { module: 'retail-sales', actions: ['create', 'view'] }
     ],
     is_custom: false
   },
@@ -180,7 +184,11 @@ const defaultRoles = [
     permissions: [
       { module: 'orders', actions: ['create', 'view'] },
       { module: 'invoices', actions: ['view'] },
-      { module: 'dashboard', actions: ['view'] }
+      { module: 'dashboard', actions: ['view'] },
+      { module: 'product-variants', actions: ['view'] },
+      { module: 'products', actions: ['view'] },
+      { module: 'retailers', actions: ['view'] },
+      { module: 'retail-sales', actions: ['create', 'view'] }
     ],
     is_custom: false
   },

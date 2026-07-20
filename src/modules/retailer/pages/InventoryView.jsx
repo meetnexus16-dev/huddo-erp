@@ -3,10 +3,6 @@ import { Search, Archive, AlertCircle, RefreshCw, Package, Eye, Boxes } from 'lu
 import { useRetailerAuth } from '../context/RetailerAuthContext';
 import CustomModal from '../components/CustomModal';
 
-// Only orders that are approved (payment verified) onwards count as purchased stock.
-const PURCHASED_STATUSES = ['Approved', 'Processing', 'Packed', 'Shipped', 'Delivered'];
-
-// Map stored hex color codes back to their human-readable names.
 const COLOR_NAME_MAP = {
   '#EF4444': 'Red',
   '#1F2937': 'Black',
@@ -36,75 +32,86 @@ export default function InventoryView() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [meta, setMeta] = useState(null);
 
   useEffect(() => {
     if (!user?.id) return;
     setLoading(true);
-    fetch(`/api/orders?retailer=${user.id}&limit=500`)
-      .then(res => res.json())
-      .then(res => {
+    fetch('/api/retailer/stock')
+      .then((res) => res.json())
+      .then((res) => {
         if (!res.success || !Array.isArray(res.data)) {
           setProducts([]);
+          setMeta(null);
           return;
         }
+        setMeta(res.meta || null);
 
-        // Aggregate purchased quantities by product -> size/color variant.
         const map = {};
-        res.data.forEach(order => {
-          if (!PURCHASED_STATUSES.includes(order.status)) return;
-          (order.items || []).forEach(item => {
-            const variant = item.product_variant;
-            if (!variant) return;
-            const prod = variant.product || {};
-            const pid = prod._id || prod.id || variant.product;
-            if (!pid) return;
-
-            if (!map[pid]) {
-              map[pid] = {
-                id: pid,
-                name: prod.name || 'Footwear',
-                category: prod.category?.name || (typeof prod.category === 'string' ? prod.category : 'Footwear'),
-                total: 0,
-                variantMap: {}
-              };
-            }
-            const key = `${variant.size}||${variant.color}`;
-            if (!map[pid].variantMap[key]) {
-              map[pid].variantMap[key] = { size: variant.size, color: variant.color, qty: 0 };
-            }
-            const qty = Number(item.quantity) || 0;
-            map[pid].variantMap[key].qty += qty;
-            map[pid].total += qty;
-          });
+        res.data.forEach((row) => {
+          const pid = String(row.product_id);
+          if (!map[pid]) {
+            map[pid] = {
+              id: pid,
+              name: row.product_name || 'Footwear',
+              category: row.category || 'Footwear',
+              total: 0,
+              purchased: 0,
+              sold: 0,
+              variantMap: {}
+            };
+          }
+          const key = `${row.size}||${row.color}`;
+          if (!map[pid].variantMap[key]) {
+            map[pid].variantMap[key] = {
+              size: row.size,
+              color: row.color,
+              qty: 0,
+              purchased: 0,
+              sold: 0,
+              sku: row.sku_variant
+            };
+          }
+          map[pid].variantMap[key].qty += Number(row.available_qty) || 0;
+          map[pid].variantMap[key].purchased += Number(row.purchased_qty) || 0;
+          map[pid].variantMap[key].sold += Number(row.sold_qty) || 0;
+          map[pid].total += Number(row.available_qty) || 0;
+          map[pid].purchased += Number(row.purchased_qty) || 0;
+          map[pid].sold += Number(row.sold_qty) || 0;
         });
 
-        const list = Object.values(map).map(p => {
-          const variantList = Object.values(p.variantMap);
-          const sizes = [...new Set(variantList.filter(v => v.qty > 0).map(v => v.size))].sort(sortSizes);
-          return {
-            id: p.id,
-            name: p.name,
-            category: p.category,
-            total: p.total,
-            sizes,
-            variantList: variantList.sort((a, b) => sortSizes(a.size, b.size) || getColorName(a.color).localeCompare(getColorName(b.color)))
-          };
-        }).filter(p => p.total > 0);
+        const list = Object.values(map)
+          .map((p) => {
+            const variantList = Object.values(p.variantMap);
+            const sizes = [...new Set(variantList.filter((v) => v.qty > 0).map((v) => v.size))].sort(sortSizes);
+            return {
+              id: p.id,
+              name: p.name,
+              category: p.category,
+              total: p.total,
+              purchased: p.purchased,
+              sold: p.sold,
+              sizes,
+              variantList: variantList.sort(
+                (a, b) => sortSizes(a.size, b.size) || getColorName(a.color).localeCompare(getColorName(b.color))
+              )
+            };
+          })
+          .filter((p) => p.purchased > 0 || p.total > 0);
 
         setProducts(list);
       })
-      .catch(err => {
-        console.error("Error loading purchased inventory:", err);
+      .catch((err) => {
+        console.error('Error loading retailer stock:', err);
         setProducts([]);
       })
-      .finally(() => {
-        setLoading(false);
-      });
+      .finally(() => setLoading(false));
   }, [user?.id]);
 
-  const filteredProducts = products.filter(p =>
-    p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.category.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredProducts = products.filter(
+    (p) =>
+      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.category.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   if (loading) {
@@ -112,7 +119,7 @@ export default function InventoryView() {
       <div className="w-full bg-white rounded-2xl border border-slate-200 p-6 shadow-xs animate-pulse space-y-4 min-h-[400px] flex flex-col justify-center">
         <div className="flex items-center justify-center gap-2.5 text-slate-400 text-xs font-bold font-display">
           <RefreshCw className="w-5 h-5 text-brand-orange animate-spin" />
-          <span>Loading your purchased inventory...</span>
+          <span>Loading your inventory...</span>
         </div>
       </div>
     );
@@ -120,13 +127,26 @@ export default function InventoryView() {
 
   return (
     <div className="space-y-6">
-      {/* Title */}
       <div>
         <h1 className="text-xl font-bold text-slate-900 font-display">My Inventory Stock</h1>
-        <p className="text-xs text-slate-550 font-medium font-sans">Stock you have purchased through approved orders. Click a product to see its size-wise breakdown.</p>
+        <p className="text-xs text-slate-550 font-medium font-sans">
+          Available stock = purchased (approved orders) − sold (retail sales). Click a product for size-wise detail.
+        </p>
       </div>
 
-      {/* Search */}
+      {meta && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div className="bg-white border border-slate-200 rounded-xl p-3.5">
+            <span className="text-[9px] font-bold text-slate-400 uppercase">SKUs in stock</span>
+            <p className="text-lg font-extrabold text-slate-850">{meta.total_skus || 0}</p>
+          </div>
+          <div className="bg-white border border-slate-200 rounded-xl p-3.5">
+            <span className="text-[9px] font-bold text-slate-400 uppercase">Available pairs</span>
+            <p className="text-lg font-extrabold text-brand-orange">{meta.total_available_pairs || 0}</p>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
         <div className="relative w-full">
           <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
@@ -140,18 +160,16 @@ export default function InventoryView() {
         </div>
       </div>
 
-      {/* Info Notice card */}
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex items-center gap-3 text-xs text-slate-650">
         <AlertCircle className="w-5 h-5 text-slate-400 shrink-0" />
         <p className="font-semibold text-slate-600">
-          <span className="font-bold text-slate-800">Notice:</span> This inventory reflects only the products you have purchased via approved orders. Totals are aggregated across all your orders.
+          <span className="font-bold text-slate-800">Notice:</span> Selling via Create Sale reduces available quantity here automatically.
         </p>
       </div>
 
-      {/* Product Inventory Grid */}
       {filteredProducts.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredProducts.map(product => (
+          {filteredProducts.map((product) => (
             <button
               key={product.id}
               onClick={() => setSelectedProduct(product)}
@@ -170,21 +188,31 @@ export default function InventoryView() {
                 <Eye className="w-4 h-4 text-slate-300 shrink-0" />
               </div>
 
-              <div className="flex items-end justify-between">
+              <div className="flex items-end justify-between gap-2">
                 <div>
-                  <span className="text-[9px] font-bold text-slate-400 uppercase block">Total Inventory</span>
-                  <p className="text-lg font-extrabold text-slate-850 font-display">{product.total} <span className="text-xs font-bold text-slate-400">pairs</span></p>
+                  <span className="text-[9px] font-bold text-slate-400 uppercase block">Available</span>
+                  <p className="text-lg font-extrabold text-slate-850 font-display">
+                    {product.total} <span className="text-xs font-bold text-slate-400">pairs</span>
+                  </p>
+                </div>
+                <div className="text-right text-[10px] text-slate-500 font-semibold">
+                  <div>Bought {product.purchased}</div>
+                  <div>Sold {product.sold}</div>
                 </div>
               </div>
 
               <div className="border-t border-slate-100 pt-2.5">
                 <span className="text-[9px] font-bold text-slate-400 uppercase block mb-1.5">Sizes Available</span>
                 <div className="flex flex-wrap gap-1.5">
-                  {product.sizes.map(sz => (
-                    <span key={sz} className="px-2 py-0.5 text-[10px] font-bold border border-slate-200 text-slate-600 rounded-md bg-slate-50">
-                      {sz}
-                    </span>
-                  ))}
+                  {product.sizes.length > 0 ? (
+                    product.sizes.map((sz) => (
+                      <span key={sz} className="px-2 py-0.5 text-[10px] font-bold border border-slate-200 text-slate-600 rounded-md bg-slate-50">
+                        {sz}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-[10px] text-slate-400 font-semibold">All sold out</span>
+                  )}
                 </div>
               </div>
             </button>
@@ -197,7 +225,6 @@ export default function InventoryView() {
         </div>
       )}
 
-      {/* Size-wise breakdown popup */}
       {selectedProduct && (
         <CustomModal
           isOpen={!!selectedProduct}
@@ -213,7 +240,7 @@ export default function InventoryView() {
                 <span className="font-semibold text-slate-600 uppercase">{selectedProduct.category}</span>
               </div>
               <div className="text-right">
-                <span className="text-[9px] font-bold text-slate-400 uppercase block">Total</span>
+                <span className="text-[9px] font-bold text-slate-400 uppercase block">Available</span>
                 <p className="text-sm font-extrabold text-slate-850">{selectedProduct.total} pairs</p>
               </div>
             </div>
@@ -224,19 +251,23 @@ export default function InventoryView() {
                   <tr>
                     <th className="px-4 py-2.5">Size</th>
                     <th className="px-4 py-2.5">Color</th>
-                    <th className="px-4 py-2.5 text-right">Quantity</th>
+                    <th className="px-4 py-2.5 text-right">Bought</th>
+                    <th className="px-4 py-2.5 text-right">Sold</th>
+                    <th className="px-4 py-2.5 text-right">Available</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {selectedProduct.variantList.filter(v => v.qty > 0).map((v, idx) => (
+                  {selectedProduct.variantList.map((v, idx) => (
                     <tr key={idx} className="hover:bg-slate-50/40">
                       <td className="px-4 py-2.5 font-bold text-slate-900">S-{v.size}</td>
                       <td className="px-4 py-2.5 text-slate-600">{getColorName(v.color)}</td>
-                      <td className="px-4 py-2.5 text-right font-extrabold text-slate-850">{v.qty} pairs</td>
+                      <td className="px-4 py-2.5 text-right">{v.purchased}</td>
+                      <td className="px-4 py-2.5 text-right">{v.sold}</td>
+                      <td className="px-4 py-2.5 text-right font-extrabold text-slate-850">{v.qty}</td>
                     </tr>
                   ))}
                   <tr className="bg-slate-50 font-bold text-slate-900">
-                    <td colSpan="2" className="px-4 py-3 text-right">Total</td>
+                    <td colSpan="4" className="px-4 py-3 text-right">Total available</td>
                     <td className="px-4 py-3 text-right text-brand-orange">{selectedProduct.total} pairs</td>
                   </tr>
                 </tbody>

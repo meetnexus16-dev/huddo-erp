@@ -129,6 +129,7 @@ export const PROMOTER_ROUTES = {
 export const RETAILER_ROUTES = {
   Dashboard: 'dashboard',
   'Place Order': 'place-order',
+  'Create Sale': 'create-sale',
   'My Orders': 'orders',
   'Billing & Invoices': 'billing',
   Inventory: 'inventory',
