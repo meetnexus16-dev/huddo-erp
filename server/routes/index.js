@@ -170,7 +170,7 @@ import {
   upsertPromoterBonusStructure,
   deletePromoterBonusStructure
 } from '../controllers/promoterBonusController.js';
-import { createManagerPayment, listManagerPayments } from '../controllers/managerPaymentController.js';
+import { createManagerPayment, listManagerPayments, listEligiblePayoutUsers, calculateUserCommission, getManagerPaymentById } from '../controllers/managerPaymentController.js';
 import {
   getRetailerBillingSummary,
   recordRetailerPayment,
@@ -299,7 +299,10 @@ router.get('/promoter-bonus-structures', verifyJWT, checkPermission('commission-
 router.post('/promoter-bonus-structures', verifyJWT, checkPermission('commission-records', 'edit'), upsertPromoterBonusStructure);
 router.delete('/promoter-bonus-structures/:id', verifyJWT, checkPermission('commission-records', 'delete'), deletePromoterBonusStructure);
 
+router.get('/manager-payments/eligible-users', verifyJWT, listEligiblePayoutUsers);
+router.get('/manager-payments/calculate-commission', verifyJWT, calculateUserCommission);
 router.get('/manager-payments', verifyJWT, listManagerPayments);
+router.get('/manager-payments/:id', verifyJWT, getManagerPaymentById);
 router.post('/manager-payments', verifyJWT, checkPermission('commission-records', 'create'), createManagerPayment);
 
 // ==========================================

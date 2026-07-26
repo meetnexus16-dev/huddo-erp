@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Users, UserCheck, ShoppingCart, Percent, CreditCard, Link2, Plus, Filter, RotateCcw, ChevronDown, Eye } from 'lucide-react';
+import { Users, UserCheck, ShoppingCart, Percent, CreditCard, Link2, Plus, Filter, RotateCcw, ChevronDown, Eye, Calculator, RefreshCw } from 'lucide-react';
 import { DataTable, Modal } from '../../components/Common';
 import OnboardSharePanel from './OnboardSharePanel';
 import OnboardingApplicationDetailModal from '../../components/OnboardingApplicationDetailModal';
@@ -16,6 +16,32 @@ const DEFAULT_COMMISSION_FILTERS = {
   commission_type: '',
   status: ''
 };
+
+const MONTH_OPTIONS = [
+  { value: '1', label: 'January' },
+  { value: '2', label: 'February' },
+  { value: '3', label: 'March' },
+  { value: '4', label: 'April' },
+  { value: '5', label: 'May' },
+  { value: '6', label: 'June' },
+  { value: '7', label: 'July' },
+  { value: '8', label: 'August' },
+  { value: '9', label: 'September' },
+  { value: '10', label: 'October' },
+  { value: '11', label: 'November' },
+  { value: '12', label: 'December' }
+];
+
+function defaultCalcPeriod() {
+  const now = new Date();
+  return {
+    mode: 'month', // month | range
+    month: String(now.getMonth() + 1),
+    year: String(now.getFullYear()),
+    from_date: '',
+    to_date: ''
+  };
+}
 
 const TABS = [
   { id: 'referral', label: 'My Referral Code', icon: Link2 },
@@ -68,10 +94,14 @@ export default function NetworkWorkspace({ showToast, initialTab = 'referral', h
   const [isAdmin, setIsAdmin] = useState(false);
   const [payoutModal, setPayoutModal] = useState(false);
   const [payoutForm, setPayoutForm] = useState({ user_id: '', amount: '', payment_date: '', reference: '', notes: '' });
-  const [unpaidCommissions, setUnpaidCommissions] = useState([]);
-  const [selectedCommissionIds, setSelectedCommissionIds] = useState([]);
-  const [allUsers, setAllUsers] = useState([]);
+  const [eligibleUsers, setEligibleUsers] = useState([]);
   const [selectedReferral, setSelectedReferral] = useState(null);
+  const [calcModal, setCalcModal] = useState(false);
+  const [calcPeriod, setCalcPeriod] = useState(() => defaultCalcPeriod());
+  const [calcLoading, setCalcLoading] = useState(false);
+  const [calcResult, setCalcResult] = useState(null);
+  const [viewingPayment, setViewingPayment] = useState(null);
+  const [viewingPaymentLoading, setViewingPaymentLoading] = useState(false);
 
   const loadUsers = () => {
     authFetch(`/network/users?tab=${userTab}`).then((res) => {
@@ -208,58 +238,102 @@ export default function NetworkWorkspace({ showToast, initialTab = 'referral', h
   useEffect(() => { if (activeTab === 'payments') loadPayments(); }, [activeTab]);
   useEffect(() => {
     if (isAdmin && payoutModal) {
-      fetch('/api/users').then((r) => r.json()).then((res) => {
-        if (res.success) setAllUsers(res.data || []);
-      });
+      authFetch('/manager-payments/eligible-users').then((res) => {
+        if (res.success) setEligibleUsers(res.data || []);
+        else setEligibleUsers([]);
+      }).catch(() => setEligibleUsers([]));
     }
   }, [isAdmin, payoutModal]);
 
-  useEffect(() => {
-    if (!payoutForm.user_id) {
-      setUnpaidCommissions([]);
-      setSelectedCommissionIds([]);
-      return;
-    }
-    const token = localStorage.getItem('huddo_token');
-    fetch(`/api/commission-records?user=${payoutForm.user_id}&status=Approved&limit=500`, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {})
-      }
-    })
-      .then((r) => r.json())
-      .then((res) => {
-        const rows = res.success && Array.isArray(res.data) ? res.data : [];
-        setUnpaidCommissions(rows);
-        setSelectedCommissionIds(rows.map((row) => row._id));
-        const total = rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
-        setPayoutForm((prev) => ({
-          ...prev,
-          amount: total > 0 ? String(Math.round(total * 100) / 100) : prev.amount
-        }));
-      })
-      .catch(() => {
-        setUnpaidCommissions([]);
-        setSelectedCommissionIds([]);
-      });
-  }, [payoutForm.user_id]);
-
-  const toggleCommissionSelection = (id) => {
-    setSelectedCommissionIds((prev) => {
-      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
-      const total = unpaidCommissions
-        .filter((row) => next.includes(row._id))
-        .reduce((sum, row) => sum + Number(row.amount || 0), 0);
-      setPayoutForm((form) => ({ ...form, amount: total > 0 ? String(Math.round(total * 100) / 100) : '' }));
-      return next;
-    });
-  };
+  const selectedPayoutUser = eligibleUsers.find((u) => String(u._id) === String(payoutForm.user_id));
 
   const openPayoutModal = () => {
     setPayoutForm({ user_id: '', amount: '', payment_date: new Date().toISOString().split('T')[0], reference: '', notes: '' });
-    setUnpaidCommissions([]);
-    setSelectedCommissionIds([]);
+    setCalcResult(null);
+    setCalcPeriod(defaultCalcPeriod());
     setPayoutModal(true);
+  };
+
+  const openCalculateModal = () => {
+    if (!payoutForm.user_id) {
+      showToast?.('Select a manager or promoter first.', 'error');
+      return;
+    }
+    setCalcResult(null);
+    setCalcPeriod(defaultCalcPeriod());
+    setCalcModal(true);
+  };
+
+  const runCommissionCalculation = async () => {
+    if (!payoutForm.user_id) {
+      showToast?.('Select a user first.', 'error');
+      return;
+    }
+    const q = new URLSearchParams({ user_id: payoutForm.user_id });
+    if (calcPeriod.mode === 'month') {
+      if (!calcPeriod.month || !calcPeriod.year) {
+        showToast?.('Select month and year.', 'error');
+        return;
+      }
+      q.set('month', calcPeriod.month);
+      q.set('year', calcPeriod.year);
+    } else {
+      if (!calcPeriod.from_date || !calcPeriod.to_date) {
+        showToast?.('Select from and to dates.', 'error');
+        return;
+      }
+      q.set('from_date', calcPeriod.from_date);
+      q.set('to_date', calcPeriod.to_date);
+    }
+
+    setCalcLoading(true);
+    try {
+      const res = await authFetch(`/manager-payments/calculate-commission?${q.toString()}`);
+      if (!res.success) {
+        showToast?.(res.message || 'Failed to calculate commission.', 'error');
+        setCalcResult(null);
+        return;
+      }
+      setCalcResult(res.data);
+    } catch (err) {
+      showToast?.('Failed to calculate commission.', 'error');
+      setCalcResult(null);
+    } finally {
+      setCalcLoading(false);
+    }
+  };
+
+  /** Fill amount only as a reference — does not mark commissions paid or link records. */
+  const applyCalculatedCommission = () => {
+    if (!calcResult?.summary) return;
+    const referenceTotal = Number(calcResult.summary.total || 0);
+    setPayoutForm((prev) => ({
+      ...prev,
+      amount: String(Math.round(referenceTotal * 100) / 100)
+    }));
+    setCalcModal(false);
+    showToast?.(
+      `Reference amount ₹${referenceTotal.toLocaleString('en-IN')} applied. Commission ledger is unchanged.`,
+      'success'
+    );
+  };
+
+  const openPaymentDetail = async (row) => {
+    setViewingPaymentLoading(true);
+    setViewingPayment(row); // show list data immediately
+    try {
+      const res = await authFetch(`/manager-payments/${row._id}`);
+      if (res.success && res.data) setViewingPayment(res.data);
+    } catch (e) {
+      // keep list row data
+    } finally {
+      setViewingPaymentLoading(false);
+    }
+  };
+
+  const formatPaymentType = (type) => {
+    if (!type) return '—';
+    return String(type).replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase()).trim();
   };
 
   const submitPayout = async () => {
@@ -271,15 +345,14 @@ export default function NetworkWorkspace({ showToast, initialTab = 'referral', h
       method: 'POST',
       body: JSON.stringify({
         ...payoutForm,
-        payment_type: 'CommissionSettlement',
-        commission_record_ids: selectedCommissionIds
+        payment_type: 'CommissionSettlement'
+        // No commission_record_ids — payout amount is a settlement reference only
       })
     });
     if (res.success) {
-      showToast?.('Commission payment recorded and linked records marked as paid.', 'success');
+      showToast?.('Commission payment recorded. Commission ledger was not changed.', 'success');
       setPayoutModal(false);
       loadPayments();
-      if (activeTab === 'commissions') loadCommissions();
     } else {
       showToast?.(res.message || 'Failed to record payment.', 'error');
     }
@@ -669,11 +742,37 @@ export default function NetworkWorkspace({ showToast, initialTab = 'referral', h
           <DataTable
           data={payments}
           columns={[
-            { header: 'Date', accessor: (r) => r.payment_date ? new Date(r.payment_date).toLocaleDateString() : '—' },
-            { header: 'Amount', accessor: (r) => `₹${Number(r.amount || 0).toFixed(2)}` },
-            { header: 'Type', accessor: 'payment_type' },
-            { header: 'Reference', accessor: 'reference' },
-            { header: 'Notes', accessor: 'notes' }
+            {
+              header: 'Payee',
+              accessor: (r) => r.user?.name || '—',
+              render: (val, row) => (
+                <div>
+                  <p className="font-bold text-slate-800">{val}</p>
+                  <p className="text-[10px] text-slate-400 font-semibold">{row.user?.roleName || row.user?.user_code || ''}</p>
+                </div>
+              )
+            },
+            { header: 'Date', accessor: (r) => r.payment_date ? new Date(r.payment_date).toLocaleDateString('en-IN') : '—' },
+            { header: 'Amount', accessor: (r) => `₹${Number(r.amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` },
+            {
+              header: 'Type',
+              accessor: (r) => formatPaymentType(r.payment_type)
+            },
+            { header: 'Reference', accessor: (r) => r.reference || '—' },
+            {
+              header: 'View',
+              accessor: '_id',
+              render: (_val, row) => (
+                <button
+                  type="button"
+                  onClick={() => openPaymentDetail(row)}
+                  className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-slate-200 text-slate-500 hover:text-brand-orange hover:border-brand-orange/40 hover:bg-orange-50 transition-colors"
+                  title="View payout details"
+                >
+                  <Eye size={16} />
+                </button>
+              )
+            }
           ]}
         />
         </div>
@@ -682,17 +781,45 @@ export default function NetworkWorkspace({ showToast, initialTab = 'referral', h
       <Modal isOpen={payoutModal} onClose={() => setPayoutModal(false)} title="Record Commission Payment">
         <div className="space-y-3">
           <div>
-            <label className="text-sm font-semibold text-slate-700">User</label>
-            <select value={payoutForm.user_id} onChange={(e) => setPayoutForm({ ...payoutForm, user_id: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm">
-              <option value="">Select user</option>
-              {allUsers.map((u) => (
-                <option key={u._id} value={u._id}>{u.name} ({u.user_code || u.roleName})</option>
+            <label className="text-sm font-semibold text-slate-700">Manager / Promoter</label>
+            <select
+              value={payoutForm.user_id}
+              onChange={(e) => setPayoutForm({ ...payoutForm, user_id: e.target.value, amount: '' })}
+              className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm"
+            >
+              <option value="">Select manager or promoter</option>
+              {eligibleUsers.map((u) => (
+                <option key={u._id} value={u._id}>
+                  {u.name} ({u.roleName}{u.user_code ? ` · ${u.user_code}` : ''})
+                </option>
               ))}
             </select>
+            <p className="text-[10px] text-slate-400 mt-1">Only Country / State / City Managers and Promoters are listed.</p>
           </div>
           <div>
             <label className="text-sm font-semibold text-slate-700">Amount (₹)</label>
-            <input type="number" value={payoutForm.amount} onChange={(e) => setPayoutForm({ ...payoutForm, amount: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
+            <div className="mt-1 flex gap-2">
+              <input
+                type="number"
+                value={payoutForm.amount}
+                onChange={(e) => setPayoutForm({ ...payoutForm, amount: e.target.value })}
+                className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                placeholder="0.00"
+              />
+              <button
+                type="button"
+                onClick={openCalculateModal}
+                disabled={!payoutForm.user_id}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-orange-200 bg-orange-50 text-orange-700 text-xs font-bold hover:bg-orange-100 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                title="Calculate reference commission for selected user"
+              >
+                <Calculator size={14} />
+                Calculate
+              </button>
+            </div>
+            <p className="text-[10px] text-slate-400 mt-1">
+              Calculate is for reference only — it does not mark commissions as paid or unpaid.
+            </p>
           </div>
           <div>
             <label className="text-sm font-semibold text-slate-700">Payment Date</label>
@@ -706,34 +833,203 @@ export default function NetworkWorkspace({ showToast, initialTab = 'referral', h
             <label className="text-sm font-semibold text-slate-700">Notes</label>
             <textarea value={payoutForm.notes} onChange={(e) => setPayoutForm({ ...payoutForm, notes: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm" rows={2} />
           </div>
-          {payoutForm.user_id && (
-            <div>
-              <label className="text-sm font-semibold text-slate-700">Unpaid Commission Records</label>
-              <div className="mt-2 max-h-40 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
-                {unpaidCommissions.length === 0 ? (
-                  <p className="px-3 py-4 text-xs text-slate-400">No approved (unpaid) commission records for this user.</p>
-                ) : (
-                  unpaidCommissions.map((row) => (
-                    <label key={row._id} className="flex items-center gap-3 px-3 py-2 text-sm hover:bg-slate-50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={selectedCommissionIds.includes(row._id)}
-                        onChange={() => toggleCommissionSelection(row._id)}
-                        className="rounded border-slate-300 text-orange-500 focus:ring-orange-200"
-                      />
-                      <span className="flex-1 text-slate-700 truncate">{row.description || row.commission_type}</span>
-                      <span className="font-bold text-slate-900 shrink-0">₹{Number(row.amount || 0).toFixed(2)}</span>
-                    </label>
-                  ))
-                )}
-              </div>
-              {selectedCommissionIds.length > 0 && (
-                <p className="text-xs text-slate-500 mt-1">{selectedCommissionIds.length} record(s) will be marked Paid.</p>
-              )}
-            </div>
-          )}
           <button onClick={submitPayout} className="w-full bg-orange-500 text-white font-bold py-2.5 rounded-lg">Save Payment</button>
         </div>
+      </Modal>
+
+      <Modal isOpen={calcModal} onClose={() => setCalcModal(false)} title="Calculate Reference Commission">
+        <div className="space-y-4">
+          <div className="bg-slate-50 border border-slate-100 rounded-lg p-3 text-sm">
+            <span className="text-[10px] font-bold text-slate-400 uppercase block">Selected user</span>
+            <p className="font-bold text-slate-800 mt-0.5">
+              {selectedPayoutUser
+                ? `${selectedPayoutUser.name} (${selectedPayoutUser.roleName})`
+                : '—'}
+            </p>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setCalcPeriod((p) => ({ ...p, mode: 'month' }))}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg border ${
+                calcPeriod.mode === 'month'
+                  ? 'bg-orange-500 text-white border-orange-500'
+                  : 'bg-white text-slate-600 border-slate-200'
+              }`}
+            >
+              By Month
+            </button>
+            <button
+              type="button"
+              onClick={() => setCalcPeriod((p) => ({ ...p, mode: 'range' }))}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg border ${
+                calcPeriod.mode === 'range'
+                  ? 'bg-orange-500 text-white border-orange-500'
+                  : 'bg-white text-slate-600 border-slate-200'
+              }`}
+            >
+              Date Range
+            </button>
+          </div>
+
+          {calcPeriod.mode === 'month' ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-semibold text-slate-700">Month</label>
+                <select
+                  value={calcPeriod.month}
+                  onChange={(e) => setCalcPeriod({ ...calcPeriod, month: e.target.value })}
+                  className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                >
+                  {MONTH_OPTIONS.map((m) => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-semibold text-slate-700">Year</label>
+                <input
+                  type="number"
+                  min="2020"
+                  max="2100"
+                  value={calcPeriod.year}
+                  onChange={(e) => setCalcPeriod({ ...calcPeriod, year: e.target.value })}
+                  className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-semibold text-slate-700">From</label>
+                <input
+                  type="date"
+                  value={calcPeriod.from_date}
+                  onChange={(e) => setCalcPeriod({ ...calcPeriod, from_date: e.target.value })}
+                  className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-semibold text-slate-700">To</label>
+                <input
+                  type="date"
+                  value={calcPeriod.to_date}
+                  onChange={(e) => setCalcPeriod({ ...calcPeriod, to_date: e.target.value })}
+                  className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                />
+              </div>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={runCommissionCalculation}
+            disabled={calcLoading}
+            className="w-full inline-flex items-center justify-center gap-2 bg-slate-900 text-white font-bold py-2.5 rounded-lg disabled:opacity-50"
+          >
+            {calcLoading ? <RefreshCw size={16} className="animate-spin" /> : <Calculator size={16} />}
+            {calcLoading ? 'Calculating...' : 'Calculate Commission'}
+          </button>
+
+          {calcResult && (
+            <div className="space-y-3 border-t border-slate-100 pt-3">
+              <div className="bg-orange-50 border border-orange-100 rounded-lg p-4 text-center">
+                <span className="text-[10px] font-bold text-orange-600 uppercase block">Reference commission total</span>
+                <p className="text-2xl font-extrabold text-orange-700 mt-1">
+                  ₹{Number(calcResult.summary?.total || 0).toLocaleString('en-IN')}
+                </p>
+                <p className="text-[11px] text-slate-500 font-semibold mt-1">
+                  Based on {calcResult.summary?.count || 0} commission entr{(calcResult.summary?.count || 0) === 1 ? 'y' : 'ies'} in the selected period
+                </p>
+              </div>
+              <p className="text-[11px] text-slate-500 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
+                This amount is for reference only. Applying it only fills the payment amount — it does not change commission paid/unpaid status.
+              </p>
+              <button
+                type="button"
+                onClick={applyCalculatedCommission}
+                className="w-full bg-orange-500 text-white font-bold py-2.5 rounded-lg"
+              >
+                Use as Reference Amount (₹{Number(calcResult.summary?.total || 0).toLocaleString('en-IN')})
+              </button>
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      <Modal isOpen={!!viewingPayment} onClose={() => setViewingPayment(null)} title="Commission Payout Details">
+        {viewingPayment && (
+          <div className="space-y-4 text-sm">
+            {viewingPaymentLoading && (
+              <p className="text-xs text-slate-400 font-semibold flex items-center gap-2">
+                <RefreshCw size={14} className="animate-spin text-orange-500" />
+                Loading full details...
+              </p>
+            )}
+
+            <div className="grid grid-cols-2 gap-3 bg-slate-50 border border-slate-100 rounded-xl p-3.5">
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase block">Payee</span>
+                <p className="font-bold text-slate-800 mt-0.5">{viewingPayment.user?.name || '—'}</p>
+                <p className="text-[11px] text-slate-500">
+                  {[viewingPayment.user?.roleName, viewingPayment.user?.user_code].filter(Boolean).join(' · ') || '—'}
+                </p>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase block">Amount</span>
+                <p className="font-extrabold text-orange-600 text-lg mt-0.5">
+                  ₹{Number(viewingPayment.amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase block">Payment Date</span>
+                <p className="font-bold text-slate-800 mt-0.5">
+                  {viewingPayment.payment_date
+                    ? new Date(viewingPayment.payment_date).toLocaleDateString('en-IN', {
+                        day: '2-digit', month: 'short', year: 'numeric'
+                      })
+                    : '—'}
+                </p>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase block">Type</span>
+                <p className="font-bold text-slate-800 mt-0.5">{formatPaymentType(viewingPayment.payment_type)}</p>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase block">Reference</span>
+                <p className="font-semibold text-slate-700 mt-0.5">{viewingPayment.reference || '—'}</p>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase block">Recorded By</span>
+                <p className="font-semibold text-slate-700 mt-0.5">{viewingPayment.recorded_by?.name || '—'}</p>
+              </div>
+              {viewingPayment.user?.email && (
+                <div className="col-span-2">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block">Payee Contact</span>
+                  <p className="font-semibold text-slate-700 mt-0.5">
+                    {viewingPayment.user.email}
+                    {viewingPayment.user.mobile ? ` · ${viewingPayment.user.mobile}` : ''}
+                  </p>
+                </div>
+              )}
+              {viewingPayment.notes && (
+                <div className="col-span-2">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block">Notes</span>
+                  <p className="font-medium text-slate-700 mt-0.5 whitespace-pre-wrap">{viewingPayment.notes}</p>
+                </div>
+              )}
+              <div className="col-span-2">
+                <span className="text-[10px] font-bold text-slate-400 uppercase block">Recorded At</span>
+                <p className="font-semibold text-slate-700 mt-0.5">
+                  {viewingPayment.createdAt
+                    ? new Date(viewingPayment.createdAt).toLocaleString('en-IN')
+                    : '—'}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </Modal>
 
       <OnboardingApplicationDetailModal
