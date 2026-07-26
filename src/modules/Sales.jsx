@@ -24,9 +24,11 @@ export default function Sales({ showToast }) {
             retailerName: o.retailer?.business_name || 'Walk Easy Footwear',
             retailerId: o.retailer?._id || o.retailer,
             city: o.retailer?.city?.name || o.retailer?.city || 'Mumbai',
-            amount: o.subtotal || 0,
+            amount: Number(o.grand_total ?? o.subtotal ?? 0),
             paymentStatus: o.payment_status || 'Pending',
-            date: o.createdAt ? new Date(o.createdAt).toISOString().split('T')[0] : '2026-06-08',
+            status: o.status || 'Submitted',
+            date: o.createdAt ? new Date(o.createdAt).toISOString().split('T')[0] : null,
+            createdAt: o.createdAt || null,
             created_by: o.created_by?._id || o.created_by
           })));
         }
@@ -98,15 +100,43 @@ export default function Sales({ showToast }) {
     showToast("Sales ledger spreadsheet exported successfully as CSV.", "success");
   };
 
-  // Compute dynamic stats
-  const totalRevenueThisMonth = filteredOrders.reduce((sum, o) => sum + o.amount, 0);
+  // Confirmed wholesale revenue only (exclude draft/cancelled/rejected)
+  const REVENUE_STATUSES = ['Approved', 'Processing', 'Packed', 'Shipped', 'Delivered'];
+  const revenueOrders = filteredOrders.filter((o) => REVENUE_STATUSES.includes(o.status));
+
+  // Compute dynamic stats (current calendar month)
+  const now = new Date();
+  const thisYear = now.getFullYear();
+  const lastYear = thisYear - 1;
+  const thisMonth = now.getMonth();
+
+  const isSameMonth = (value, year, month) => {
+    if (!value) return false;
+    const d = new Date(value);
+    return !isNaN(d.getTime()) && d.getFullYear() === year && d.getMonth() === month;
+  };
+
+  const totalRevenueThisMonth = revenueOrders
+    .filter((o) => isSameMonth(o.createdAt || o.date, thisYear, thisMonth))
+    .reduce((sum, o) => sum + (o.amount || 0), 0);
+
+  const totalRevenueLastMonth = revenueOrders
+    .filter((o) => {
+      const prev = new Date(thisYear, thisMonth - 1, 1);
+      return isSameMonth(o.createdAt || o.date, prev.getFullYear(), prev.getMonth());
+    })
+    .reduce((sum, o) => sum + (o.amount || 0), 0);
+
+  const monthGrowthPct = totalRevenueLastMonth > 0
+    ? (((totalRevenueThisMonth - totalRevenueLastMonth) / totalRevenueLastMonth) * 100)
+    : (totalRevenueThisMonth > 0 ? 100 : 0);
 
   // Group by State
   const stateRevenueMap = {};
-  filteredOrders.forEach(o => {
+  revenueOrders.forEach(o => {
     // Resolve state of this order's city
     const cityObj = cities.find(c => c.name === o.city);
-    const stateName = cityObj?.state?.name || cityObj?.state || 'Maharashtra';
+    const stateName = cityObj?.state?.name || cityObj?.state || '—';
     stateRevenueMap[stateName] = (stateRevenueMap[stateName] || 0) + o.amount;
   });
 
@@ -119,9 +149,9 @@ export default function Sales({ showToast }) {
     }
   });
 
-  // Group by Employee (Rep)
+  // Group by Employee (Rep) — all revenue orders (region filter applied)
   const repRevenueMap = {};
-  orders.forEach(o => {
+  revenueOrders.forEach(o => {
     if (o.created_by) {
       repRevenueMap[o.created_by] = (repRevenueMap[o.created_by] || 0) + o.amount;
     }
@@ -151,14 +181,14 @@ export default function Sales({ showToast }) {
       name: emp?.full_name || emp?.name || 'Unknown Rep',
       location: emp?.branch || 'General HQ',
       revenue,
-      growth: 12.5
+      growth: 0
     };
   }).sort((a, b) => b.revenue - a.revenue);
 
   // Map retailers ranking table
   const retailerRevenueMap = {};
   const retailerOrderCountMap = {};
-  orders.forEach(o => {
+  revenueOrders.forEach(o => {
     if (o.retailerId) {
       retailerRevenueMap[o.retailerId] = (retailerRevenueMap[o.retailerId] || 0) + o.amount;
       retailerOrderCountMap[o.retailerId] = (retailerOrderCountMap[o.retailerId] || 0) + 1;
@@ -175,18 +205,24 @@ export default function Sales({ showToast }) {
     };
   }).sort((a, b) => b.revenue - a.revenue).slice(0, 4);
 
-  // Year on Year monthly comparison data (aggregate this year dynamically)
-  const monthSums = Array(12).fill(0);
-  orders.forEach(o => {
-    const m = new Date(o.date).getMonth();
-    monthSums[m] += o.amount;
+  // Real Year-on-Year monthly comparison (no fake fallbacks)
+  const thisYearSums = Array(12).fill(0);
+  const lastYearSums = Array(12).fill(0);
+  revenueOrders.forEach((o) => {
+    const d = new Date(o.createdAt || o.date);
+    if (isNaN(d.getTime())) return;
+    const y = d.getFullYear();
+    const m = d.getMonth();
+    if (y === thisYear) thisYearSums[m] += o.amount || 0;
+    else if (y === lastYear) lastYearSums[m] += o.amount || 0;
   });
 
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const yoyComparisonData = monthNames.slice(0, 6).map((mName, idx) => ({
+  // Show Jan through current month so YoY lines are comparable for the year to date
+  const yoyComparisonData = monthNames.slice(0, thisMonth + 1).map((mName, idx) => ({
     month: mName,
-    lastYear: Math.round((monthSums[idx] || 1000000) * 0.9), // simulate last year as 90% of this year
-    thisYear: monthSums[idx] || 1200000
+    lastYear: Math.round(lastYearSums[idx] || 0),
+    thisYear: Math.round(thisYearSums[idx] || 0)
   }));
 
   const columns = [
@@ -244,7 +280,9 @@ export default function Sales({ showToast }) {
           <div>
             <span className="text-[10px] text-slate-400 uppercase font-semibold">Total Revenue (This Month)</span>
             <h3 className="text-xl font-bold text-slate-800 font-display mt-0.5">₹{(totalRevenueThisMonth / 100000).toFixed(2)} Lakh</h3>
-            <span className="text-[10px] text-emerald-600 font-bold">+14.2% Growth vs Last Month</span>
+            <span className={`text-[10px] font-bold ${monthGrowthPct >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+              {monthGrowthPct >= 0 ? '+' : ''}{monthGrowthPct.toFixed(1)}% vs Last Month
+            </span>
           </div>
         </div>
         
@@ -303,17 +341,23 @@ export default function Sales({ showToast }) {
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs lg:col-span-2">
           <h3 className="text-sm font-bold text-slate-900 mb-4 font-display">Sales Growth Chart (YoY Comparison)</h3>
           <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={yoyComparisonData} margin={{ top: 5, right: 10, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="month" fontSize={11} stroke="#94a3b8" />
-                <YAxis fontSize={11} stroke="#94a3b8" tickFormatter={(val) => `₹${val / 100000}L`} />
-                <Tooltip formatter={(value) => `₹${value.toLocaleString('en-IN')}`} />
-                <Legend fontSize={10} />
-                <Line type="monotone" dataKey="thisYear" stroke="#f97316" name="This Year (2026)" strokeWidth={2.5} activeDot={{ r: 6 }} />
-                <Line type="monotone" dataKey="lastYear" stroke="#cbd5e1" name="Last Year (2025)" strokeWidth={2} strokeDasharray="5 5" />
-              </LineChart>
-            </ResponsiveContainer>
+            {yoyComparisonData.every((row) => row.thisYear === 0 && row.lastYear === 0) ? (
+              <div className="h-full flex items-center justify-center text-slate-400 text-xs">
+                No confirmed sales in {lastYear}–{thisYear} for the selected region.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={yoyComparisonData} margin={{ top: 5, right: 10, left: 20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="month" fontSize={11} stroke="#94a3b8" />
+                  <YAxis fontSize={11} stroke="#94a3b8" tickFormatter={(val) => `₹${val / 100000}L`} />
+                  <Tooltip formatter={(value) => `₹${Number(value || 0).toLocaleString('en-IN')}`} />
+                  <Legend fontSize={10} />
+                  <Line type="monotone" dataKey="thisYear" stroke="#f97316" name={`This Year (${thisYear})`} strokeWidth={2.5} activeDot={{ r: 6 }} />
+                  <Line type="monotone" dataKey="lastYear" stroke="#cbd5e1" name={`Last Year (${lastYear})`} strokeWidth={2} strokeDasharray="5 5" />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
