@@ -81,7 +81,13 @@ export default function Orders({ showToast }) {
               countryApproved: o.status === 'Approved' || o.status === 'Delivered',
               adminApproved: o.status === 'Approved' || o.status === 'Delivered'
             },
-            proofImage: o.payment_screenshot || ''
+            proofImage: o.payment_screenshot || '',
+            dispatchDetails: o.dispatch_details ? {
+              transportName: o.dispatch_details.courier || '',
+              trackingId: o.dispatch_details.tracking_number || '',
+              contact: o.dispatch_details.contact || '',
+              dispatchedAt: o.dispatch_details.dispatched_at || null
+            } : null
           };
           });
           setOrders(mapped);
@@ -106,6 +112,9 @@ export default function Orders({ showToast }) {
   const [rejectReason, setRejectReason] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [verifyUtrVal, setVerifyUtrVal] = useState('');
+  const [isShipOpen, setIsShipOpen] = useState(false);
+  const [shipForm, setShipForm] = useState({ tracking_id: '', transport_name: '', contact: '' });
+  const [shipLoading, setShipLoading] = useState(false);
 
   // Save workflow toggles
   const handleToggleWorkflow = (key) => {
@@ -188,35 +197,77 @@ export default function Orders({ showToast }) {
       : []
   );
 
-  const handleUpdateStatus = async (order, newStatus) => {
+  const handleUpdateStatus = async (order, newStatus, shipDetails = null) => {
     const orderMongoId = order.mongoId;
     try {
+      const body = { status: newStatus };
+      if (newStatus === 'Shipped' && shipDetails) {
+        body.tracking_id = shipDetails.tracking_id;
+        body.transport_name = shipDetails.transport_name;
+        body.contact = shipDetails.contact;
+      }
       const res = await fetch(`/api/orders/${orderMongoId}/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
+        body: JSON.stringify(body)
       });
       const data = await res.json();
       if (!data.success) {
         showToast(data.message || "Failed to update status.", "error");
-        return;
+        return false;
       }
       const newHistory = mapHistory(data.data);
+      const dispatchDetails = data.data?.dispatch_details ? {
+        transportName: data.data.dispatch_details.courier || '',
+        trackingId: data.data.dispatch_details.tracking_number || '',
+        contact: data.data.dispatch_details.contact || '',
+        dispatchedAt: data.data.dispatch_details.dispatched_at || null
+      } : (order.dispatchDetails || null);
       setOrders(orders.map(o => (
         o.mongoId === orderMongoId
-          ? { ...o, status: newStatus, history: newHistory.length ? newHistory : o.history }
+          ? { ...o, status: newStatus, history: newHistory.length ? newHistory : o.history, dispatchDetails }
           : o
       )));
       setViewingOrder(prev => (
         prev && prev.mongoId === orderMongoId
-          ? { ...prev, status: newStatus, history: newHistory.length ? newHistory : prev.history }
+          ? { ...prev, status: newStatus, history: newHistory.length ? newHistory : prev.history, dispatchDetails }
           : prev
       ));
       showToast(`Order ${order.id} status updated to ${newStatus}.`, "success");
+      return true;
     } catch (err) {
       console.error("Failed to update status:", err);
       showToast("Error updating status.", "error");
+      return false;
     }
+  };
+
+  const openShipModal = () => {
+    setShipForm({
+      tracking_id: viewingOrder?.dispatchDetails?.trackingId || '',
+      transport_name: viewingOrder?.dispatchDetails?.transportName || '',
+      contact: viewingOrder?.dispatchDetails?.contact || ''
+    });
+    setIsShipOpen(true);
+  };
+
+  const handleConfirmShip = async () => {
+    if (!viewingOrder) return;
+    const tracking = shipForm.tracking_id.trim();
+    const transport = shipForm.transport_name.trim();
+    const contact = shipForm.contact.trim();
+    if (!tracking || !transport || !contact) {
+      showToast('Please enter tracking ID, transport name, and contact.', 'error');
+      return;
+    }
+    setShipLoading(true);
+    const ok = await handleUpdateStatus(viewingOrder, 'Shipped', {
+      tracking_id: tracking,
+      transport_name: transport,
+      contact
+    });
+    setShipLoading(false);
+    if (ok) setIsShipOpen(false);
   };
   // Filter orders
   const filteredOrders = orders.filter(ord => {
@@ -554,6 +605,26 @@ export default function Orders({ showToast }) {
                 </div>
               )}
 
+              {viewingOrder.dispatchDetails?.trackingId && (
+                <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl space-y-2">
+                  <h4 className="text-xs font-bold text-blue-700 uppercase">Shipping / Transport Details</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                    <div>
+                      <span className="text-[10px] font-bold text-blue-500 uppercase block">Tracking ID</span>
+                      <p className="font-bold text-slate-800 font-mono mt-0.5">{viewingOrder.dispatchDetails.trackingId}</p>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-blue-500 uppercase block">Transport Name</span>
+                      <p className="font-bold text-slate-800 mt-0.5">{viewingOrder.dispatchDetails.transportName || '—'}</p>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-blue-500 uppercase block">Contact</span>
+                      <p className="font-bold text-slate-800 mt-0.5">{viewingOrder.dispatchDetails.contact || '—'}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Pipeline transitions controller: only after order is approved AND payment verified */}
               {viewingOrder.paymentStatus === 'Verified'
                 && ['Approved', 'Processing', 'Packed', 'Shipped'].includes(viewingOrder.status) && (
@@ -563,7 +634,7 @@ export default function Orders({ showToast }) {
                     {['Processing', 'Packed', 'Shipped', 'Delivered'].map(st => (
                       <button 
                         key={st}
-                        onClick={() => handleUpdateStatus(viewingOrder, st)}
+                        onClick={() => (st === 'Shipped' ? openShipModal() : handleUpdateStatus(viewingOrder, st))}
                         className={`px-3 py-1.5 text-xs font-bold border rounded transition-colors ${
                           viewingOrder.status === st 
                             ? 'bg-brand-orange text-white border-brand-orange' 
@@ -662,6 +733,51 @@ export default function Orders({ showToast }) {
             onChange={(e) => setRejectReason(e.target.value)}
             className="w-full text-sm border border-slate-200 rounded-lg p-2.5 focus:outline-none"
           />
+        </div>
+      </Modal>
+
+      {/* Ship Order — collect transport details */}
+      <Modal
+        isOpen={isShipOpen}
+        onClose={() => setIsShipOpen(false)}
+        title="Mark Order as Shipped"
+        onConfirm={handleConfirmShip}
+        confirmText={shipLoading ? 'Saving...' : 'Confirm Shipped'}
+      >
+        <div className="space-y-3 text-sm">
+          <p className="text-slate-600 text-xs">
+            Enter dispatch details for <strong className="text-slate-900">{viewingOrder?.id}</strong>. These will be visible to the retailer on their order details.
+          </p>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tracking ID *</label>
+            <input
+              type="text"
+              value={shipForm.tracking_id}
+              onChange={(e) => setShipForm({ ...shipForm, tracking_id: e.target.value })}
+              placeholder="e.g. BD-882031234"
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-orange-300"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Transport Name *</label>
+            <input
+              type="text"
+              value={shipForm.transport_name}
+              onChange={(e) => setShipForm({ ...shipForm, transport_name: e.target.value })}
+              placeholder="e.g. BlueDart / DTDC / Local Transport"
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-orange-300"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Contact *</label>
+            <input
+              type="text"
+              value={shipForm.contact}
+              onChange={(e) => setShipForm({ ...shipForm, contact: e.target.value })}
+              placeholder="Transporter / driver phone"
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-orange-300"
+            />
+          </div>
         </div>
       </Modal>
 

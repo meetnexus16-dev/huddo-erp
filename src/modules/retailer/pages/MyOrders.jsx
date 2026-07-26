@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Search, Eye, Clock, Download, XCircle, AlertCircle, FileText, 
-  MapPin, CheckCircle, RefreshCw, Calendar, ArrowRight, User
+  MapPin, CheckCircle, RefreshCw, Calendar, ArrowRight, User, Truck
 } from 'lucide-react';
 
 import { useRetailerAuth } from '../context/RetailerAuthContext';
@@ -313,6 +313,34 @@ export default function MyOrders({ showToast }) {
               <div><span className="text-slate-400 font-bold">Order Status</span><div className="mt-0.5"><StatusBadge status={viewingOrder.status} /></div></div>
               <div><span className="text-slate-400 font-bold">Total Bill</span><p className="font-extrabold text-slate-900 mt-0.5">₹{(viewingOrder.grand_total || 0).toLocaleString('en-IN')}</p></div>
             </div>
+
+            {(viewingOrder.dispatch_details?.tracking_number || viewingOrder.dispatch_details?.courier) && (
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 space-y-3">
+                <h4 className="text-[11px] font-bold text-blue-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Truck className="w-3.5 h-3.5" /> Shipping / Transport Details
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <span className="text-[10px] text-blue-500 font-bold block uppercase">Tracking ID</span>
+                    <p className="font-mono font-extrabold text-slate-800 mt-0.5">
+                      {viewingOrder.dispatch_details.tracking_number || '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-blue-500 font-bold block uppercase">Transport Name</span>
+                    <p className="font-extrabold text-slate-800 mt-0.5">
+                      {viewingOrder.dispatch_details.courier || '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-blue-500 font-bold block uppercase">Contact</span>
+                    <p className="font-extrabold text-slate-800 mt-0.5">
+                      {viewingOrder.dispatch_details.contact || '—'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Items table */}
             <div className="space-y-2">

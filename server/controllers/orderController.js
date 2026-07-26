@@ -180,7 +180,13 @@ const DISPATCH_STATUSES = ['Processing', 'Packed', 'Shipped', 'Delivered'];
 export const updateOrderStatus = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { status, note } = req.body;
+    const {
+      status,
+      note,
+      tracking_id: trackingId,
+      transport_name: transportName,
+      contact
+    } = req.body;
 
     if (!DISPATCH_STATUSES.includes(status)) {
       return res.status(400).json({
@@ -216,12 +222,36 @@ export const updateOrderStatus = async (req, res, next) => {
       });
     }
 
+    if (status === 'Shipped') {
+      const tracking = String(trackingId || '').trim();
+      const transport = String(transportName || '').trim();
+      const phone = String(contact || '').trim();
+      if (!tracking || !transport || !phone) {
+        return res.status(400).json({
+          success: false,
+          message: 'Tracking ID, transport name, and contact are required when marking an order as Shipped.',
+          data: null
+        });
+      }
+      order.dispatch_details = {
+        courier: transport,
+        tracking_number: tracking,
+        contact: phone,
+        dispatched_at: new Date()
+      };
+    }
+
     order.status = status;
     if (status === 'Delivered') {
       order.delivered_at = new Date();
     }
     order.$locals.statusChangedBy = req.user?._id;
-    order.$locals.statusNote = note || `Order marked as ${status}`;
+    if (status === 'Shipped' && order.dispatch_details) {
+      order.$locals.statusNote = note
+        || `Shipped via ${order.dispatch_details.courier} · Tracking: ${order.dispatch_details.tracking_number} · Contact: ${order.dispatch_details.contact}`;
+    } else {
+      order.$locals.statusNote = note || `Order marked as ${status}`;
+    }
     await order.save();
 
     res.status(200).json({

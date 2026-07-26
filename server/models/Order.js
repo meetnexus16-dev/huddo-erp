@@ -51,8 +51,9 @@ const orderSchema = new mongoose.Schema({
   approval_chain: [approvalStageSchema],
   status_history: [statusHistorySchema],
   dispatch_details: {
-    courier: { type: String },
+    courier: { type: String }, // transport / courier name
     tracking_number: { type: String },
+    contact: { type: String },
     dispatched_at: { type: Date }
   },
   delivered_at: { type: Date },
