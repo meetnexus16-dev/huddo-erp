@@ -97,38 +97,48 @@ function buildLabelHtml(batch, barcodeDataUrl, logoDataUrl) {
     : `<div style="font-size:10px;letter-spacing:.5px;">SIZE: ${bigSize}</div>`;
 
   return `
-  <div style="width:360px;height:210px;border:1px solid #000;display:flex;font-family:Arial,Helvetica,sans-serif;color:#000;background:#fff;box-sizing:border-box;overflow:hidden;">
-    <!-- Left dark panel -->
-    <div style="width:40%;background:#111;color:#fff;display:flex;flex-direction:column;justify-content:space-between;padding:10px;box-sizing:border-box;">
-      <div>
+  <div class="lbl" style="width:360px;height:222px;border:1px solid #000;display:flex;font-family:Arial,Helvetica,sans-serif;color:#000;background:#fff;box-sizing:border-box;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;">
+    <!-- Left dark panel (SVG fill so Chrome print keeps black) -->
+    <div style="width:40%;position:relative;color:#fff;display:flex;flex-direction:column;justify-content:space-between;padding:10px;box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;">
+      <svg aria-hidden="true" width="100%" height="100%" viewBox="0 0 1 1" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;z-index:0;display:block;">
+        <rect width="1" height="1" fill="#111111"/>
+      </svg>
+      <div style="position:relative;z-index:1;">
         <div style="font-size:52px;font-weight:800;line-height:1;">${bigSize}</div>
         <div style="margin-top:8px;">${convRows}</div>
       </div>
-      <div style="border-top:1px solid #fff;padding-top:5px;">
+      <div style="position:relative;z-index:1;border-top:1px solid #fff;padding-top:5px;">
         <div style="font-size:8px;letter-spacing:.5px;margin-bottom:3px;">www.huddoshoes.com</div>
-        <div style="background:#fff;border-radius:2px;padding:2px;display:flex;justify-content:center;">
+        <div style="background:#fff;background-color:#fff;border-radius:2px;padding:2px;display:flex;justify-content:center;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
           <img src="${barcodeDataUrl}" style="height:44px;max-width:100%;" alt="barcode" />
         </div>
       </div>
     </div>
     <!-- Right white panel -->
-    <div style="width:60%;display:flex;flex-direction:column;box-sizing:border-box;">
-      <div style="padding:8px 10px;border-bottom:1px solid #000;display:flex;align-items:center;gap:4px;height:44px;box-sizing:border-box;">
+    <div style="width:60%;display:flex;flex-direction:column;box-sizing:border-box;min-height:0;background:#fff;background-color:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+      <div style="padding:8px 10px;border-bottom:1px solid #000;display:flex;align-items:center;gap:4px;height:44px;box-sizing:border-box;flex-shrink:0;">
         ${logoDataUrl
           ? `<img src="${logoDataUrl}" style="max-height:28px;max-width:100%;object-fit:contain;" alt="logo" />`
           : `<span style="font-size:24px;font-weight:800;letter-spacing:1px;">HUDDO</span><span style="font-size:16px;">&#128095;</span>`}
       </div>
-      <div style="padding:7px 10px;border-bottom:1px solid #000;font-size:13px;font-weight:700;letter-spacing:.5px;">${(batch.product_name || 'PRODUCT').toUpperCase()}</div>
-      <div style="padding:6px 10px;border-bottom:1px solid #000;font-size:10px;letter-spacing:.5px;">${(batch.colors_text || '').toUpperCase()}</div>
-      <div style="padding:6px 10px;border-bottom:1px solid #000;font-size:10px;display:flex;justify-content:space-between;">
+      <div style="padding:6px 10px;border-bottom:1px solid #000;font-size:13px;font-weight:700;letter-spacing:.5px;flex-shrink:0;">${(batch.product_name || 'PRODUCT').toUpperCase()}</div>
+      <div style="padding:5px 10px;border-bottom:1px solid #000;font-size:10px;letter-spacing:.5px;flex-shrink:0;">${(batch.colors_text || '').toUpperCase()}</div>
+      <div style="padding:5px 10px;border-bottom:1px solid #000;font-size:10px;display:flex;justify-content:space-between;flex-shrink:0;">
         <span>ARTICLE NO.</span><span style="font-weight:700;">${batch.article_no || '-'}</span>
       </div>
-      <div style="padding:6px 10px;border-bottom:1px solid #000;font-size:10px;display:flex;justify-content:space-between;">
+      <div style="padding:5px 10px;border-bottom:1px solid #000;font-size:10px;display:flex;justify-content:space-between;flex-shrink:0;">
         <span>HSN / SAC</span><span style="font-weight:700;">${batch.hsn_code || '-'}</span>
       </div>
-      <div style="padding:5px 10px;border-bottom:1px solid #000;font-size:8px;letter-spacing:.5px;color:#333;">INNOVATED BY INDIA</div>
-      <div style="padding:7px 10px;background:#111;color:#fff;font-size:11px;display:flex;justify-content:space-between;margin-top:auto;">
-        <span style="font-weight:700;">M.R.P.</span><span style="font-weight:700;">${money(batch.mrp)}</span>
+      <div style="padding:4px 10px;border-bottom:1px solid #000;font-size:8px;letter-spacing:.5px;color:#333;flex-shrink:0;">INNOVATED BY INDIA</div>
+      <div style="position:relative;padding:6px 10px;color:#fff;display:flex;justify-content:space-between;align-items:center;margin-top:auto;flex-shrink:0;min-height:34px;box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;">
+        <svg aria-hidden="true" width="100%" height="100%" viewBox="0 0 1 1" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;z-index:0;display:block;">
+          <rect width="1" height="1" fill="#111111"/>
+        </svg>
+        <div style="position:relative;z-index:1;">
+          <div style="font-size:11px;font-weight:700;line-height:1.15;">M.R.P.</div>
+          <div style="font-size:7px;font-weight:400;letter-spacing:.3px;line-height:1.2;margin-top:2px;">including gst</div>
+        </div>
+        <span style="position:relative;z-index:1;font-size:11px;font-weight:700;">${money(batch.mrp)}</span>
       </div>
     </div>
   </div>`;
@@ -173,12 +183,40 @@ export default function BarcodeLabelBatchModal({ isOpen, onClose, batch, showToa
           <title>${batch.batch_number || 'Labels'}</title>
           <style>
             @page { margin: 8mm; }
-            body { margin:0; display:flex; flex-wrap:wrap; gap:8px; padding:8px; }
-            @media print { .lbl { break-inside: avoid; } }
+            html, body {
+              margin: 0;
+              padding: 0;
+              background: #fff;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+              color-adjust: exact !important;
+            }
+            body {
+              display: flex;
+              flex-wrap: wrap;
+              gap: 8px;
+              padding: 8px;
+            }
+            .lbl, .lbl * {
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+              color-adjust: exact !important;
+            }
+            @media print {
+              html, body {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+                color-adjust: exact !important;
+              }
+              .lbl {
+                break-inside: avoid;
+                page-break-inside: avoid;
+              }
+            }
           </style>
         </head>
         <body onload="window.print();">
-          ${labels.replace(/<div style="width:360px/g, '<div class="lbl" style="width:360px')}
+          ${labels}
         </body>
       </html>`);
     win.document.close();
@@ -407,11 +445,15 @@ function drawPdfLabel(pdf, batch, barcodeDataUrl, x, y, w, h, logo) {
   ry += rowH;
 
   // MRP dark strip
+  const mrpStripH = h - (ry - y);
   pdf.setFillColor(17, 17, 17);
-  pdf.rect(rightX, ry, rightW, h - (ry - y), 'F');
+  pdf.rect(rightX, ry, rightW, mrpStripH, 'F');
   pdf.setTextColor(255, 255, 255);
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(8);
-  pdf.text('M.R.P.', rightX + 3, ry + rowH - 3);
-  pdf.text(money(batch.mrp), rightX + rightW - 3, ry + rowH - 3, { align: 'right' });
+  pdf.text('M.R.P.', rightX + 3, ry + 7);
+  pdf.text(money(batch.mrp), rightX + rightW - 3, ry + 7, { align: 'right' });
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(5);
+  pdf.text('including gst', rightX + 3, ry + 12);
 }
