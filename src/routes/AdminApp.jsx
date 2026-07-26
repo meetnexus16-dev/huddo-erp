@@ -49,14 +49,14 @@ const NAV_MENU = [
     section: 'ORGANIZATION',
     items: [
       { id: 'Hierarchy', label: 'Hierarchy', icon: GitBranch, component: Hierarchy },
-      { id: 'Departments', label: 'Departments', icon: LayoutGrid, component: Departments }
+      // { id: 'Departments', label: 'Departments', icon: LayoutGrid, component: Departments }
     ]
   },
   {
     section: 'PEOPLE',
     items: [
-      { id: 'Employees', label: 'Employees', icon: Users, component: Employees },
-      { id: 'Teams', label: 'Teams', icon: UsersRound, component: Teams },
+      // { id: 'Employees', label: 'Employees', icon: Users, component: Employees },
+      // { id: 'Teams', label: 'Teams', icon: UsersRound, component: Teams },
       { id: 'Promoters', label: 'Promoters', icon: Award, component: PromoterModule },
       { id: 'CountryManagers', label: 'Country Managers', icon: Users, component: CountryManagerModule }
     ]
@@ -73,20 +73,20 @@ const NAV_MENU = [
   {
     section: 'FINANCE',
     items: [
-      { id: 'Billing', label: 'Billing & Payments', icon: CreditCard, component: BillingPayments },
+      // { id: 'Billing', label: 'Billing & Payments', icon: CreditCard, component: BillingPayments },
       { id: 'Commissions', label: 'Commissions', icon: Percent, component: Commissions },
       { id: 'Sales', label: 'Sales', icon: TrendingUp, component: Sales },
-      { id: 'Targets', label: 'Targets', icon: Target, component: Targets },
-      { id: 'Petty Cash', label: 'Petty Cash', icon: CreditCard, component: PettyCash }
+      // { id: 'Targets', label: 'Targets', icon: Target, component: Targets },
+      // { id: 'Petty Cash', label: 'Petty Cash', icon: CreditCard, component: PettyCash }
     ]
   },
   {
     section: 'OPERATIONS',
     items: [
-      { id: 'Field Tracking', label: 'Field Tracking', icon: MapPin, component: FieldTracking },
+      // { id: 'Field Tracking', label: 'Field Tracking', icon: MapPin, component: FieldTracking },
       { id: 'Approvals', label: 'Approvals', icon: CheckSquare, component: Approvals },
       { id: 'Inventory', label: 'Inventory', icon: Archive, component: Inventory },
-      { id: 'Purchase', label: 'Purchase & QR', icon: ShoppingBag, component: Purchase }
+      // { id: 'Purchase', label: 'Purchase & QR', icon: ShoppingBag, component: Purchase }
     ]
   },
   {
@@ -95,7 +95,7 @@ const NAV_MENU = [
       { id: 'Users & Roles', label: 'Users & Roles', icon: Shield, component: UserRoleManagement },
       { id: 'Notifications', label: 'Notifications', icon: Bell, component: Notifications },
       { id: 'Reports', label: 'Reports', icon: BarChart3, component: Reports },
-      { id: 'Security & Audit', label: 'Security & Audit', icon: Lock, component: Security }
+      // { id: 'Security & Audit', label: 'Security & Audit', icon: Lock, component: Security }
     ]
   },
   {
