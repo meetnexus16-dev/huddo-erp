@@ -400,12 +400,13 @@ export default function Commissions({ showToast }) {
         >
           1. Category Commissions
         </button>
-        <button 
+        {/* TODO : commented page for now and in future uncomment it */}
+        {/* <button 
           onClick={() => setActiveSubTab('employee')}
           className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${activeSubTab === 'employee' ? 'border-brand-orange text-brand-orange' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
         >
           2. Employee Incentive Slabs
-        </button>
+        </button> */}
         <button 
           onClick={() => setActiveSubTab('referrer-bonus')}
           className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${activeSubTab === 'referrer-bonus' ? 'border-brand-orange text-brand-orange' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
