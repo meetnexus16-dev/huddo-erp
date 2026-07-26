@@ -1466,7 +1466,75 @@ router.get('/:id/analytics/city-performance', verifyJWT, async (req, res, next) 
 
 router.get('/:id/analytics/retailer-performance', verifyJWT, async (req, res, next) => {
   try {
-    res.status(200).json([]);
+    const user = await resolveCMUser(req.params.id);
+    if (!user) return res.status(404).json({ success: false, message: 'Country Manager not found' });
+
+    const { retailers } = await getCountryContextForUser(user);
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    const byCategory = { Platinum: 0, Gold: 0, Silver: 0, Standard: 0 };
+    retailers.forEach((retailer) => {
+      const category = retailer.category || 'Standard';
+      if (byCategory[category] !== undefined) byCategory[category] += 1;
+      else byCategory.Standard += 1;
+    });
+
+    const newThisMonth = retailers.filter((r) => r.createdAt && new Date(r.createdAt) >= startOfMonth).length;
+    const retailerIds = retailers.map((r) => r._id);
+    const orders = retailerIds.length
+      ? await Order.find({
+          retailer: { $in: retailerIds },
+          status: { $in: ['Approved', 'Processing', 'Packed', 'Shipped', 'Delivered'] }
+        }).populate({ path: 'retailer', select: 'business_name city', populate: { path: 'city', select: 'name' } })
+      : [];
+
+    const revenueByRetailer = new Map();
+    for (const order of orders) {
+      const rid = order.retailer?._id?.toString() || order.retailer?.toString();
+      if (!rid) continue;
+      const prev = revenueByRetailer.get(rid) || {
+        shop_name: order.retailer?.business_name || 'Retailer',
+        city: order.retailer?.city?.name || '—',
+        revenue: 0
+      };
+      prev.revenue += order.grand_total || order.subtotal || 0;
+      revenueByRetailer.set(rid, prev);
+    }
+
+    const topRetailers = [...revenueByRetailer.values()]
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 10);
+
+    // Last 6 months new-retailer growth
+    const growthTrend = [];
+    for (let i = 5; i >= 0; i -= 1) {
+      const d = new Date();
+      d.setDate(1);
+      d.setMonth(d.getMonth() - i);
+      d.setHours(0, 0, 0, 0);
+      const next = new Date(d);
+      next.setMonth(next.getMonth() + 1);
+      const label = d.toLocaleString('en-IN', { month: 'short' });
+      const count = retailers.filter((r) => {
+        const created = r.createdAt ? new Date(r.createdAt) : null;
+        return created && created < next;
+      }).length;
+      growthTrend.push({ period: label, count });
+    }
+
+    res.status(200).json({
+      summary: {
+        total: retailers.length,
+        active: retailers.filter((r) => r.is_active !== false).length,
+        new: newThisMonth,
+        by_category: byCategory
+      },
+      top_retailers: topRetailers,
+      growth_trend: growthTrend,
+      underperforming: []
+    });
   } catch (error) {
     next(error);
   }
@@ -1474,7 +1542,65 @@ router.get('/:id/analytics/retailer-performance', verifyJWT, async (req, res, ne
 
 router.get('/:id/analytics/sales-trends', verifyJWT, async (req, res, next) => {
   try {
-    res.status(200).json([]);
+    const user = await resolveCMUser(req.params.id);
+    if (!user) return res.status(404).json({ success: false, message: 'Country Manager not found' });
+
+    const { retailers } = await getCountryContextForUser(user);
+    const retailerIds = retailers.map((r) => r._id);
+    const start = new Date();
+    start.setDate(1);
+    start.setMonth(start.getMonth() - 5);
+    start.setHours(0, 0, 0, 0);
+
+    const orders = retailerIds.length
+      ? await Order.find({
+          retailer: { $in: retailerIds },
+          status: { $in: ['Approved', 'Processing', 'Packed', 'Shipped', 'Delivered'] },
+          createdAt: { $gte: start }
+        }).populate({
+          path: 'items.product_variant',
+          populate: { path: 'product', select: 'name' }
+        })
+      : [];
+
+    const byMonth = new Map();
+    const productMap = new Map();
+    for (const order of orders) {
+      const d = new Date(order.createdAt);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleString('en-IN', { month: 'short', year: '2-digit' });
+      const prev = byMonth.get(key) || { period: label, revenue: 0, orders: 0, retailers: new Set() };
+      prev.revenue += order.grand_total || order.subtotal || 0;
+      prev.orders += 1;
+      if (order.retailer) prev.retailers.add(order.retailer.toString());
+      byMonth.set(key, prev);
+
+      for (const item of order.items || []) {
+        const name = item.product_variant?.product?.name || 'Product';
+        const p = productMap.get(name) || { name, quantity: 0, revenue: 0 };
+        p.quantity += item.quantity || 0;
+        p.revenue += item.total_price || ((item.unit_price || 0) * (item.quantity || 0));
+        productMap.set(name, p);
+      }
+    }
+
+    const trendData = [...byMonth.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([, v]) => ({
+        period: v.period,
+        revenue: v.revenue,
+        orders: v.orders,
+        retailers: v.retailers.size
+      }));
+
+    const topProducts = [...productMap.values()]
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 8);
+
+    res.status(200).json({
+      trend_data: trendData,
+      top_products: topProducts
+    });
   } catch (error) {
     next(error);
   }

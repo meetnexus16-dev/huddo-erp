@@ -146,7 +146,7 @@ export default function CountryManagerModule({ userRole = 'Founder', showToast, 
         { id: 'State Managers', label: 'State Managers', icon: Users },
         { id: 'City Managers', label: 'City Managers', icon: Users },
         { id: 'Retailers', label: 'Retailers', icon: Store },
-        { id: 'Targets', label: 'My Targets', icon: Target },
+        // { id: 'Targets', label: 'My Targets', icon: Target },
         { id: 'Analytics', label: 'Analytics Deep-Dive', icon: TrendingUp }
       ]
     },

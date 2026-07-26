@@ -64,14 +64,22 @@ export default function AnalyticsDeepDive({ cmId, showToast }) {
       const resRet = await fetch(`/api/country-managers/${resolvedCmId}/analytics/retailer-performance?period_type=${filters.periodType}&period_label=${filters.period}`);
       if (resRet.ok) {
         const data = await resRet.json();
-        setRetailerPerformance(data);
+        setRetailerPerformance(
+          data && !Array.isArray(data) && data.summary?.by_category ? data : null
+        );
+      } else {
+        setRetailerPerformance(null);
       }
 
       // 4. Fetch Sales Trends
       const resSales = await fetch(`/api/country-managers/${resolvedCmId}/analytics/sales-trends?group_by=${filters.groupBy.toLowerCase()}`);
       if (resSales.ok) {
         const data = await resSales.json();
-        setSalesTrends(data);
+        setSalesTrends(
+          data && !Array.isArray(data) && Array.isArray(data.trend_data) ? data : null
+        );
+      } else {
+        setSalesTrends(null);
       }
     } catch (err) {
       console.error(err);
@@ -211,17 +219,17 @@ export default function AnalyticsDeepDive({ cmId, showToast }) {
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
                     {statePerformance.map((s, idx) => {
-                      const achievement = s.target_pct;
+                      const achievement = Number(s.target_pct) || 0;
                       const colorRow = achievement >= 80 ? 'hover:bg-emerald-50/10' : achievement >= 50 ? 'hover:bg-amber-50/10' : 'hover:bg-rose-50/10';
                       const badgeColor = achievement >= 80 ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : achievement >= 50 ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-rose-700 bg-rose-50 border-rose-200';
                       return (
                         <tr key={idx} className={`transition-colors ${colorRow}`}>
                           <td className="p-3 font-bold text-slate-400">#{idx + 1}</td>
                           <td className="p-3 font-bold text-slate-800">{s.state_name}</td>
-                          <td className="p-3 text-slate-500">{s.state_manager_name}</td>
-                          <td className="p-3 text-right font-extrabold text-slate-950">₹{s.revenue.toLocaleString('en-IN')}</td>
-                          <td className="p-3 text-right">{s.orders}</td>
-                          <td className="p-3 text-right">{s.retailers}</td>
+                          <td className="p-3 text-slate-500">{s.state_manager_name || '—'}</td>
+                          <td className="p-3 text-right font-extrabold text-slate-950">₹{(s.revenue || 0).toLocaleString('en-IN')}</td>
+                          <td className="p-3 text-right">{s.orders || 0}</td>
+                          <td className="p-3 text-right">{s.retailers || 0}</td>
                           <td className="p-3 text-right">
                             <span className={`px-2 py-0.5 border rounded-full text-[9px] font-bold ${badgeColor}`}>{achievement}%</span>
                           </td>
@@ -265,13 +273,13 @@ export default function AnalyticsDeepDive({ cmId, showToast }) {
                   <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
                     {cityPerformance.map((c, idx) => (
                       <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="p-3 font-bold text-slate-400">#{c.rank}</td>
+                        <td className="p-3 font-bold text-slate-400">#{c.rank ?? idx + 1}</td>
                         <td className="p-3 font-bold text-slate-800">{c.city_name}</td>
-                        <td className="p-3 text-slate-500 font-semibold">{c.state_name}</td>
-                        <td className="p-3 text-slate-600 font-bold">{c.city_manager_name}</td>
-                        <td className="p-3 text-right">{c.orders}</td>
-                        <td className="p-3 text-right">{c.retailers}</td>
-                        <td className="p-3 text-right font-extrabold text-slate-900">₹{c.revenue.toLocaleString('en-IN')}</td>
+                        <td className="p-3 text-slate-500 font-semibold">{c.state_name || '—'}</td>
+                        <td className="p-3 text-slate-600 font-bold">{c.city_manager_name || '—'}</td>
+                        <td className="p-3 text-right">{c.orders || 0}</td>
+                        <td className="p-3 text-right">{c.retailers || 0}</td>
+                        <td className="p-3 text-right font-extrabold text-slate-900">₹{(c.revenue || 0).toLocaleString('en-IN')}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -295,10 +303,10 @@ export default function AnalyticsDeepDive({ cmId, showToast }) {
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {[
-                    { label: "Platinum Tier", value: retailerPerformance.summary.by_category.Platinum, color: "border-slate-100 bg-slate-50/50" },
-                    { label: "Gold Tier", value: retailerPerformance.summary.by_category.Gold, color: "border-amber-100 bg-amber-50/10 text-amber-700" },
-                    { label: "Silver Tier", value: retailerPerformance.summary.by_category.Silver, color: "border-blue-100 bg-blue-50/10 text-blue-700" },
-                    { label: "Standard Tier", value: retailerPerformance.summary.by_category.Standard, color: "border-slate-200 bg-slate-100/10 text-slate-700" }
+                    { label: "Platinum Tier", value: retailerPerformance.summary?.by_category?.Platinum ?? 0, color: "border-slate-100 bg-slate-50/50" },
+                    { label: "Gold Tier", value: retailerPerformance.summary?.by_category?.Gold ?? 0, color: "border-amber-100 bg-amber-50/10 text-amber-700" },
+                    { label: "Silver Tier", value: retailerPerformance.summary?.by_category?.Silver ?? 0, color: "border-blue-100 bg-blue-50/10 text-blue-700" },
+                    { label: "Standard Tier", value: retailerPerformance.summary?.by_category?.Standard ?? 0, color: "border-slate-200 bg-slate-100/10 text-slate-700" }
                   ].map((card, idx) => (
                     <div key={idx} className={`border rounded-xl p-3 text-center ${card.color}`}>
                       <span className="text-[10px] font-bold block uppercase tracking-wider">{card.label}</span>
@@ -320,13 +328,18 @@ export default function AnalyticsDeepDive({ cmId, showToast }) {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
-                        {retailerPerformance.top_retailers.map((ret, idx) => (
+                        {(retailerPerformance.top_retailers || []).map((ret, idx) => (
                           <tr key={idx}>
                             <td className="py-2 font-bold text-slate-800">{ret.shop_name}</td>
                             <td className="py-2 text-slate-450 font-bold">{ret.city}</td>
-                            <td className="py-2 text-right font-extrabold text-slate-900">₹{ret.revenue.toLocaleString('en-IN')}</td>
+                            <td className="py-2 text-right font-extrabold text-slate-900">₹{(ret.revenue || 0).toLocaleString('en-IN')}</td>
                           </tr>
                         ))}
+                        {(retailerPerformance.top_retailers || []).length === 0 && (
+                          <tr>
+                            <td colSpan="3" className="py-4 text-center text-slate-400">No retailer sales in this period.</td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -336,7 +349,7 @@ export default function AnalyticsDeepDive({ cmId, showToast }) {
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block border-b border-slate-50 pb-1">New Retailer Signups (6 Months)</span>
                     <div className="h-40">
                       <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={retailerPerformance.growth_trend}>
+                        <BarChart data={retailerPerformance.growth_trend || []}>
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                           <XAxis dataKey="period" stroke="#94a3b8" fontSize={10} tickLine={false} />
                           <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} />
@@ -370,11 +383,11 @@ export default function AnalyticsDeepDive({ cmId, showToast }) {
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block border-b border-slate-50 pb-1">Revenue Performance Trend</span>
                     <div className="h-56">
                       <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={salesTrends.trend_data}>
+                        <LineChart data={salesTrends.trend_data || []}>
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                           <XAxis dataKey="period" stroke="#94a3b8" fontSize={10} tickLine={false} />
                           <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} tickFormatter={(val) => `₹${val / 100000}L`} />
-                          <Tooltip formatter={(value) => [`₹${value.toLocaleString('en-IN')}`, 'Sales']} />
+                          <Tooltip formatter={(value) => [`₹${Number(value || 0).toLocaleString('en-IN')}`, 'Sales']} />
                           <Line type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={3} />
                         </LineChart>
                       </ResponsiveContainer>
@@ -393,13 +406,18 @@ export default function AnalyticsDeepDive({ cmId, showToast }) {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
-                        {salesTrends.top_products.map((prod, idx) => (
+                        {(salesTrends.top_products || []).map((prod, idx) => (
                           <tr key={idx}>
                             <td className="py-2 font-bold text-slate-800">{prod.name}</td>
                             <td className="py-2 text-right font-bold text-slate-600">{prod.quantity}</td>
-                            <td className="py-2 text-right font-extrabold text-slate-900">₹{prod.revenue.toLocaleString('en-IN')}</td>
+                            <td className="py-2 text-right font-extrabold text-slate-900">₹{(prod.revenue || 0).toLocaleString('en-IN')}</td>
                           </tr>
                         ))}
+                        {(salesTrends.top_products || []).length === 0 && (
+                          <tr>
+                            <td colSpan="3" className="py-4 text-center text-slate-400">No product sales yet.</td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
