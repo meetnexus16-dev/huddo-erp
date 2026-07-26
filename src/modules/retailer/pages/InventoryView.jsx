@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Archive, AlertCircle, RefreshCw, Package, Eye, Boxes } from 'lucide-react';
+import { Search, Archive, AlertCircle, RefreshCw, Eye, Boxes } from 'lucide-react';
 import { useRetailerAuth } from '../context/RetailerAuthContext';
 import CustomModal from '../components/CustomModal';
+import ProductImage from '../../../components/ProductImage';
 
 const COLOR_NAME_MAP = {
   '#EF4444': 'Red',
@@ -21,7 +22,8 @@ const getColorName = (color) => {
 };
 
 const sortSizes = (a, b) => {
-  const na = parseFloat(a), nb = parseFloat(b);
+  const na = parseFloat(a);
+  const nb = parseFloat(b);
   if (!isNaN(na) && !isNaN(nb)) return na - nb;
   return String(a).localeCompare(String(b));
 };
@@ -55,11 +57,14 @@ export default function InventoryView() {
               id: pid,
               name: row.product_name || 'Footwear',
               category: row.category || 'Footwear',
+              image: row.image || null,
               total: 0,
               purchased: 0,
               sold: 0,
               variantMap: {}
             };
+          } else if (!map[pid].image && row.image) {
+            map[pid].image = row.image;
           }
           const key = `${row.size}||${row.color}`;
           if (!map[pid].variantMap[key]) {
@@ -88,6 +93,7 @@ export default function InventoryView() {
               id: p.id,
               name: p.name,
               category: p.category,
+              image: p.image,
               total: p.total,
               purchased: p.purchased,
               sold: p.sold,
@@ -172,47 +178,59 @@ export default function InventoryView() {
           {filteredProducts.map((product) => (
             <button
               key={product.id}
+              type="button"
               onClick={() => setSelectedProduct(product)}
-              className="text-left bg-white rounded-xl border border-slate-200 p-4 shadow-xs hover:shadow-md hover:border-brand-orange/40 transition-all cursor-pointer flex flex-col gap-3"
+              className="text-left bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs hover:shadow-md hover:border-brand-orange/40 transition-all cursor-pointer flex flex-col"
             >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-9 h-9 rounded-lg bg-orange-50 text-brand-orange flex items-center justify-center shrink-0">
-                    <Package className="w-4.5 h-4.5" />
-                  </div>
-                  <div>
-                    <h3 className="text-xs font-bold text-slate-800 font-display line-clamp-1">{product.name}</h3>
-                    <span className="text-[10px] text-slate-400 font-semibold uppercase">{product.category}</span>
-                  </div>
-                </div>
-                <Eye className="w-4 h-4 text-slate-300 shrink-0" />
+              <div className="relative h-36 bg-slate-100">
+                <ProductImage
+                  src={product.image}
+                  alt={product.name}
+                  className="w-full h-full"
+                  rounded="rounded-none"
+                  imgClassName="w-full h-full object-cover"
+                  iconClassName="w-10 h-10 text-slate-300"
+                />
+                <span className="absolute top-2 left-2 bg-slate-900/80 text-white text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">
+                  {product.category}
+                </span>
+                <Eye className="absolute top-2 right-2 w-4 h-4 text-white drop-shadow" />
               </div>
 
-              <div className="flex items-end justify-between gap-2">
+              <div className="p-4 flex flex-col gap-3">
                 <div>
-                  <span className="text-[9px] font-bold text-slate-400 uppercase block">Available</span>
-                  <p className="text-lg font-extrabold text-slate-850 font-display">
-                    {product.total} <span className="text-xs font-bold text-slate-400">pairs</span>
-                  </p>
+                  <h3 className="text-xs font-bold text-slate-800 font-display line-clamp-1">{product.name}</h3>
                 </div>
-                <div className="text-right text-[10px] text-slate-500 font-semibold">
-                  <div>Bought {product.purchased}</div>
-                  <div>Sold {product.sold}</div>
-                </div>
-              </div>
 
-              <div className="border-t border-slate-100 pt-2.5">
-                <span className="text-[9px] font-bold text-slate-400 uppercase block mb-1.5">Sizes Available</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {product.sizes.length > 0 ? (
-                    product.sizes.map((sz) => (
-                      <span key={sz} className="px-2 py-0.5 text-[10px] font-bold border border-slate-200 text-slate-600 rounded-md bg-slate-50">
-                        {sz}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-[10px] text-slate-400 font-semibold">All sold out</span>
-                  )}
+                <div className="flex items-end justify-between gap-2">
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase block">Available</span>
+                    <p className="text-lg font-extrabold text-slate-850 font-display">
+                      {product.total} <span className="text-xs font-bold text-slate-400">pairs</span>
+                    </p>
+                  </div>
+                  <div className="text-right text-[10px] text-slate-500 font-semibold">
+                    <div>Bought {product.purchased}</div>
+                    <div>Sold {product.sold}</div>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-100 pt-2.5">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase block mb-1.5">Sizes Available</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {product.sizes.length > 0 ? (
+                      product.sizes.map((sz) => (
+                        <span
+                          key={sz}
+                          className="px-2 py-0.5 text-[10px] font-bold border border-slate-200 text-slate-600 rounded-md bg-slate-50"
+                        >
+                          {sz}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-[10px] text-slate-400 font-semibold">All sold out</span>
+                    )}
+                  </div>
                 </div>
               </div>
             </button>
@@ -234,14 +252,23 @@ export default function InventoryView() {
           hideFooter
         >
           <div className="space-y-4">
-            <div className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-lg p-3">
-              <div className="flex items-center gap-2 text-xs">
-                <Boxes className="w-4 h-4 text-brand-orange" />
-                <span className="font-semibold text-slate-600 uppercase">{selectedProduct.category}</span>
-              </div>
-              <div className="text-right">
-                <span className="text-[9px] font-bold text-slate-400 uppercase block">Available</span>
-                <p className="text-sm font-extrabold text-slate-850">{selectedProduct.total} pairs</p>
+            <div className="flex items-center gap-3 bg-slate-50 border border-slate-100 rounded-lg p-3">
+              <ProductImage
+                src={selectedProduct.image}
+                alt={selectedProduct.name}
+                className="w-16 h-16 shrink-0"
+                rounded="rounded-lg"
+                iconClassName="w-6 h-6 text-slate-300"
+              />
+              <div className="flex-1 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs">
+                  <Boxes className="w-4 h-4 text-brand-orange" />
+                  <span className="font-semibold text-slate-600 uppercase">{selectedProduct.category}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase block">Available</span>
+                  <p className="text-sm font-extrabold text-slate-850">{selectedProduct.total} pairs</p>
+                </div>
               </div>
             </div>
 
@@ -267,7 +294,9 @@ export default function InventoryView() {
                     </tr>
                   ))}
                   <tr className="bg-slate-50 font-bold text-slate-900">
-                    <td colSpan="4" className="px-4 py-3 text-right">Total available</td>
+                    <td colSpan="4" className="px-4 py-3 text-right">
+                      Total available
+                    </td>
                     <td className="px-4 py-3 text-right text-brand-orange">{selectedProduct.total} pairs</td>
                   </tr>
                 </tbody>

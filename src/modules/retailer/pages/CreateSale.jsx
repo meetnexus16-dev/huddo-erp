@@ -6,6 +6,7 @@ import {
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { useRetailerAuth } from '../context/RetailerAuthContext';
 import CustomModal from '../components/CustomModal';
+import ProductImage from '../../../components/ProductImage';
 
 const COLOR_NAME_MAP = {
   '#EF4444': 'Red',
@@ -24,6 +25,13 @@ const getColorName = (color) => {
   return COLOR_NAME_MAP[String(color).toUpperCase()] || color;
 };
 
+const sortSizes = (a, b) => {
+  const na = parseFloat(a);
+  const nb = parseFloat(b);
+  if (!isNaN(na) && !isNaN(nb)) return na - nb;
+  return String(a).localeCompare(String(b));
+};
+
 const formatINR = (n) =>
   `₹${(Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
@@ -34,10 +42,11 @@ export default function CreateSale({ showToast }) {
   const [submitting, setSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [cart, setCart] = useState([]);
-  const [discountMode, setDiscountMode] = useState('none'); // none | line | bill
+  const [selectedOptions, setSelectedOptions] = useState({});
+  const [discountMode, setDiscountMode] = useState('none');
   const [billDiscountPercent, setBillDiscountPercent] = useState(0);
   const [note, setNote] = useState('');
-  const [view, setView] = useState('create'); // create | history
+  const [view, setView] = useState('create');
   const [salesHistory, setSalesHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
@@ -112,6 +121,21 @@ export default function CreateSale({ showToast }) {
     return Object.values(map);
   }, [stock]);
 
+  // Default size/color when products load
+  useEffect(() => {
+    setSelectedOptions((prev) => {
+      const next = { ...prev };
+      products.forEach((p) => {
+        if (next[p.id]) return;
+        const preferred = p.variants.find((v) => v.stock > 0) || p.variants[0];
+        if (preferred) {
+          next[p.id] = { size: preferred.size, color: preferred.color };
+        }
+      });
+      return next;
+    });
+  }, [products]);
+
   const filteredProducts = products.filter((p) => {
     const q = searchTerm.toLowerCase();
     return (
@@ -120,6 +144,36 @@ export default function CreateSale({ showToast }) {
       p.variants.some((v) => (v.sku || '').toLowerCase().includes(q))
     );
   });
+
+  const handleSizeChange = (product, size) => {
+    setSelectedOptions((prev) => {
+      const current = prev[product.id] || {};
+      const variantsForSize = product.variants.filter((v) => v.size === size);
+      const keepColor = variantsForSize.find((v) => v.color === current.color && v.stock > 0);
+      const fallback = variantsForSize.find((v) => v.stock > 0) || variantsForSize[0];
+      return {
+        ...prev,
+        [product.id]: { size, color: keepColor ? current.color : fallback?.color }
+      };
+    });
+  };
+
+  const handleColorChange = (product, color) => {
+    setSelectedOptions((prev) => ({
+      ...prev,
+      [product.id]: { ...(prev[product.id] || {}), color }
+    }));
+  };
+
+  const getActiveVariant = (product) => {
+    const option = selectedOptions[product.id] || {};
+    return (
+      product.variants.find((v) => v.size === option.size && v.color === option.color) ||
+      product.variants.find((v) => v.size === option.size && v.stock > 0) ||
+      product.variants.find((v) => v.stock > 0) ||
+      product.variants[0]
+    );
+  };
 
   const findVariantByBarcode = (code) => {
     const norm = String(code || '').trim().toUpperCase();
@@ -133,7 +187,7 @@ export default function CreateSale({ showToast }) {
 
   const addToCart = (product, variant, qty = 1) => {
     if (!variant || variant.stock <= 0) {
-      showToast?.('This variant is out of stock in your inventory.', 'error');
+      showToast?.('This size/color is out of stock in your inventory.', 'error');
       return;
     }
     setCart((prev) => {
@@ -150,7 +204,7 @@ export default function CreateSale({ showToast }) {
       }
       return [...prev, { product, variant, quantity: Math.min(qty, variant.stock), discount_percent: 0 }];
     });
-    showToast?.(`Added ${product.name} (S-${variant.size})`, 'success');
+    showToast?.(`Added ${product.name} (S-${variant.size} · ${getColorName(variant.color)})`, 'success');
   };
 
   const handleBarcodeScan = (code, { closeAfter = false } = {}) => {
@@ -159,6 +213,10 @@ export default function CreateSale({ showToast }) {
       showToast?.(`No inventory item found for barcode "${code}".`, 'error');
       return;
     }
+    setSelectedOptions((prev) => ({
+      ...prev,
+      [match.product.id]: { size: match.variant.size, color: match.variant.color }
+    }));
     addToCart(match.product, match.variant);
     if (closeAfter) setIsScanOpen(false);
   };
@@ -216,7 +274,7 @@ export default function CreateSale({ showToast }) {
     const afterLine = Math.round((gross - lineDiscount) * 100) / 100;
     const billDisc =
       discountMode === 'bill'
-        ? Math.round((afterLine * (Number(billDiscountPercent) || 0)) / 100 * 100) / 100
+        ? Math.round(((afterLine * (Number(billDiscountPercent) || 0)) / 100) * 100) / 100
         : 0;
     const discount = discountMode === 'bill' ? billDisc : lineDiscount;
     return {
@@ -284,7 +342,7 @@ export default function CreateSale({ showToast }) {
         <div>
           <h1 className="text-xl font-bold text-slate-900 font-display">Create Sale</h1>
           <p className="text-xs text-slate-550 font-medium">
-            Scan or select products from your inventory, set quantity & discount, then save to update stock.
+            Pick a product, choose size (and color), then add to the bill — or scan a barcode.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -355,7 +413,6 @@ export default function CreateSale({ showToast }) {
         </div>
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-5 gap-5">
-          {/* Catalog */}
           <div className="xl:col-span-3 space-y-4">
             <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1">
@@ -364,7 +421,7 @@ export default function CreateSale({ showToast }) {
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search inventory by name, category, or SKU..."
+                  placeholder="Search products by name, category, or SKU..."
                   className="pl-9 pr-4 py-2 w-full text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange/20 focus:border-brand-orange"
                 />
               </div>
@@ -394,40 +451,141 @@ export default function CreateSale({ showToast }) {
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {filteredProducts.map((product) => (
-                  <div key={product.id} className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs space-y-3">
-                    <div>
-                      <h3 className="text-xs font-bold text-slate-800 font-display line-clamp-1">{product.name}</h3>
-                      <span className="text-[10px] text-slate-400 font-semibold uppercase">{product.category}</span>
-                    </div>
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
-                      {product.variants.map((variant) => (
-                        <div
-                          key={variant.id}
-                          className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50/60 px-2.5 py-2"
-                        >
-                          <div className="min-w-0">
-                            <p className="text-[11px] font-bold text-slate-800">
-                              S-{variant.size} · {getColorName(variant.color)}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {filteredProducts.map((product) => {
+                  const option = selectedOptions[product.id] || {};
+                  const sizes = [...new Set(product.variants.map((v) => v.size))].sort(sortSizes);
+                  const colorsForSize = [
+                    ...new Set(
+                      product.variants
+                        .filter((v) => v.size === option.size)
+                        .map((v) => v.color)
+                    )
+                  ];
+                  const activeVariant = getActiveVariant(product);
+                  const totalAvailable = product.variants.reduce((s, v) => s + (v.stock || 0), 0);
+
+                  return (
+                    <div
+                      key={product.id}
+                      className="bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col hover:shadow-md transition-shadow"
+                    >
+                      <div className="relative h-40 bg-slate-100">
+                        <ProductImage
+                          src={product.image}
+                          alt={product.name}
+                          className="w-full h-full"
+                          rounded="rounded-none"
+                          imgClassName="w-full h-full object-cover"
+                          iconClassName="w-10 h-10 text-slate-300"
+                        />
+                        <span className="absolute top-2 left-2 bg-slate-900/80 backdrop-blur-xs text-white text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                          {product.category}
+                        </span>
+                        <span className="absolute top-2 right-2 bg-white/90 text-slate-700 text-[9px] font-bold px-2 py-0.5 rounded-full">
+                          {totalAvailable} pairs
+                        </span>
+                      </div>
+
+                      <div className="p-4 space-y-2.5 flex-1 flex flex-col">
+                        <div>
+                          <h3 className="text-xs font-bold text-slate-800 font-display line-clamp-1">{product.name}</h3>
+                          <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                            From {formatINR(Math.min(...product.variants.map((v) => v.price || 0)))}
+                          </p>
+                        </div>
+
+                        <div className="space-y-1.5 border-t border-slate-100 pt-2">
+                          <label className="block text-[9px] font-bold text-slate-400 uppercase">Select Size</label>
+                          <div className="flex flex-wrap gap-1.5">
+                            {sizes.map((sz) => {
+                              const sizeStock = product.variants
+                                .filter((v) => v.size === sz)
+                                .reduce((sum, v) => sum + v.stock, 0);
+                              const isActive = option.size === sz;
+                              return (
+                                <button
+                                  key={sz}
+                                  type="button"
+                                  onClick={() => handleSizeChange(product, sz)}
+                                  disabled={sizeStock === 0}
+                                  className={`min-w-[2rem] px-2 py-1 text-[10px] font-bold border rounded-md transition-colors ${
+                                    isActive
+                                      ? 'border-brand-orange bg-orange-50 text-brand-orange'
+                                      : 'border-slate-200 text-slate-600 hover:border-slate-350'
+                                  } ${sizeStock === 0 ? 'opacity-40 line-through cursor-not-allowed' : ''}`}
+                                >
+                                  {sz}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="block text-[9px] font-bold text-slate-400 uppercase">Select Color</label>
+                          <div className="flex flex-wrap gap-1.5">
+                            {colorsForSize.length === 0 ? (
+                              <span className="text-[10px] font-semibold text-slate-400">Select a size first</span>
+                            ) : (
+                              colorsForSize.map((col) => {
+                                const colorStock =
+                                  product.variants.find((v) => v.size === option.size && v.color === col)?.stock || 0;
+                                const isActive = option.color === col;
+                                return (
+                                  <button
+                                    key={col}
+                                    type="button"
+                                    onClick={() => handleColorChange(product, col)}
+                                    disabled={colorStock === 0}
+                                    className={`px-2 py-1 text-[10px] font-bold border rounded-md transition-colors ${
+                                      isActive
+                                        ? 'border-brand-orange bg-orange-50 text-brand-orange'
+                                        : 'border-slate-200 text-slate-600 bg-slate-50'
+                                    } ${colorStock === 0 ? 'opacity-40 line-through cursor-not-allowed' : ''}`}
+                                  >
+                                    {getColorName(col)}
+                                  </button>
+                                );
+                              })
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="mt-auto pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                          <div>
+                            <span className="text-[9px] text-slate-400 font-bold uppercase block">Selling price</span>
+                            <p className="text-sm font-extrabold text-slate-850 font-display">
+                              {formatINR(activeVariant?.price || 0)}
                             </p>
-                            <p className="text-[10px] text-slate-500 truncate">
-                              {variant.sku} · {formatINR(variant.price)} · {variant.stock} left
-                            </p>
+                            <span
+                              className={`text-[9px] font-bold ${
+                                !activeVariant || activeVariant.stock === 0
+                                  ? 'text-rose-500'
+                                  : activeVariant.stock <= 5
+                                    ? 'text-amber-500'
+                                    : 'text-slate-400'
+                              }`}
+                            >
+                              {!activeVariant || activeVariant.stock === 0
+                                ? 'Out of stock'
+                                : `${activeVariant.stock} available`}
+                            </span>
                           </div>
                           <button
                             type="button"
-                            onClick={() => addToCart(product, variant)}
-                            className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-brand-orange text-white text-[10px] font-bold hover:bg-orange-600"
+                            onClick={() => addToCart(product, activeVariant)}
+                            disabled={!activeVariant || activeVariant.stock <= 0}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand-orange text-white text-[10px] font-bold hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed"
                           >
-                            <Plus className="w-3 h-3" />
-                            Add
+                            <Plus className="w-3.5 h-3.5" />
+                            Add to Bill
                           </button>
                         </div>
-                      ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -443,25 +601,36 @@ export default function CreateSale({ showToast }) {
               <div className="p-4 space-y-3 max-h-[360px] overflow-y-auto">
                 {cart.length === 0 ? (
                   <p className="text-xs text-slate-450 text-center py-8 font-medium">
-                    Scan or select products to build the bill.
+                    Select a product and size to build the bill.
                   </p>
                 ) : (
                   cart.map((item) => (
                     <div key={item.variant.id} className="border border-slate-100 rounded-lg p-3 space-y-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-xs font-bold text-slate-800 truncate">{item.product.name}</p>
-                          <p className="text-[10px] text-slate-500">
-                            S-{item.variant.size} · {getColorName(item.variant.color)} · {formatINR(item.variant.price)}
-                          </p>
+                      <div className="flex items-start gap-2.5">
+                        <ProductImage
+                          src={item.product.image}
+                          alt={item.product.name}
+                          className="w-12 h-12 shrink-0"
+                          rounded="rounded-md"
+                          iconClassName="w-5 h-5 text-slate-300"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-800 truncate">{item.product.name}</p>
+                              <p className="text-[10px] text-slate-500">
+                                S-{item.variant.size} · {getColorName(item.variant.color)} · {formatINR(item.variant.price)}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setCart((prev) => prev.filter((i) => i.variant.id !== item.variant.id))}
+                              className="text-slate-300 hover:text-rose-500"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => setCart((prev) => prev.filter((i) => i.variant.id !== item.variant.id))}
-                          className="text-slate-300 hover:text-rose-500"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
                       </div>
                       <div className="flex items-center justify-between gap-2">
                         <div className="inline-flex items-center border border-slate-200 rounded-md overflow-hidden">
@@ -638,10 +807,7 @@ export default function CreateSale({ showToast }) {
                 placeholder="Scan or type SKU / barcode..."
                 className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
               />
-              <button
-                type="submit"
-                className="w-full py-2.5 rounded-lg bg-slate-900 text-white text-xs font-bold"
-              >
+              <button type="submit" className="w-full py-2.5 rounded-lg bg-slate-900 text-white text-xs font-bold">
                 Add to Bill
               </button>
             </form>

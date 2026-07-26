@@ -7,6 +7,7 @@ import { Html5QrcodeScanner } from 'html5-qrcode';
 
 import { useRetailerAuth } from '../context/RetailerAuthContext';
 import CustomModal from '../components/CustomModal';
+import ProductImage from '../../../components/ProductImage';
 
 // Map stored hex color codes back to their human-readable names.
 const COLOR_NAME_MAP = {
@@ -74,7 +75,7 @@ export default function PlaceOrder({ showToast, onNavigate }) {
                 sku: prod.sku,
                 category: prod.category?.name || (typeof prod.category === 'string' ? prod.category : "Footwear"),
                 description: prod.description || "",
-                image: prod.image || "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400",
+                image: prod.image || null,
                 variants: []
               };
             }
@@ -409,10 +410,13 @@ export default function PlaceOrder({ showToast, onNavigate }) {
                   <div key={product.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col justify-between hover:shadow-md transition-shadow">
                     <div>
                       <div className="relative h-44 bg-slate-100 overflow-hidden">
-                        <img 
-                          src={product.image.startsWith('uploads/') ? `/${product.image}` : product.image} 
-                          alt={product.name} 
-                          className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" 
+                        <ProductImage
+                          src={product.image}
+                          alt={product.name}
+                          className="w-full h-full"
+                          rounded="rounded-none"
+                          imgClassName="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+                          iconClassName="w-10 h-10 text-slate-300"
                         />
                         <span className="absolute top-2 left-2 bg-slate-900/80 backdrop-blur-xs text-white text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
                           {product.category}
@@ -545,10 +549,19 @@ export default function PlaceOrder({ showToast, onNavigate }) {
             {cart.length > 0 ? (
               cart.map((item, idx) => (
                 <div key={idx} className="p-4 flex items-start justify-between gap-3 bg-white">
-                  <div className="text-xs">
-                    <h4 className="font-extrabold text-slate-800 font-display line-clamp-1">{item.product.name}</h4>
-                    <p className="text-[10px] text-slate-400 font-bold mt-0.5 uppercase">{getColorName(item.variant.color)} / Size {item.variant.size}</p>
-                    <span className="text-[11px] font-bold text-slate-700 mt-1 block">₹{item.variant.price} × {item.quantity}</span>
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <ProductImage
+                      src={item.product.image}
+                      alt={item.product.name}
+                      className="w-11 h-11 shrink-0"
+                      rounded="rounded-md"
+                      iconClassName="w-4 h-4 text-slate-300"
+                    />
+                    <div className="text-xs min-w-0">
+                      <h4 className="font-extrabold text-slate-800 font-display line-clamp-1">{item.product.name}</h4>
+                      <p className="text-[10px] text-slate-400 font-bold mt-0.5 uppercase">{getColorName(item.variant.color)} / Size {item.variant.size}</p>
+                      <span className="text-[11px] font-bold text-slate-700 mt-1 block">₹{item.variant.price} × {item.quantity}</span>
+                    </div>
                   </div>
 
                   <div className="flex flex-col items-end gap-2.5">

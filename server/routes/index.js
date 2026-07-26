@@ -228,7 +228,7 @@ router.get('/dashboard/promoter/:id', verifyJWT, checkPermission('dashboard', 'v
 // ==========================================
 // 3. REPORT ROUTES (Protected)
 // ==========================================
-router.get('/reports/:type', verifyJWT, checkPermission('reports', 'export'), getReport);
+router.get('/reports/:type', verifyJWT, checkPermission('reports', 'view'), getReport);
 
 // ==========================================
 // 4. CUSTOM/SPECIAL ROUTES
