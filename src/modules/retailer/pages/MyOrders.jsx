@@ -7,6 +7,24 @@ import {
 import { useRetailerAuth } from '../context/RetailerAuthContext';
 import StatusBadge from '../components/StatusBadge';
 import CustomModal from '../components/CustomModal';
+import ProductImage from '../../../components/ProductImage';
+
+const COLOR_NAME_MAP = {
+  '#EF4444': 'Red',
+  '#1F2937': 'Black',
+  '#3B82F6': 'Blue',
+  '#10B981': 'Green',
+  '#9CA3AF': 'Grey',
+  '#1E3A8A': 'Navy',
+  '#F59E0B': 'Yellow',
+  '#8B4513': 'Brown',
+  '#FFFFFF': 'White'
+};
+
+const getColorName = (color) => {
+  if (!color) return '';
+  return COLOR_NAME_MAP[String(color).toUpperCase()] || color;
+};
 
 export default function MyOrders({ showToast }) {
   const { user } = useRetailerAuth();
@@ -303,7 +321,7 @@ export default function MyOrders({ showToast }) {
                 <table className="w-full text-left text-xs font-semibold text-slate-700">
                   <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
                     <tr>
-                      <th className="px-4 py-2">Item Description</th>
+                      <th className="px-4 py-2">Product</th>
                       <th className="px-4 py-2">Variant</th>
                       <th className="px-4 py-2 text-center">Qty</th>
                       <th className="px-4 py-2 text-right">Unit Price</th>
@@ -311,15 +329,35 @@ export default function MyOrders({ showToast }) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {viewingOrder.items?.map((item, index) => (
-                      <tr key={index}>
-                        <td className="px-4 py-2.5 font-bold text-slate-900">{item.product_variant?.product?.name || "Footwear"}</td>
-                        <td className="px-4 py-2.5 text-slate-450 uppercase">Size {item.product_variant?.size || ""} / {item.product_variant?.color || ""}</td>
-                        <td className="px-4 py-2.5 text-center">{item.quantity} pairs</td>
-                        <td className="px-4 py-2.5 text-right">₹{(item.unit_price || 0).toLocaleString('en-IN')}</td>
-                        <td className="px-4 py-2.5 text-right font-extrabold text-slate-950">₹{(item.total_price || 0).toLocaleString('en-IN')}</td>
-                      </tr>
-                    ))}
+                    {viewingOrder.items?.map((item, index) => {
+                      const prod = item.product_variant?.product;
+                      const name = prod?.name || 'Footwear';
+                      const image = prod?.image || null;
+                      const size = item.product_variant?.size || '';
+                      const color = item.product_variant?.color || '';
+                      return (
+                        <tr key={index}>
+                          <td className="px-4 py-2.5">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <ProductImage
+                                src={image}
+                                alt={name}
+                                className="w-11 h-11 shrink-0"
+                                rounded="rounded-md"
+                                iconClassName="w-5 h-5 text-slate-300"
+                              />
+                              <span className="font-bold text-slate-900 truncate">{name}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-450 uppercase">
+                            Size {size}{color ? ` / ${getColorName(color)}` : ''}
+                          </td>
+                          <td className="px-4 py-2.5 text-center">{item.quantity} pairs</td>
+                          <td className="px-4 py-2.5 text-right">₹{(item.unit_price || 0).toLocaleString('en-IN')}</td>
+                          <td className="px-4 py-2.5 text-right font-extrabold text-slate-950">₹{(item.total_price || 0).toLocaleString('en-IN')}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

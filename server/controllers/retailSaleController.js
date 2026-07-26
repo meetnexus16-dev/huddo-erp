@@ -96,7 +96,7 @@ export const listMySales = async (req, res, next) => {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate('items.product', 'name sku')
+        .populate('items.product', 'name sku image')
         .populate('items.product_variant', 'size color sku_variant'),
       RetailSale.countDocuments(filter)
     ]);
@@ -121,7 +121,7 @@ export const getMySaleById = async (req, res, next) => {
   try {
     const retailer = await resolveRetailerForRequest(req, { allowOverride: true });
     const sale = await RetailSale.findOne({ _id: req.params.id, retailer: retailer._id })
-      .populate('items.product', 'name sku')
+      .populate('items.product', 'name sku image')
       .populate('items.product_variant', 'size color sku_variant mrp selling_price');
 
     if (!sale) {
@@ -257,7 +257,7 @@ export const createSale = async (req, res, next) => {
     });
 
     const populated = await RetailSale.findById(sale._id)
-      .populate('items.product', 'name sku')
+      .populate('items.product', 'name sku image')
       .populate('items.product_variant', 'size color sku_variant');
 
     res.status(201).json({

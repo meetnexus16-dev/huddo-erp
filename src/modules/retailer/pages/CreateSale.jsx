@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   ScanLine, Search, Plus, Trash2, Save, RefreshCw, Package,
-  Percent, ShoppingBag, History, Minus, CheckCircle2
+  Percent, ShoppingBag, History, Minus, CheckCircle2, Eye
 } from 'lucide-react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { useRetailerAuth } from '../context/RetailerAuthContext';
@@ -55,6 +55,7 @@ export default function CreateSale({ showToast }) {
   const [manualCode, setManualCode] = useState('');
   const lastScanRef = useRef({ code: '', at: 0 });
   const [lastSavedSale, setLastSavedSale] = useState(null);
+  const [viewingSale, setViewingSale] = useState(null);
 
   const loadStock = () => {
     setLoading(true);
@@ -392,6 +393,7 @@ export default function CreateSale({ showToast }) {
                     <th className="px-4 py-3 text-right">Pairs</th>
                     <th className="px-4 py-3 text-right">Discount</th>
                     <th className="px-4 py-3 text-right">Total</th>
+                    <th className="px-4 py-3 text-center">View</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -404,6 +406,16 @@ export default function CreateSale({ showToast }) {
                       <td className="px-4 py-3 text-right font-bold">{sale.pairs_sold || 0}</td>
                       <td className="px-4 py-3 text-right text-slate-600">{formatINR(sale.discount_amount)}</td>
                       <td className="px-4 py-3 text-right font-extrabold text-brand-orange">{formatINR(sale.grand_total)}</td>
+                      <td className="px-4 py-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => setViewingSale(sale)}
+                          className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-slate-200 text-slate-500 hover:text-brand-orange hover:border-brand-orange/40 hover:bg-orange-50 transition-colors"
+                          title="View sale details"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -760,6 +772,115 @@ export default function CreateSale({ showToast }) {
           </div>
         </div>
       )}
+
+      <CustomModal
+        isOpen={!!viewingSale}
+        onClose={() => setViewingSale(null)}
+        title={viewingSale ? `Sale details · ${viewingSale.sale_number}` : 'Sale details'}
+        size="lg"
+        hideFooter
+      >
+        {viewingSale && (
+          <div className="space-y-4 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 border border-slate-100 rounded-xl p-3.5">
+              <div>
+                <span className="text-[9px] font-bold text-slate-400 uppercase block">Date</span>
+                <p className="font-bold text-slate-800 mt-0.5">
+                  {viewingSale.createdAt ? new Date(viewingSale.createdAt).toLocaleString('en-IN') : '—'}
+                </p>
+              </div>
+              <div>
+                <span className="text-[9px] font-bold text-slate-400 uppercase block">Pairs</span>
+                <p className="font-bold text-slate-800 mt-0.5">{viewingSale.pairs_sold || 0}</p>
+              </div>
+              <div>
+                <span className="text-[9px] font-bold text-slate-400 uppercase block">Discount</span>
+                <p className="font-bold text-emerald-600 mt-0.5">{formatINR(viewingSale.discount_amount)}</p>
+              </div>
+              <div>
+                <span className="text-[9px] font-bold text-slate-400 uppercase block">Grand Total</span>
+                <p className="font-extrabold text-brand-orange mt-0.5">{formatINR(viewingSale.grand_total)}</p>
+              </div>
+            </div>
+
+            {(viewingSale.discount_mode === 'bill' || viewingSale.discount_mode === 'line') && (
+              <p className="text-[10px] text-slate-500 font-semibold">
+                Discount mode:{' '}
+                <span className="text-slate-800 font-bold">
+                  {viewingSale.discount_mode === 'bill'
+                    ? `Whole bill (${viewingSale.bill_discount_percent || 0}%)`
+                    : 'Per product'}
+                </span>
+              </p>
+            )}
+
+            {viewingSale.note ? (
+              <p className="text-[11px] text-slate-600 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
+                <span className="font-bold text-slate-500">Note:</span> {viewingSale.note}
+              </p>
+            ) : null}
+
+            <div>
+              <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Sold products</h4>
+              <div className="border border-slate-200 rounded-lg overflow-x-auto">
+                <table className="w-full text-left text-xs font-semibold text-slate-700">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[10px]">
+                    <tr>
+                      <th className="px-4 py-2.5">Product</th>
+                      <th className="px-4 py-2.5">Variant</th>
+                      <th className="px-4 py-2.5 text-center">Qty</th>
+                      <th className="px-4 py-2.5 text-right">Unit</th>
+                      <th className="px-4 py-2.5 text-right">Line total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {(viewingSale.items || []).map((item, idx) => {
+                      const image = item.product?.image || null;
+                      const name = item.product_name || item.product?.name || 'Product';
+                      const size = item.size || item.product_variant?.size || '—';
+                      const color = item.color || item.product_variant?.color || '';
+                      return (
+                        <tr key={idx} className="hover:bg-slate-50/40">
+                          <td className="px-4 py-2.5">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <ProductImage
+                                src={image}
+                                alt={name}
+                                className="w-11 h-11 shrink-0"
+                                rounded="rounded-md"
+                                iconClassName="w-5 h-5 text-slate-300"
+                              />
+                              <div className="min-w-0">
+                                <p className="font-bold text-slate-900 truncate">{name}</p>
+                                <p className="text-[10px] text-slate-400 font-mono truncate">
+                                  {item.sku_variant || item.product_variant?.sku_variant || ''}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-600">
+                            S-{size}{color ? ` · ${getColorName(color)}` : ''}
+                            {item.discount_percent > 0 ? (
+                              <span className="block text-[10px] text-emerald-600 font-bold">
+                                {item.discount_percent}% off
+                              </span>
+                            ) : null}
+                          </td>
+                          <td className="px-4 py-2.5 text-center font-bold">{item.quantity}</td>
+                          <td className="px-4 py-2.5 text-right">{formatINR(item.unit_price)}</td>
+                          <td className="px-4 py-2.5 text-right font-extrabold text-slate-900">
+                            {formatINR(item.line_total)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+      </CustomModal>
 
       <CustomModal
         isOpen={isScanOpen}
