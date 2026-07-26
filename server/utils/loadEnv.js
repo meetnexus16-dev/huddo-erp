@@ -14,7 +14,7 @@ const serverRoot = path.resolve(__dirname, '..');
  */
 export function loadEnv() {
   const isProduction = process.env.NODE_ENV === 'production';
-  const preferredName = isProduction ? '.env' : '.env';
+  const preferredName = isProduction ? '.env' : '.env.development';
   const preferredPath = path.join(serverRoot, preferredName);
 
   let usedName = preferredName;
