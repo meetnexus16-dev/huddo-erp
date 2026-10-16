@@ -250,9 +250,9 @@ export const createProduct = async (req, res, next) => {
           size: String(size),
           color,
           mrp: mrp || 0,
-          selling_price: mrp ? (mrp * (1 - (retailerMargin || 20) / 100)) : 0,
+          selling_price: mrp || 0,
           cost_price: costPrice || 0,
-          margin_percentage: margin || 0,
+          margin_percentage: mrp && costPrice ? ((mrp - costPrice) / mrp) * 100 : 0,
           sku_variant: skuVariant,
           images: colorImages,
           stock_quantity: 0, // starts empty; stock is added via Add Inventory
@@ -365,9 +365,9 @@ export const updateProduct = async (req, res, next) => {
         if (variant) {
           // Update existing variant
           variant.mrp = mrp || 0;
-          variant.selling_price = mrp ? (mrp * (1 - (retailerMargin || 20) / 100)) : 0;
+          variant.selling_price = mrp || 0;
           variant.cost_price = costPrice || 0;
-          variant.margin_percentage = margin || 0;
+          variant.margin_percentage = mrp && costPrice ? ((mrp - costPrice) / mrp) * 100 : 0;
           variant.sku_variant = skuVariant;
           variant.images = colorImages;
           variant.is_deleted = false;
@@ -380,9 +380,9 @@ export const updateProduct = async (req, res, next) => {
             size: String(size),
             color,
             mrp: mrp || 0,
-            selling_price: mrp ? (mrp * (1 - (retailerMargin || 20) / 100)) : 0,
+            selling_price: mrp || 0,
             cost_price: costPrice || 0,
-            margin_percentage: margin || 0,
+            margin_percentage: mrp && costPrice ? ((mrp - costPrice) / mrp) * 100 : 0,
             sku_variant: skuVariant,
             images: colorImages,
             stock_quantity: 0, // starts empty; stock is added via Add Inventory

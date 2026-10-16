@@ -202,7 +202,7 @@ export const createSale = async (req, res, next) => {
 
     for (const [vid, qty] of qtyByVariant.entries()) {
       const variant = variantMap.get(vid);
-      const unitPrice = Number(variant.selling_price) || Number(variant.mrp) || 0;
+      const unitPrice = Number(variant.mrp) || 0;
       const lineDiscountPercent = discountMode === 'line' ? (lineDiscountByVariant.get(vid) || 0) : 0;
       const lineSubtotal = roundMoney(unitPrice * qty);
       const lineDiscountAmount = roundMoney(lineSubtotal * (lineDiscountPercent / 100));
