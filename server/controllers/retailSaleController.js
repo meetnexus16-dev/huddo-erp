@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import RetailSale from '../models/RetailSale.js';
 import Retailer from '../models/Retailer.js';
 import ProductVariant from '../models/ProductVariant.js';
+import Customer from '../models/Customer.js';
 import {
   getRetailerAvailableStock,
   getAvailableQtyForVariant
@@ -85,19 +86,29 @@ export const getMyStock = async (req, res, next) => {
  */
 export const listMySales = async (req, res, next) => {
   try {
-    const retailer = await resolveRetailerForRequest(req, { allowOverride: true });
-    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const roleName = req.user?.role?.name || '';
+    const isStaff = ['Founder', 'Admin', 'CEO', 'CountryManager', 'StateManager', 'CityManager'].includes(roleName);
+    let filter = {};
+
+    if (isStaff && !req.query.retailer) {
+      filter = {};
+    } else {
+      const retailer = await resolveRetailerForRequest(req, { allowOverride: true });
+      filter = { retailer: retailer._id };
+    }
+
+    const limit = Math.min(Number(req.query.limit) || 100, 500);
     const page = Math.max(Number(req.query.page) || 1, 1);
     const skip = (page - 1) * limit;
 
-    const filter = { retailer: retailer._id };
     const [rows, total] = await Promise.all([
       RetailSale.find(filter)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate('items.product', 'name sku image')
-        .populate('items.product_variant', 'size color sku_variant'),
+        .populate('retailer', 'business_name owner_name shop_address mobile city')
+        .populate('items.product', 'name sku image hsn')
+        .populate('items.product_variant', 'size color sku_variant mrp selling_price'),
       RetailSale.countDocuments(filter)
     ]);
 
@@ -119,9 +130,18 @@ export const listMySales = async (req, res, next) => {
  */
 export const getMySaleById = async (req, res, next) => {
   try {
-    const retailer = await resolveRetailerForRequest(req, { allowOverride: true });
-    const sale = await RetailSale.findOne({ _id: req.params.id, retailer: retailer._id })
-      .populate('items.product', 'name sku image')
+    const roleName = req.user?.role?.name || '';
+    const isStaff = ['Founder', 'Admin', 'CEO', 'CountryManager', 'StateManager', 'CityManager'].includes(roleName);
+    let filter = { _id: req.params.id };
+
+    if (!isStaff) {
+      const retailer = await resolveRetailerForRequest(req, { allowOverride: true });
+      filter.retailer = retailer._id;
+    }
+
+    const sale = await RetailSale.findOne(filter)
+      .populate('retailer', 'business_name owner_name shop_address mobile city')
+      .populate('items.product', 'name sku image hsn')
       .populate('items.product_variant', 'size color sku_variant mrp selling_price');
 
     if (!sale) {
@@ -233,6 +253,17 @@ export const createSale = async (req, res, next) => {
       ? billDiscountAmount
       : roundMoney(saleItems.reduce((s, i) => s + (Number(i.line_discount_amount) || 0), 0));
 
+    const customerName = String(req.body?.customer_name || 'Walk-in Customer').trim();
+    const customerMobile = String(req.body?.customer_mobile || '').trim();
+    const customerId = String(req.body?.customer_id || (customerMobile ? `CUST-${customerMobile.slice(-4)}` : 'WALKIN')).trim();
+    const customerEmail = String(req.body?.customer_email || '').trim();
+    const customerCity = String(req.body?.customer_city || cityDoc?.name || '').trim();
+    const paymentMode = String(req.body?.payment_mode || 'Cash').trim();
+    const tenderedAmount = Number(req.body?.tendered_amount || grandTotal);
+    const changeDue = Number(req.body?.change_due || (tenderedAmount > grandTotal ? roundMoney(tenderedAmount - grandTotal) : 0));
+    const counterNumber = String(req.body?.counter_number || 'Counter 1').trim();
+    const cashierName = String(req.body?.cashier_name || req.user?.name || retailer?.business_name || 'Cashier').trim();
+
     // Geo snapshot
     const cityDoc = retailer.city;
     const stateDoc = retailer.state || cityDoc?.state;
@@ -253,12 +284,50 @@ export const createSale = async (req, res, next) => {
       state_name: stateDoc?.name || '',
       country_name: countryDoc?.name || '',
       note: req.body?.note || '',
-      created_by: req.user._id
+      created_by: req.user._id,
+      customer_name: customerName,
+      customer_mobile: customerMobile,
+      customer_id: customerId,
+      customer_email: customerEmail,
+      customer_city: customerCity,
+      payment_mode: paymentMode,
+      tendered_amount: tenderedAmount,
+      change_due: changeDue,
+      counter_number: counterNumber,
+      cashier_name: cashierName
     });
 
+    if (customerMobile) {
+      try {
+        const custSet = {
+          customer_name: customerName,
+          city: customerCity || cityDoc?.name || '',
+          lastOrderDate: new Date().toISOString().split('T')[0]
+        };
+        if (customerEmail) {
+          custSet.email = customerEmail;
+        }
+
+        await Customer.findOneAndUpdate(
+          { mobile: customerMobile },
+          {
+            $set: custSet,
+            $inc: {
+              totalOrders: 1,
+              totalSpend: grandTotal
+            }
+          },
+          { upsert: true, new: true }
+        );
+      } catch (custErr) {
+        console.warn('[RetailSale] Customer upsert warning:', custErr.message);
+      }
+    }
+
     const populated = await RetailSale.findById(sale._id)
-      .populate('items.product', 'name sku image')
-      .populate('items.product_variant', 'size color sku_variant');
+      .populate('retailer', 'business_name owner_name shop_address mobile city')
+      .populate('items.product', 'name sku image hsn')
+      .populate('items.product_variant', 'size color sku_variant mrp selling_price');
 
     res.status(201).json({
       success: true,
@@ -270,5 +339,22 @@ export const createSale = async (req, res, next) => {
       return res.status(error.statusCode).json({ success: false, message: error.message });
     }
     next(error);
+  }
+};
+
+/**
+ * GET /api/v1/retailer/customers/lookup?mobile=...
+ * Look up existing customer for quick POS auto-fill
+ */
+export const lookupCustomerByMobile = async (req, res, next) => {
+  try {
+    const mobile = String(req.query.mobile || '').replace(/\D/g, '').trim();
+    if (!mobile || mobile.length < 5) {
+      return res.status(200).json({ success: true, data: null });
+    }
+    const customer = await Customer.findOne({ mobile: { $regex: mobile + '$' } });
+    return res.status(200).json({ success: true, data: customer });
+  } catch (err) {
+    next(err);
   }
 };

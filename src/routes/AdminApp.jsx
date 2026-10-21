@@ -19,6 +19,7 @@ import Teams from '../modules/Teams';
 import Departments from '../modules/Departments';
 import PromoterModule from '../modules/promoter/PromoterModule';
 import Retailers from '../modules/Retailers';
+import Customers from '../modules/Customers';
 import Products from '../modules/Products';
 import ProductCategories from '../modules/ProductCategories';
 import Orders from '../modules/Orders';
@@ -35,6 +36,8 @@ import Inventory from '../modules/Inventory';
 import Purchase from '../modules/Purchase';
 import PettyCash from '../modules/PettyCash';
 import CountryManagerModule from '../modules/country-manager/CountryManagerModule';
+import StateManagers from '../modules/StateManagers';
+import CityManagers from '../modules/CityManagers';
 import CommunicationSettings from '../modules/CommunicationSettings';
 import MyProfile from '../modules/MyProfile';
 
@@ -55,16 +58,19 @@ const NAV_MENU = [
   {
     section: 'PEOPLE',
     items: [
-      // { id: 'Employees', label: 'Employees', icon: Users, component: Employees },
+      { id: 'Employees', label: 'Employees', icon: Users, component: Employees },
       // { id: 'Teams', label: 'Teams', icon: UsersRound, component: Teams },
       { id: 'Promoters', label: 'Promoters', icon: Award, component: PromoterModule },
-      { id: 'CountryManagers', label: 'Country Managers', icon: Users, component: CountryManagerModule }
+      { id: 'CountryManagers', label: 'Country Managers', icon: Users, component: CountryManagerModule },
+      { id: 'StateManagers', label: 'State Managers', icon: Users, component: StateManagers },
+      { id: 'CityManagers', label: 'City Managers', icon: Users, component: CityManagers }
     ]
   },
   {
     section: 'BUSINESS',
     items: [
       { id: 'Retailers', label: 'Retailers', icon: Store, component: Retailers },
+      { id: 'Customers', label: 'Customers', icon: UsersRound, component: Customers },
       { id: 'Products', label: 'Products', icon: Package, component: Products },
       { id: 'ProductCategories', label: 'Product Categories', icon: Layers, component: ProductCategories },
       { id: 'Orders', label: 'Orders', icon: ShoppingCart, component: Orders }
@@ -182,7 +188,7 @@ export default function AdminApp() {
       passwordPath={passwordPath}
       portalSettingsPath={portalSettingsPath}
       profile={{
-        name: user?.name || 'Rohan Hudda',
+        name: user?.name || (currentRole === 'Founder' ? 'Founder' : (user?.email ? user.email.split('@')[0] : 'Administrator')),
         subtitle: `${currentRole} Session`,
         image: user?.profile_photo || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'
       }}

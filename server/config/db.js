@@ -1,4 +1,12 @@
 import mongoose from 'mongoose';
+import dns from 'dns';
+
+// Fix for Node.js SRV lookup failures (querySrv ECONNREFUSED) with MongoDB Atlas
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
+} catch (dnsErr) {
+  console.warn('[Database] Custom DNS setup skipped:', dnsErr.message);
+}
 
 const connectDB = async () => {
   try {

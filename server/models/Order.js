@@ -160,7 +160,6 @@ orderSchema.pre('findOneAndUpdate', async function (next) {
   }
 });
 
-orderSchema.index({ order_number: 1 });
 orderSchema.index({ retailer: 1 });
 orderSchema.index({ status: 1 });
 

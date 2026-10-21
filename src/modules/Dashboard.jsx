@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, ShoppingCart, Store, Award, AlertCircle, Users, ArrowUpRight, RefreshCw } from 'lucide-react';
+import { TrendingUp, ShoppingCart, Store, Award, AlertCircle, Users, ArrowUpRight, RefreshCw, Download, FileText, ShoppingBag, UserCheck, User } from 'lucide-react';
 import {
   StatWidget,
   DashboardCard,
@@ -9,6 +9,7 @@ import {
   DashboardPieChart
 } from '../components/DesignSystem';
 import { authFetch, formatInr } from '../utils/authFetch';
+import { generateRetailInvoicePdf } from '../utils/generateRetailInvoicePdf';
 
 export default function Dashboard({ onNavigate, userRole = 'Founder' }) {
   const [stats, setStats] = useState([
@@ -16,6 +17,7 @@ export default function Dashboard({ onNavigate, userRole = 'Founder' }) {
     { title: 'Total Orders', value: '0', icon: ShoppingCart, delta: '—', colorClass: 'text-brand-orange bg-orange-50' },
     { title: 'Total Retailers', value: '0', icon: Store, delta: '—', colorClass: 'text-blue-600 bg-blue-50' },
     { title: 'Total Promoters', value: '0', icon: Award, delta: '—', colorClass: 'text-purple-600 bg-purple-50' },
+    { title: 'Retail Customers', value: '0', icon: Users, delta: 'Store end-users', colorClass: 'text-indigo-600 bg-indigo-50' },
     { title: 'Total Payment', value: '₹0', icon: AlertCircle, delta: '—', colorClass: 'text-rose-600 bg-rose-50' },
     { title: 'Active Employees', value: '0', icon: Users, delta: '—', colorClass: 'text-slate-600 bg-slate-100' }
   ]);
@@ -24,6 +26,8 @@ export default function Dashboard({ onNavigate, userRole = 'Founder' }) {
   const [statePerformance, setStatePerformance] = useState([]);
   const [topRetailers, setTopRetailers] = useState([]);
   const [recentOrders, setRecentOrders] = useState([]);
+  const [recentCustomers, setRecentCustomers] = useState([]);
+  const [recentRetailSales, setRecentRetailSales] = useState([]);
   const [totalOrderCount, setTotalOrderCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -42,6 +46,7 @@ export default function Dashboard({ onNavigate, userRole = 'Founder' }) {
             { title: 'Total Orders', value: String(overall.totalOrders || 0), icon: ShoppingCart, delta: 'All time', colorClass: 'text-brand-orange bg-orange-50' },
             { title: 'Total Retailers', value: String(overall.totalRetailers || 0), icon: Store, delta: 'Registered', colorClass: 'text-blue-600 bg-blue-50' },
             { title: 'Total Promoters', value: String(overall.totalPromoters || 0), icon: Award, delta: 'In network', colorClass: 'text-purple-600 bg-purple-50' },
+            { title: 'Retail Customers', value: String(overall.totalRetailCustomers || d.recentCustomers?.length || 0), icon: Users, delta: 'Store Consumers', colorClass: 'text-indigo-600 bg-indigo-50' },
             { title: 'Total Payment', value: formatInr(overall.totalOutstanding), icon: AlertCircle, delta: 'Outstanding', colorClass: 'text-rose-600 bg-rose-50' },
             { title: 'Active Employees', value: String(overall.totalEmployees || 0), icon: Users, delta: 'On payroll', colorClass: 'text-slate-600 bg-slate-100' }
           ]);
@@ -51,6 +56,8 @@ export default function Dashboard({ onNavigate, userRole = 'Founder' }) {
           setStatePerformance(d.statePerformanceData || []);
           setTopRetailers(d.topRetailers || []);
           setRecentOrders(d.recentOrders || []);
+          setRecentCustomers(d.recentCustomers || []);
+          setRecentRetailSales(d.recentRetailSales || []);
           setTotalOrderCount(overall.totalOrders || 0);
         } else {
           setLoadError(true);
@@ -90,6 +97,101 @@ export default function Dashboard({ onNavigate, userRole = 'Founder' }) {
     }
   ];
 
+  const customerColumns = [
+    {
+      header: 'Customer',
+      accessor: 'customer_name',
+      render: (val, row) => (
+        <div>
+          <span className="font-bold text-slate-800 block">{val || 'Walk-in'}</span>
+          <span className="text-[10px] text-slate-500 font-mono">{row.mobile}</span>
+        </div>
+      )
+    },
+    { header: 'City', accessor: 'city', render: (val) => <span className="text-slate-600 font-medium">{val || '—'}</span> },
+    {
+      header: 'Spend',
+      accessor: 'totalSpend',
+      cellClassName: 'text-right font-bold text-slate-900',
+      render: (val) => formatInr(val)
+    },
+    {
+      header: 'Visits',
+      accessor: 'totalOrders',
+      cellClassName: 'text-center font-bold text-slate-700',
+      render: (val) => <span>{val || 1}</span>
+    },
+    {
+      header: 'Last Visit',
+      accessor: 'lastOrderDate',
+      render: (val) => <span className="text-[10px] text-slate-400">{val || '—'}</span>
+    }
+  ];
+
+  const retailSaleColumns = [
+    {
+      header: 'Invoice #',
+      accessor: 'sale_number',
+      render: (val, row) => (
+        <div>
+          <span className="font-bold text-slate-900 font-mono block text-xs">{val}</span>
+          <span className="text-[10px] text-slate-400">
+            {row.createdAt ? new Date(row.createdAt).toLocaleDateString('en-IN') : '—'}
+          </span>
+        </div>
+      )
+    },
+    {
+      header: 'Customer',
+      accessor: 'customer_name',
+      render: (val, row) => (
+        <div>
+          <span className="font-bold text-slate-800 text-xs block">{val || 'Walk-in'}</span>
+          <span className="text-[10px] text-slate-500 font-mono">{row.customer_mobile || '—'}</span>
+        </div>
+      )
+    },
+    {
+      header: 'Store / Outlet',
+      accessor: 'retailer_name',
+      render: (val, row) => (
+        <div>
+          <span className="font-semibold text-slate-700 text-xs block truncate max-w-[120px]">{val || row.retailer?.business_name || 'Retail Outlet'}</span>
+          <span className="text-[10px] text-slate-400">{row.city_name || row.retailer?.city || ''}</span>
+        </div>
+      )
+    },
+    {
+      header: 'Pairs',
+      accessor: 'pairs_sold',
+      cellClassName: 'text-center font-bold text-slate-700',
+      render: (val) => <span>{val || 1}</span>
+    },
+    {
+      header: 'Total',
+      accessor: 'grand_total',
+      cellClassName: 'text-right font-extrabold text-brand-orange',
+      render: (val) => formatInr(val)
+    },
+    {
+      header: 'Tax Invoice',
+      accessor: '_id',
+      sortable: false,
+      cellClassName: 'text-center',
+      render: (_, row) => (
+        <button
+          type="button"
+          onClick={() => generateRetailInvoicePdf(row, row.retailer)}
+          className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-bold shadow-2xs transition-colors"
+          title="Download Westside format Tax Invoice"
+        >
+          <Download className="w-3 h-3" />
+          <span>PDF Bill</span>
+        </button>
+      )
+    }
+  ];
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24 text-slate-500 gap-2">
@@ -115,13 +217,14 @@ export default function Dashboard({ onNavigate, userRole = 'Founder' }) {
         <p className="text-sm text-slate-500">Live operational overview from your database.</p>
       </div>
 
-      <div className={`grid grid-cols-1 md:grid-cols-2 ${userRole === 'CEO' ? 'lg:grid-cols-4 xl:grid-cols-4' : 'lg:grid-cols-3 xl:grid-cols-6'} gap-4`}>
+      <div className={`grid grid-cols-1 md:grid-cols-2 ${userRole === 'CEO' ? 'lg:grid-cols-4 xl:grid-cols-4' : 'lg:grid-cols-3 xl:grid-cols-7'} gap-4`}>
         {stats.filter((stat) => userRole !== 'CEO' || (stat.title !== 'Total Revenue' && stat.title !== 'Total Payment')).map((stat, i) => {
           let target = null;
           if (stat.title === 'Total Revenue') target = 'Sales';
           else if (stat.title === 'Total Orders') target = 'Orders';
           else if (stat.title === 'Total Retailers') target = 'Retailers';
           else if (stat.title === 'Total Promoters') target = 'Promoters';
+          else if (stat.title === 'Retail Customers') target = 'Customers';
           else if (stat.title === 'Total Payment') target = 'Billing';
           else if (stat.title === 'Active Employees') target = 'Employees';
 
@@ -248,6 +351,68 @@ export default function Dashboard({ onNavigate, userRole = 'Founder' }) {
           <DashboardTable columns={orderColumns} data={recentOrders} emptyStateText="No orders yet." />
         </DashboardCard>
       </div>
+
+      {/* Retail Store Counter Sales & End-Consumers Section */}
+      {userRole !== 'CEO' && (
+        <div className="space-y-4 pt-2">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900 font-display">Retail Counter Sales & Consumers</h2>
+              <p className="text-xs text-slate-500 font-medium">
+                Live walk-in customer database and counter sales captured across retail outlets.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onNavigate('Customers')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs self-start"
+            >
+              <Users className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Full Customer Directory</span>
+              <ArrowUpRight className="w-3.5 h-3.5 text-slate-400" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <DashboardCard
+              title="Recent Retail Customers"
+              subtitle="Latest consumer profiles recorded during retail store sales."
+              headerActions={(
+                <button
+                  type="button"
+                  onClick={() => onNavigate('Customers')}
+                  className="text-xs font-bold text-brand-orange hover:text-brand-orange-hover flex items-center gap-1"
+                >
+                  <span>View All</span>
+                  <ArrowUpRight className="w-3.5 h-3.5" />
+                </button>
+              )}
+            >
+              <DashboardTable
+                columns={customerColumns}
+                data={recentCustomers}
+                emptyStateText="No retail customers registered yet. Sales created at store counters will appear here."
+              />
+            </DashboardCard>
+
+            <DashboardCard
+              title="Live Retail Counter Sales (Sell-Out)"
+              subtitle="Store POS transactions with direct Westside Tax Invoice download."
+              headerActions={(
+                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                  Westside PDF Ready
+                </span>
+              )}
+            >
+              <DashboardTable
+                columns={retailSaleColumns}
+                data={recentRetailSales}
+                emptyStateText="No counter sales recorded yet. Save a sale in Create Sale to see it here."
+              />
+            </DashboardCard>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

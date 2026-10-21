@@ -25,8 +25,7 @@ const roleSchema = new mongoose.Schema({
 
 roleSchema.plugin(softDeletePlugin);
 
-// Create compound index for querying
-roleSchema.index({ name: 1 });
+
 
 const Role = mongoose.model('Role', roleSchema);
 export default Role;

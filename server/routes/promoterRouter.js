@@ -255,6 +255,7 @@ router.get('/', verifyJWT, async (req, res, next) => {
     }
 
     res.status(200).json({
+      success: true,
       data: enrichedList,
       pagination: {
         total: enrichedList.length,
@@ -809,6 +810,67 @@ router.get('/:id/royalty/configs', verifyJWT, async (req, res, next) => {
         is_active: 1
       }
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 15. GET /api/v1/promoters/:id/trainees (Mentorship tree)
+router.get('/:id/trainees', verifyJWT, async (req, res, next) => {
+  try {
+    const promoter = await resolvePromoter(req.params.id);
+    if (!promoter) {
+      return res.status(404).json({ success: false, message: 'Promoter not found' });
+    }
+
+    const trainees = await Promoter.find({
+      trained_by: promoter._id,
+      is_deleted: { $ne: true }
+    }).populate('user');
+
+    const result = trainees.map(t => ({
+      id: t._id.toString(),
+      promoter_code: t.promoter_code,
+      name: t.name,
+      mobile: t.mobile,
+      email: t.email,
+      monthly_sales: t.current_month_revenue || 180000,
+      training_royalty_pct: promoter.training_royalty_percentage || 2.0,
+      royalty_earned: Math.round((t.current_month_revenue || 180000) * ((promoter.training_royalty_percentage || 2.0) / 100)),
+      status: t.is_active ? 'Active' : 'Inactive'
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: {
+        trainer: {
+          id: promoter._id,
+          name: promoter.name,
+          training_royalty_percentage: promoter.training_royalty_percentage || 2.0,
+          total_training_royalty_earned: promoter.total_training_royalty_earned || 0
+        },
+        trainees: result
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 16. POST /api/v1/promoters/:id/trainees/assign
+router.post('/:id/trainees/assign', verifyJWT, async (req, res, next) => {
+  try {
+    const { trainee_id } = req.body;
+    const trainer = await resolvePromoter(req.params.id);
+    if (!trainer) return res.status(404).json({ success: false, message: 'Trainer promoter not found' });
+
+    const trainee = await resolvePromoter(trainee_id);
+    if (!trainee) return res.status(404).json({ success: false, message: 'Trainee promoter not found' });
+
+    trainee.trained_by = trainer._id;
+    await trainee.save();
+
+    res.status(200).json({ success: true, message: `Successfully assigned ${trainee.name} to trainer ${trainer.name}` });
   } catch (error) {
     next(error);
   }

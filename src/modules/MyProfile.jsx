@@ -50,6 +50,14 @@ export default function MyProfile({ showToast, userRole = 'Founder', onSwitchRol
       contact_person: '',
       relationship: '',
       mobile: ''
+    },
+    bank_details: {
+      bank_name: '',
+      account_no: '',
+      ifsc_code: '',
+      account_holder: '',
+      branch_name: '',
+      upi_id: ''
     }
   });
 
@@ -91,6 +99,14 @@ export default function MyProfile({ showToast, userRole = 'Founder', onSwitchRol
               contact_person: '',
               relationship: '',
               mobile: ''
+            },
+            bank_details: normalized.bank_details || {
+              bank_name: '',
+              account_no: '',
+              ifsc_code: '',
+              account_holder: '',
+              branch_name: '',
+              upi_id: ''
             }
           });
         } else {
@@ -110,6 +126,17 @@ export default function MyProfile({ showToast, userRole = 'Founder', onSwitchRol
     setFormData(prev => ({
       ...prev,
       [name]: value
+    }));
+  };
+
+  const handleBankChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      bank_details: {
+        ...(prev.bank_details || {}),
+        [name]: value
+      }
     }));
   };
 
@@ -498,6 +525,45 @@ export default function MyProfile({ showToast, userRole = 'Founder', onSwitchRol
 
               </div>
 
+              {/* Bank & Payout Details */}
+              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider font-display flex items-center gap-2">
+                    <CreditCard className="w-4 h-4 text-brand-orange" />
+                    Bank Account & Payroll Details
+                  </h3>
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                    Active Account
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-xs font-semibold">
+                  <div>
+                    <span className="text-slate-400 font-semibold block">Bank Name</span>
+                    <span className="font-bold text-slate-800 block mt-0.5">{profile.bank_details?.bank_name || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 font-semibold block">Account Number</span>
+                    <span className="font-mono font-bold text-slate-900 block mt-0.5">{profile.bank_details?.account_no || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 font-semibold block">IFSC Code</span>
+                    <span className="font-mono font-bold text-slate-800 block mt-0.5">{profile.bank_details?.ifsc_code || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 font-semibold block">Account Holder</span>
+                    <span className="font-bold text-slate-800 block mt-0.5">{profile.bank_details?.account_holder || profile.name || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 font-semibold block">Branch Name</span>
+                    <span className="text-slate-700 block mt-0.5">{profile.bank_details?.branch_name || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 font-semibold block">UPI ID</span>
+                    <span className="font-mono text-slate-700 block mt-0.5">{profile.bank_details?.upi_id || '—'}</span>
+                  </div>
+                </div>
+              </div>
+
               {/* Account details */}
               <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
                 <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-4 font-display flex items-center gap-2">
@@ -704,6 +770,78 @@ export default function MyProfile({ showToast, userRole = 'Founder', onSwitchRol
                       value={formData.emergency_contact.mobile} 
                       onChange={handleEmergencyChange} 
                       className="px-3 py-2 w-full text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange/20 focus:border-brand-orange bg-white text-slate-800 font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-100 my-4 pt-2"></div>
+                <h4 className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-2">Bank & Payout Details</h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Bank Name</label>
+                    <input 
+                      type="text" 
+                      name="bank_name" 
+                      value={formData.bank_details?.bank_name || ''} 
+                      onChange={handleBankChange} 
+                      placeholder="e.g. HDFC Bank"
+                      className="px-3 py-2 w-full text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange/20 focus:border-brand-orange bg-white text-slate-800 font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Account Number</label>
+                    <input 
+                      type="text" 
+                      name="account_no" 
+                      value={formData.bank_details?.account_no || ''} 
+                      onChange={handleBankChange} 
+                      placeholder="50100412345678"
+                      className="px-3 py-2 w-full text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange/20 focus:border-brand-orange bg-white text-slate-800 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">IFSC Code</label>
+                    <input 
+                      type="text" 
+                      name="ifsc_code" 
+                      value={formData.bank_details?.ifsc_code || ''} 
+                      onChange={handleBankChange} 
+                      placeholder="HDFC0000001"
+                      className="px-3 py-2 w-full text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange/20 focus:border-brand-orange bg-white text-slate-800 font-mono uppercase"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Account Holder</label>
+                    <input 
+                      type="text" 
+                      name="account_holder" 
+                      value={formData.bank_details?.account_holder || ''} 
+                      onChange={handleBankChange} 
+                      placeholder="Name as per passbook"
+                      className="px-3 py-2 w-full text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange/20 focus:border-brand-orange bg-white text-slate-800 font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Branch Name</label>
+                    <input 
+                      type="text" 
+                      name="branch_name" 
+                      value={formData.bank_details?.branch_name || ''} 
+                      onChange={handleBankChange} 
+                      placeholder="e.g. Fort Mumbai"
+                      className="px-3 py-2 w-full text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange/20 focus:border-brand-orange bg-white text-slate-800 font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">UPI ID</label>
+                    <input 
+                      type="text" 
+                      name="upi_id" 
+                      value={formData.bank_details?.upi_id || ''} 
+                      onChange={handleBankChange} 
+                      placeholder="name@okhdfcbank"
+                      className="px-3 py-2 w-full text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange/20 focus:border-brand-orange bg-white text-slate-800 font-mono"
                     />
                   </div>
                 </div>

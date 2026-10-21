@@ -1,9 +1,18 @@
 import express from 'express';
-import { getMyCityManagers } from '../controllers/stateManagerController.js';
+import { 
+  getMyCityManagers, 
+  getAllStateManagers, 
+  recordStateManagerReview 
+} from '../controllers/stateManagerController.js';
 import { verifyJWT } from '../middleware/auth.js';
 
 const router = express.Router();
 
+// State Manager personal route
 router.get('/me/city-managers', verifyJWT, getMyCityManagers);
+
+// Founder / Admin Operations routes
+router.get('/', verifyJWT, getAllStateManagers);
+router.post('/review', verifyJWT, recordStateManagerReview);
 
 export default router;

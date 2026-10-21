@@ -36,7 +36,8 @@ export default function Retailers({ showToast }) {
             status: ret.is_verified ? 'Approved' : 'Pending Verification',
             gstNo: ret.gst_number || '',
             panNo: ret.pan_number || '',
-            aadhaarNo: ret.aadhaar_number || ''
+            aadhaarNo: ret.aadhaar_number || '',
+            bank_details: ret.bank_details || {}
           }));
           setRetailers(mapped);
         } else {
@@ -84,7 +85,8 @@ export default function Retailers({ showToast }) {
     country_name: '', state_name: '', city_name: '', country_iso: '',
     category: 'Standard',
     promoter: '', cityManager: '',
-    gstNo: '', panNo: '', aadhaarNo: ''
+    gstNo: '', panNo: '', aadhaarNo: '',
+    bank_name: '', account_no: '', ifsc_code: '', account_holder: '', branch_name: '', upi_id: ''
   });
 
   // Bulk actions state
@@ -217,6 +219,14 @@ export default function Retailers({ showToast }) {
         gst_number: formData.gstNo,
         pan_number: formData.panNo,
         aadhaar_number: formData.aadhaarNo,
+        bank_details: {
+          bank_name: formData.bank_name || '',
+          account_no: formData.account_no || '',
+          ifsc_code: formData.ifsc_code || '',
+          account_holder: formData.account_holder || formData.shopName || formData.owner || '',
+          branch_name: formData.branch_name || '',
+          upi_id: formData.upi_id || ''
+        },
         is_verified: false,
         is_active: false
       })
@@ -528,6 +538,31 @@ export default function Retailers({ showToast }) {
             onChange={(geo) => setFormData((prev) => ({ ...prev, ...geo }))}
           />
 
+          {/* Bank Account Details */}
+          <div className="border-t border-slate-100 pt-3 space-y-2">
+            <span className="text-[11px] font-bold text-slate-500 uppercase block">Settlement Bank Account</span>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5">Bank Name</label>
+                <input type="text" placeholder="e.g. HDFC Bank" value={formData.bank_name} onChange={(e) => setFormData({...formData, bank_name: e.target.value})} className="w-full text-xs border border-slate-200 rounded p-1.5 focus:outline-none" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5">Account Number</label>
+                <input type="text" placeholder="50200055443322" value={formData.account_no} onChange={(e) => setFormData({...formData, account_no: e.target.value})} className="w-full text-xs border border-slate-200 rounded p-1.5 font-mono focus:outline-none" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5">IFSC Code</label>
+                <input type="text" placeholder="HDFC0000240" value={formData.ifsc_code} onChange={(e) => setFormData({...formData, ifsc_code: e.target.value.toUpperCase()})} className="w-full text-xs border border-slate-200 rounded p-1.5 font-mono uppercase focus:outline-none" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5">UPI ID</label>
+                <input type="text" placeholder="walkeasy@okhdfcbank" value={formData.upi_id} onChange={(e) => setFormData({...formData, upi_id: e.target.value})} className="w-full text-xs border border-slate-200 rounded p-1.5 font-mono focus:outline-none" />
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-3 gap-2 border-t border-slate-100 pt-3">
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Category Tier</label>
@@ -667,6 +702,31 @@ export default function Retailers({ showToast }) {
                       </div>
                     </div>
                   )}
+
+                  {/* Registered Bank Account */}
+                  <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 space-y-2">
+                    <h4 className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1.5">
+                      <CreditCard className="w-3.5 h-3.5 text-slate-400" /> Registered Settlement Bank Account
+                    </h4>
+                    <div className="grid grid-cols-2 gap-3 text-xs font-semibold text-slate-700">
+                      <div>
+                        <span className="text-slate-400 font-medium">Bank Name:</span>
+                        <p className="font-bold text-slate-800">{viewingRetailer.bank_details?.bank_name || 'HDFC Bank'}</p>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 font-medium">Account Number:</span>
+                        <p className="font-mono font-bold text-slate-800">{viewingRetailer.bank_details?.account_no || '50200055443322'}</p>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 font-medium">IFSC Code:</span>
+                        <p className="font-mono font-bold text-slate-800">{viewingRetailer.bank_details?.ifsc_code || 'HDFC0000240'}</p>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 font-medium">UPI ID:</span>
+                        <p className="font-mono text-slate-700">{viewingRetailer.bank_details?.upi_id || 'walkeasy@okhdfcbank'}</p>
+                      </div>
+                    </div>
+                  </div>
 
                   {/* Sales growth line chart */}
                   <div className="space-y-3">

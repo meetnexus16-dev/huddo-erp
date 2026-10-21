@@ -137,6 +137,21 @@ export function getUserDetailSections(user) {
     });
   }
 
+  const bank = user.bank_details || meta.bank_details;
+  if (bank && (bank.bank_name || bank.account_no || bank.upi_id)) {
+    sections.push({
+      title: 'Bank & Payout Details',
+      fields: [
+        { label: 'Bank Name', value: bank.bank_name || '—' },
+        { label: 'Account Number', value: bank.account_no || '—' },
+        { label: 'IFSC Code', value: bank.ifsc_code || bank.ifsc || '—' },
+        { label: 'Account Holder', value: bank.account_holder || user.name || '—' },
+        { label: 'Branch Name', value: bank.branch_name || '—' },
+        { label: 'UPI ID', value: bank.upi_id || '—' }
+      ]
+    });
+  }
+
   if (user.approval_status === 'Rejected' && user.rejection_reason) {
     sections.push({
       title: 'Rejection',

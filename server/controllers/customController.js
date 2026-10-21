@@ -12,6 +12,7 @@ import Customer from '../models/Customer.js';
 import PettyCash from '../models/PettyCash.js';
 import ReturnLog from '../models/ReturnLog.js';
 import Invoice from '../models/Invoice.js';
+import RetailSale from '../models/RetailSale.js';
 import { triggerNotification } from '../utils/triggerNotification.js';
 import { saveFileToDisk, deleteFileFromDisk } from '../utils/fileUpload.js';
 
@@ -284,9 +285,17 @@ export const getCustomerById = async (req, res, next) => {
       return res.status(404).json({ error: "Customer not found" });
     }
 
-    // Get order history from invoices
-    const history = await Invoice.find({ customer_mobile: customer.mobile });
-    return res.status(200).json({ customer, history });
+    // Get order history from invoices and counter retail sales
+    const [history, retailSales] = await Promise.all([
+      Invoice.find({ customer_mobile: customer.mobile }).sort({ createdAt: -1 }),
+      RetailSale.find({ customer_mobile: customer.mobile })
+        .populate('retailer', 'business_name city state phone')
+        .populate('items.product', 'name sku image hsn')
+        .populate('items.product_variant', 'size color sku_variant mrp selling_price')
+        .sort({ createdAt: -1 })
+    ]);
+
+    return res.status(200).json({ customer, history, retailSales });
   } catch (error) {
     next(error);
   }

@@ -164,6 +164,7 @@ import onboardingRouter from './onboardingRouter.js';
 import geoRouter from './geoRouter.js';
 import networkRouter from './networkRouter.js';
 import stateManagerRouter from './stateManagerRouter.js';
+import cityManagerRouter from './cityManagerRouter.js';
 import managerRouter from './managerRouter.js';
 import {
   listPromoterBonusStructures,
@@ -180,7 +181,8 @@ import {
   getMyStock,
   listMySales,
   getMySaleById,
-  createSale
+  createSale,
+  lookupCustomerByMobile
 } from '../controllers/retailSaleController.js';
 import { getProductPerformance } from '../controllers/productAnalyticsController.js';
 
@@ -192,6 +194,7 @@ router.use('/onboarding', onboardingRouter);
 router.use('/geo', geoRouter);
 router.use('/network', networkRouter);
 router.use('/state-managers', stateManagerRouter);
+router.use('/city-managers', cityManagerRouter);
 router.use('/manager', managerRouter);
 
 // ==========================================
@@ -291,6 +294,7 @@ router.get('/retailer/stock', verifyJWT, getMyStock);
 router.get('/retailer/sales', verifyJWT, listMySales);
 router.get('/retailer/sales/:id', verifyJWT, getMySaleById);
 router.post('/retailer/sales', verifyJWT, createSale);
+router.get('/retailer/customers/lookup', verifyJWT, lookupCustomerByMobile);
 
 // Product performance by country / state / city (from retail sell-out)
 router.get('/analytics/product-performance', verifyJWT, checkPermission('reports', 'view'), getProductPerformance);

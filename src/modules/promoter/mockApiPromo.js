@@ -33,6 +33,8 @@ const defaultPromoters = [
     bank_ifsc: "HDFC0000001",
     bank_name: "HDFC Bank",
     bank_account_holder: "Suresh Raina",
+    bank_branch: "Bandra West Mumbai",
+    upi_id: "suresh@okhdfcbank",
     allocated_country_id: 1,
     allocated_state_id: 1,
     allocated_city_id: 1,
@@ -40,6 +42,11 @@ const defaultPromoters = [
     allocated_state_name: "Maharashtra",
     allocated_city_name: "Mumbai",
     royalty_percentage: 5.00,
+    trained_by: null,
+    trainer_name: "None (Master Trainer)",
+    training_royalty_percentage: 2.00,
+    total_training_royalty_earned: 24500.00,
+    assigned_employee_name: "Amit Kumar",
     payment_status: "Unpaid",
     status: "Active",
     verification_status: "Verified",
@@ -58,9 +65,11 @@ const defaultPromoters = [
     pan_number: "FGHIJ5678K",
     gst_number: "07BBBBB2222B2Z2",
     bank_account_number: "9876543210",
-    bank_ifsc: "ICIC0000002",
-    bank_name: "ICICI Bank",
+    bank_ifsc: "PUNB0000002",
+    bank_name: "Punjab National Bank",
     bank_account_holder: "Harbhajan Singh",
+    bank_branch: "Model Town Jalandhar",
+    upi_id: "harbhajan@pnb",
     allocated_country_id: 1,
     allocated_state_id: 2,
     allocated_city_id: 2,
@@ -68,8 +77,48 @@ const defaultPromoters = [
     allocated_state_name: "Delhi",
     allocated_city_name: "New Delhi",
     royalty_percentage: 5.00,
+    trained_by: 1,
+    trainer_name: "Suresh Raina",
+    training_royalty_percentage: 2.00,
+    total_training_royalty_earned: 11200.00,
+    assigned_employee_name: "Amit Kumar",
     payment_status: "Paid",
     status: "Active",
+    verification_status: "Verified",
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 3,
+    user_id: 203,
+    promoter_code: "PRO-2026-003",
+    full_name: "Gautam Gambhir",
+    mobile_number: "9560901234",
+    email: "gautam@gambhir.com",
+    address: "Old Rajinder Nagar, Delhi",
+    profile_photo_url: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150",
+    aadhaar_number: "7777-8888-9999",
+    pan_number: "KLMNO9012P",
+    gst_number: "07CCCCC3333C3Z3",
+    bank_account_number: "4567890123",
+    bank_ifsc: "SBIN0000003",
+    bank_name: "State Bank of India",
+    bank_account_holder: "Gautam Gambhir",
+    bank_branch: "Old Rajinder Nagar",
+    upi_id: "gautam@sbi",
+    allocated_country_id: 1,
+    allocated_state_id: 4,
+    allocated_city_id: 5,
+    allocated_country_name: "India",
+    allocated_state_name: "Gujarat",
+    allocated_city_name: "Ahmedabad",
+    royalty_percentage: 5.00,
+    trained_by: 1,
+    trainer_name: "Suresh Raina",
+    training_royalty_percentage: 2.00,
+    total_training_royalty_earned: 0.00,
+    assigned_employee_name: "Karan Johar",
+    payment_status: "Unpaid",
+    status: "Inactive",
     verification_status: "Verified",
     created_at: new Date().toISOString()
   }
@@ -301,7 +350,7 @@ export async function handlePromoterApi(pathname, method, body, params) {
 
     // Pagination
     const page = Number(params.page || 1);
-    const limit = Number(params.limit || 10);
+    const limit = Number(params.limit || 50);
     const startIndex = (page - 1) * limit;
     const paginated = filtered.slice(startIndex, startIndex + limit);
 
@@ -325,23 +374,32 @@ export async function handlePromoterApi(pathname, method, body, params) {
       const totalPending = earningsSum.filter(e => e.status === 'Pending').reduce((sum, e) => sum + e.royalty_amount, 0);
 
       return {
+        id: p.id,
         promoter_id: p.id,
         promoter_code: p.promoter_code,
+        code: p.promoter_code,
         full_name: p.full_name,
+        name: p.full_name,
         mobile_number: p.mobile_number,
         email: p.email,
         status: p.status,
         payment_status: p.payment_status,
         verification_status: p.verification_status,
         total_retailers_mapped: mappedCount,
+        retailersAdded: mappedCount,
         current_month_revenue: perf.total_revenue_generated,
+        revenue: perf.total_revenue_generated,
         total_royalty_earned: totalEarned,
         pending_royalty: totalPending,
+        assigned_employee_name: p.assigned_employee_name || null,
+        allocated_city_name: p.allocated_city_name || '',
+        allocated_state_name: p.allocated_state_name || '',
         created_at: p.created_at
       };
     });
 
     return jsonResponse({
+      success: true,
       data: enriched,
       pagination: {
         total: filtered.length,
@@ -527,6 +585,69 @@ export async function handlePromoterApi(pathname, method, body, params) {
       saveAll();
       return jsonResponse({ deleted: true });
     }
+  }
+
+  // Match /api/promoters/:id/trainees
+  const traineesMatch = pathname.match(/^\/api\/promoters\/([^/]+)\/trainees$/);
+  if (traineesMatch && method === 'GET') {
+    const pId = Number(traineesMatch[1]);
+    const mentor = promoters.find(p => p.id === pId || String(p.id) === String(traineesMatch[1]));
+    if (!mentor) {
+      return jsonResponse({ error: "Promoter not found" }, 404);
+    }
+    const trainees = promoters.filter(p => p.trained_by === pId || String(p.trained_by) === String(pId) || p.trained_by === mentor.promoter_code);
+    const trainerRoyaltyPct = mentor.training_royalty_percentage || 2.0;
+
+    return jsonResponse({
+      success: true,
+      trainer: {
+        id: mentor.id,
+        promoter_code: mentor.promoter_code,
+        full_name: mentor.full_name,
+        training_royalty_percentage: trainerRoyaltyPct,
+        total_training_royalty_earned: mentor.total_training_royalty_earned || 0
+      },
+      trainees: trainees.map(t => {
+        const rev = revenueTracking.filter(r => r.promoter_id === t.id).reduce((sum, r) => sum + r.invoice_amount, 0);
+        const earnedFromTrainee = (rev * trainerRoyaltyPct) / 100;
+        return {
+          id: t.id,
+          promoter_code: t.promoter_code,
+          full_name: t.full_name,
+          mobile_number: t.mobile_number,
+          email: t.email,
+          status: t.status,
+          total_revenue: rev,
+          trainer_royalty_earned: earnedFromTrainee,
+          created_at: t.created_at
+        };
+      })
+    });
+  }
+
+  // Match /api/promoters/:id/trainees/assign
+  const assignTraineeMatch = pathname.match(/^\/api\/promoters\/([^/]+)\/trainees\/assign$/);
+  if (assignTraineeMatch && method === 'POST') {
+    const pId = Number(assignTraineeMatch[1]);
+    const { trainee_id, royalty_percentage } = body;
+    const traineeIdx = promoters.findIndex(p => p.id === Number(trainee_id));
+    if (traineeIdx === -1) {
+      return jsonResponse({ error: "Trainee promoter not found" }, 404);
+    }
+    promoters[traineeIdx].trained_by = pId;
+    promoters[traineeIdx].trainer_name = promoters.find(p => p.id === pId)?.full_name || 'Assigned Trainer';
+    if (royalty_percentage) {
+      const mentorIdx = promoters.findIndex(p => p.id === pId);
+      if (mentorIdx !== -1) {
+        promoters[mentorIdx].training_royalty_percentage = Number(royalty_percentage);
+      }
+    }
+    saveAll();
+    return jsonResponse({
+      success: true,
+      message: "Trainee promoter assigned successfully.",
+      trainee: promoters[traineeIdx]
+    });
   }
 
   // Match /api/promoters/:id/verify

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Mail, Phone, MapPin, Calendar, ShoppingBag, IndianRupee, ArrowLeft, Eye, RefreshCw, X } from 'lucide-react';
+import { Users, Mail, Phone, MapPin, Calendar, ShoppingBag, IndianRupee, ArrowLeft, Eye, RefreshCw, X, Download, FileText, Store } from 'lucide-react';
 import { DataTable } from '../components/Common';
+import { generateRetailInvoicePdf } from '../utils/generateRetailInvoicePdf';
 
 // HUDDO-UPDATE: Customers — Brand new module for capturing retail end-consumers and logging full transactions
 export default function Customers({ showToast }) {
@@ -10,6 +11,7 @@ export default function Customers({ showToast }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [viewingCust, setViewingCust] = useState(null); // customer details view
   const [custHistory, setCustHistory] = useState([]);
+  const [retailSales, setRetailSales] = useState([]);
 
   // Fetch captured customers
   const fetchCustomers = async () => {
@@ -34,11 +36,13 @@ export default function Customers({ showToast }) {
   // Inspect customer detail
   const handleInspectCustomer = async (cust) => {
     try {
-      const res = await fetch(`/api/customers/${cust.id}`);
+      const idToFetch = cust.id || cust._id;
+      const res = await fetch(`/api/customers/${idToFetch}`);
       const data = await res.json();
       if (res.ok) {
-        setViewingCust(data.customer);
+        setViewingCust(data.customer || cust);
         setCustHistory(data.history || []);
+        setRetailSales(data.retailSales || []);
       } else {
         showToast(data.error || "Customer details not found", "error");
       }
@@ -161,10 +165,84 @@ export default function Customers({ showToast }) {
                 </div>
               </div>
 
-              {/* Transactions History */}
+              {/* Retail Counter Purchases (Westside Store Invoices) */}
               <div className="space-y-3">
-                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Consumer Transaction Billings</h4>
-                {custHistory.length > 0 ? (
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <Store className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Retail Store Counter Purchases ({retailSales.length})</span>
+                  </h4>
+                  <span className="text-[10px] text-slate-400 font-semibold">Point of Sale (POS) Bills</span>
+                </div>
+
+                {retailSales.length > 0 ? (
+                  <div className="border border-slate-200 rounded-xl overflow-x-auto">
+                    <table className="w-full text-left text-xs font-semibold text-slate-700">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
+                        <tr>
+                          <th className="px-3.5 py-2.5">Invoice #</th>
+                          <th className="px-3.5 py-2.5">Date</th>
+                          <th className="px-3.5 py-2.5">Store / Counter</th>
+                          <th className="px-3.5 py-2.5 text-center">Pairs</th>
+                          <th className="px-3.5 py-2.5 text-right">Grand Total</th>
+                          <th className="px-3.5 py-2.5 text-center">Mode</th>
+                          <th className="px-3.5 py-2.5 text-right">Tax Invoice</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {retailSales.map((sale, idx) => (
+                          <tr key={sale._id || sale.id || idx} className="hover:bg-slate-50/60 transition-colors">
+                            <td className="px-3.5 py-2.5 font-bold text-slate-900 font-mono text-[11px]">
+                              {sale.sale_number || `SALE-${idx + 1}`}
+                            </td>
+                            <td className="px-3.5 py-2.5 text-slate-500 text-[11px]">
+                              {sale.createdAt ? new Date(sale.createdAt).toLocaleDateString('en-IN') : 'Today'}
+                            </td>
+                            <td className="px-3.5 py-2.5 text-slate-700">
+                              <span className="truncate max-w-[130px] block">
+                                {sale.retailer?.business_name || sale.retailer_name || 'Retail Counter'}
+                              </span>
+                            </td>
+                            <td className="px-3.5 py-2.5 text-center font-bold text-slate-800">
+                              {sale.pairs_sold || (Array.isArray(sale.items) ? sale.items.reduce((s, i) => s + (Number(i.quantity) || 1), 0) : 1)}
+                            </td>
+                            <td className="px-3.5 py-2.5 text-right font-bold text-indigo-600">
+                              ₹{(Number(sale.grand_total) || 0).toLocaleString('en-IN')}
+                            </td>
+                            <td className="px-3.5 py-2.5 text-center">
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200 uppercase">
+                                {sale.payment_mode || 'Cash'}
+                              </span>
+                            </td>
+                            <td className="px-3.5 py-2.5 text-right">
+                              <button
+                                onClick={() => generateRetailInvoicePdf(sale, sale.retailer || {})}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-bold transition-all shadow-2xs"
+                                title="Download Westside PDF Bill"
+                              >
+                                <Download className="w-3 h-3" />
+                                <span>PDF Bill</span>
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="p-4 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl text-slate-400 text-xs font-semibold">
+                    <span>No store counter purchases recorded yet for this customer.</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Wholesale Invoices History (if applicable) */}
+              {custHistory.length > 0 && (
+                <div className="space-y-3 pt-2 border-t border-slate-100">
+                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Wholesale / Direct Invoices ({custHistory.length})</span>
+                  </h4>
                   <div className="border border-slate-200 rounded-xl overflow-x-auto">
                     <table className="w-full text-left text-xs font-semibold text-slate-700">
                       <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
@@ -193,13 +271,8 @@ export default function Customers({ showToast }) {
                       </tbody>
                     </table>
                   </div>
-                ) : (
-                  <div className="p-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl text-slate-400 text-xs font-semibold">
-                    <ShoppingBag className="w-8 h-8 mx-auto text-slate-300 mb-2" />
-                    <span>No purchase transaction history logged yet.</span>
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

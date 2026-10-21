@@ -70,6 +70,16 @@ export const getProfile = async (req, res, next) => {
         mobile: ''
       },
 
+      // Bank & Payout Details
+      bank_details: user.bank_details || employee?.bank_details || {
+        bank_name: '',
+        account_no: '',
+        ifsc_code: '',
+        account_holder: '',
+        branch_name: '',
+        upi_id: ''
+      },
+
       // Metadata
       employee_id: user.employee_id || employee?.employee_code || '',
       user_code: user.user_code || '',
@@ -104,7 +114,8 @@ export const updateProfile = async (req, res, next) => {
       country,
       pincode,
       emergency_contact,
-      date_of_birth
+      date_of_birth,
+      bank_details
     } = req.body;
 
     const user = await User.findById(userId);
@@ -120,6 +131,12 @@ export const updateProfile = async (req, res, next) => {
     if (marital_status !== undefined) user.marital_status = marital_status;
     if (pincode !== undefined) user.pincode = pincode;
     if (emergency_contact !== undefined) user.emergency_contact = emergency_contact;
+    if (bank_details !== undefined) {
+      user.bank_details = {
+        ...(user.bank_details || {}),
+        ...bank_details
+      };
+    }
     if (date_of_birth !== undefined) {
       user.date_of_birth = date_of_birth ? new Date(date_of_birth) : null;
     }
@@ -162,6 +179,12 @@ export const updateProfile = async (req, res, next) => {
     if (employee) {
       if (mobile) employee.mobile = mobile;
       if (address !== undefined) employee.residential_address = address;
+      if (bank_details !== undefined) {
+        employee.bank_details = {
+          ...(employee.bank_details || {}),
+          ...bank_details
+        };
+      }
       await employee.save();
     }
 

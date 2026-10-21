@@ -18,7 +18,6 @@ const productVariantSchema = new mongoose.Schema({
 
 productVariantSchema.plugin(softDeletePlugin);
 
-productVariantSchema.index({ sku_variant: 1 });
 productVariantSchema.index({ product: 1 });
 
 const ProductVariant = mongoose.model('ProductVariant', productVariantSchema);

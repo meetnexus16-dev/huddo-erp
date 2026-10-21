@@ -40,7 +40,19 @@ const retailSaleSchema = new mongoose.Schema({
   country_name: { type: String },
   note: { type: String },
   created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  pairs_sold: { type: Number, default: 0 }
+  pairs_sold: { type: Number, default: 0 },
+  customer_name: { type: String, default: 'Walk-in Customer' },
+  customer_mobile: { type: String },
+  customer_id: { type: String },
+  payment_mode: {
+    type: String,
+    enum: ['Cash', 'UPI', 'Card', 'NetBanking', 'Credit', 'Other'],
+    default: 'Cash'
+  },
+  tendered_amount: amountSchemaType,
+  change_due: amountSchemaType,
+  counter_number: { type: String, default: 'Counter 1' },
+  cashier_name: { type: String }
 }, { timestamps: true });
 
 retailSaleSchema.plugin(softDeletePlugin);
@@ -65,7 +77,6 @@ retailSaleSchema.index({ retailer: 1, createdAt: -1 });
 retailSaleSchema.index({ city: 1, createdAt: -1 });
 retailSaleSchema.index({ state: 1, createdAt: -1 });
 retailSaleSchema.index({ country: 1, createdAt: -1 });
-retailSaleSchema.index({ sale_number: 1 });
 retailSaleSchema.index({ 'items.product': 1 });
 
 const RetailSale = mongoose.model('RetailSale', retailSaleSchema);

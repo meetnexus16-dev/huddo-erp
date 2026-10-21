@@ -12,21 +12,29 @@ const promoterSchema = new mongoose.Schema({
   pan_number: { type: String },
   gst_number: { type: String },
   bank_details: {
-    account_no: { type: String },
-    ifsc: { type: String },
-    bank_name: { type: String }
+    bank_name: { type: String, trim: true },
+    account_no: { type: String, trim: true },
+    ifsc_code: { type: String, trim: true },
+    ifsc: { type: String, trim: true },
+    account_holder: { type: String, trim: true },
+    branch_name: { type: String, trim: true },
+    upi_id: { type: String, trim: true }
   },
   profile_photo: { type: String },
   territory: [{ type: mongoose.Schema.Types.ObjectId, ref: 'City' }],
   retailers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Retailer' }],
-  royalty_percentage: { type: Number, default: 0 }, // e.g. 5 for 5%
+  royalty_percentage: { type: Number, default: 5 }, // e.g. 5 for 5% self royalty
   total_royalty_earned: amountSchemaType,
+  // Mentorship / Training Hierarchy
+  trained_by: { type: mongoose.Schema.Types.ObjectId, ref: 'Promoter' },
+  training_royalty_percentage: { type: Number, default: 2.0 }, // e.g. 2% for trainer
+  total_training_royalty_earned: amountSchemaType,
+  assigned_employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
   is_active: { type: Boolean, default: true }
 }, { timestamps: true });
 
 promoterSchema.plugin(softDeletePlugin);
 
-promoterSchema.index({ promoter_code: 1 });
 promoterSchema.index({ name: 1 });
 
 const Promoter = mongoose.model('Promoter', promoterSchema);

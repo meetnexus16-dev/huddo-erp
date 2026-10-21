@@ -64,12 +64,25 @@ function authFetch(path, options = {}) {
   }).then((res) => res.json());
 }
 
-export default function NetworkWorkspace({ showToast, initialTab = 'referral', hideTabBar = false }) {
-  const [activeTab, setActiveTab] = useState(initialTab);
+export default function NetworkWorkspace({ showToast, initialTab = 'referral', hideTabBar = false, allowedTabs = null }) {
+  const visibleTabs = allowedTabs && allowedTabs.length > 0
+    ? TABS.filter((tab) => allowedTabs.includes(tab.id))
+    : TABS;
+
+  const [activeTab, setActiveTab] = useState(() => {
+    if (allowedTabs && allowedTabs.length > 0 && !allowedTabs.includes(initialTab)) {
+      return allowedTabs[0];
+    }
+    return initialTab;
+  });
 
   useEffect(() => {
-    setActiveTab(initialTab);
-  }, [initialTab]);
+    if (allowedTabs && allowedTabs.length > 0 && !allowedTabs.includes(initialTab)) {
+      setActiveTab(allowedTabs[0]);
+    } else {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab, allowedTabs]);
   const [users, setUsers] = useState([]);
   const [userCounts, setUserCounts] = useState({ total: 0, pending: 0, approved: 0 });
   const [referrals, setReferrals] = useState([]);
@@ -362,7 +375,7 @@ export default function NetworkWorkspace({ showToast, initialTab = 'referral', h
     <div className="space-y-6">
       {!hideTabBar && (
         <div className="flex flex-wrap gap-2">
-          {TABS.map((tab) => {
+          {visibleTabs.map((tab) => {
             const Icon = tab.icon;
             return (
               <button

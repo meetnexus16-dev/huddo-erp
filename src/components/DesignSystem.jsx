@@ -364,7 +364,7 @@ export function DashboardLayout({
               {isProfileOpen && (
                 <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-2 text-xs">
                   <div className="px-4 py-2 border-b border-slate-100 mb-1.5 bg-slate-50/50 rounded-t-xl">
-                    <span className="font-bold text-slate-800 block font-display">{profile?.name || 'Rohan Hudda'}</span>
+                    <span className="font-bold text-slate-800 block font-display">{profile?.name || userRole || 'User'}</span>
                     <span className="text-[10px] text-brand-orange font-bold block">{profile?.subtitle || `${userRole} Session`}</span>
                   </div>
 

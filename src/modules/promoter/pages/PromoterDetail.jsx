@@ -80,6 +80,13 @@ export default function PromoterDetail({ promoterId, onNavigate, showToast, user
   const [documentsList, setDocumentsList] = useState([]);
   const [notificationsList, setNotificationsList] = useState([]);
 
+  // Tab 9: Mentorship & Trainees State
+  const [traineesData, setTraineesData] = useState({ trainer: null, trainees: [] });
+  const [isAssignTraineeOpen, setIsAssignTraineeOpen] = useState(false);
+  const [selectedTraineeId, setSelectedTraineeId] = useState('');
+  const [trainingRoyaltyRate, setTrainingRoyaltyRate] = useState('2.0');
+  const [allPromotersRoster, setAllPromotersRoster] = useState([]);
+
   // Fetch Core Profile and Dashboard data
   const fetchData = async () => {
     setLoading(true);
@@ -213,6 +220,51 @@ export default function PromoterDetail({ promoterId, onNavigate, showToast, user
     }
   };
 
+  // Tab 9: Trainees & Mentorship Fetch
+  const fetchTrainees = async () => {
+    try {
+      const res = await fetch(`/api/promoters/${promoterId}/trainees`);
+      if (res.ok) {
+        const data = await res.json();
+        setTraineesData(data);
+      }
+      // Load available promoters list for modal
+      const listRes = await fetch('/api/promoters?limit=100');
+      if (listRes.ok) {
+        const listData = await listRes.json();
+        const roster = (listData.data || []).filter(p => Number(p.promoter_id || p.id) !== Number(promoterId));
+        setAllPromotersRoster(roster);
+      }
+    } catch (err) {
+      console.error("Error loading trainees:", err);
+    }
+  };
+
+  const handleAssignTrainee = async () => {
+    if (!selectedTraineeId) return;
+    try {
+      const res = await fetch(`/api/promoters/${promoterId}/trainees/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          trainee_id: selectedTraineeId,
+          royalty_percentage: Number(trainingRoyaltyRate)
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast("Trainee promoter assigned successfully with royalty percentage.", "success");
+        setIsAssignTraineeOpen(false);
+        setSelectedTraineeId('');
+        fetchTrainees();
+      } else {
+        showToast(data.error || "Failed to assign trainee.", "error");
+      }
+    } catch (err) {
+      showToast("Error assigning trainee promoter.", "error");
+    }
+  };
+
   // Trigger tab loads
   useEffect(() => {
     if (activeTab === 'Retailers') fetchRetailers();
@@ -222,6 +274,7 @@ export default function PromoterDetail({ promoterId, onNavigate, showToast, user
     else if (activeTab === 'Reports') fetchReports();
     else if (activeTab === 'Documents') fetchDocuments();
     else if (activeTab === 'Notifications') fetchNotifications();
+    else if (activeTab === 'Mentorship & Trainees') fetchTrainees();
   }, [activeTab, reportType]);
 
   // Operations handlers
@@ -564,7 +617,7 @@ export default function PromoterDetail({ promoterId, onNavigate, showToast, user
       {/* Tabs list (Only for Founder/Admin/etc role, not for the Promoter themselves) */}
       {userRole !== 'Promoter' && (
         <div className="flex border-b border-slate-200 overflow-x-auto whitespace-nowrap scrollbar-none">
-          {['Overview', 'Retailers', 'Revenue', 'Royalty', 'Performance', 'Reports', 'Documents', 'Notifications'].map(t => (
+          {['Overview', 'Retailers', 'Revenue', 'Royalty', 'Performance', 'Reports', 'Documents', 'Notifications', 'Mentorship & Trainees'].map(t => (
             <button
               key={t}
               onClick={() => setActiveTab(t)}
@@ -1289,7 +1342,214 @@ export default function PromoterDetail({ promoterId, onNavigate, showToast, user
         </div>
       )}
 
+      {/* TAB 9: MENTORSHIP & TRAINEES */}
+      {activeTab === 'Mentorship & Trainees' && (
+        <div className="space-y-6">
+          {/* Header Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Master Trainer / Mentor</span>
+              <span className="text-base font-extrabold text-slate-900 mt-2 block font-display">
+                {promoter.trainer_name || (promoter.trained_by ? `Trainer #${promoter.trained_by}` : 'None (Master Trainer)')}
+              </span>
+              <span className="text-[11px] text-slate-400 font-medium">Mentor hierarchy level</span>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Trainer Royalty Rate</span>
+              <span className="text-xl font-extrabold text-brand-orange mt-2 block font-display">
+                {traineesData.trainer?.training_royalty_percentage || promoter.training_royalty_percentage || 2.0}%
+              </span>
+              <span className="text-[11px] text-brand-orange/80 font-medium">Earned on all trainee sales</span>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Royalty from Trainees</span>
+              <span className="text-xl font-extrabold text-emerald-600 mt-2 block font-display">
+                ₹{(
+                  (traineesData.trainees || []).reduce((sum, t) => sum + (t.trainer_royalty_earned || 0), 0) ||
+                  (promoter.total_training_royalty_earned || 0)
+                ).toLocaleString('en-IN')}
+              </span>
+              <span className="text-[11px] text-emerald-700 font-medium">Passive mentorship royalty</span>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Assigned Staff Supervisor</span>
+              <span className="text-base font-extrabold text-indigo-700 mt-2 block font-display">
+                {promoter.assigned_employee_name || promoter.assigned_employee?.name || 'Amit Kumar'}
+              </span>
+              <span className="text-[11px] text-indigo-500 font-medium">Reporting staff executive</span>
+            </div>
+          </div>
+
+          {/* Promoters Bank Details Card */}
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-brand-orange" />
+                Promoter Registered Bank & Payout Account
+              </h3>
+              <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                Verified Account
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-xs font-semibold text-slate-700 pt-1">
+              <div>
+                <span className="text-slate-400 font-medium block">Bank Name</span>
+                <span className="font-bold text-slate-900 mt-0.5 block">{promoter.bank_name || 'HDFC Bank'}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 font-medium block">Account Number</span>
+                <span className="font-mono font-bold text-slate-900 mt-0.5 block">{promoter.bank_account_number || '1234567890'}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 font-medium block">IFSC Code</span>
+                <span className="font-mono font-bold text-slate-800 mt-0.5 block">{promoter.bank_ifsc || 'HDFC0000001'}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 font-medium block">Account Holder</span>
+                <span className="font-bold text-slate-800 mt-0.5 block">{promoter.bank_account_holder || promoter.full_name}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 font-medium block">Branch Name</span>
+                <span className="text-slate-700 mt-0.5 block">{promoter.bank_branch || 'Main Branch'}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 font-medium block">UPI ID</span>
+                <span className="font-mono text-slate-700 mt-0.5 block">{promoter.upi_id || `${promoter.full_name?.toLowerCase().replace(/\s+/g, '')}@upi`}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Trainees List Table */}
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                  <Award className="w-4 h-4 text-brand-orange" />
+                  Trainees Mentored by {promoter.full_name}
+                </h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Promoters trained by {promoter.full_name}. Whenever these trainees make a sale, this mentor earns a configured royalty payout.
+                </p>
+              </div>
+
+              {userRole !== 'Promoter' && (
+                <button
+                  onClick={() => setIsAssignTraineeOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-semibold rounded-lg shadow-sm transition-colors cursor-pointer self-start sm:self-auto"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Assign Trainee Promoter</span>
+                </button>
+              )}
+            </div>
+
+            <div className="border border-slate-200 rounded-lg overflow-x-auto">
+              <DataTable
+                columns={[
+                  { 
+                    header: "Trainee Promoter", 
+                    accessor: "full_name",
+                    render: (val, row) => (
+                      <div>
+                        <span className="font-bold text-slate-800 block">{val}</span>
+                        <span className="text-[10px] font-mono text-slate-400">{row.promoter_code}</span>
+                      </div>
+                    )
+                  },
+                  { header: "Mobile", accessor: "mobile_number" },
+                  { header: "Email", accessor: "email" },
+                  { 
+                    header: "Trainee Total Sales", 
+                    accessor: "total_revenue",
+                    render: (val) => <span className="font-bold text-slate-900">₹{(val || 0).toLocaleString('en-IN')}</span>
+                  },
+                  { 
+                    header: `Trainer Royalty (${traineesData.trainer?.training_royalty_percentage || promoter.training_royalty_percentage || 2}%)`, 
+                    accessor: "trainer_royalty_earned",
+                    render: (val) => <span className="font-extrabold text-emerald-600">₹{(val || 0).toLocaleString('en-IN')}</span>
+                  },
+                  {
+                    header: "Status",
+                    accessor: "status",
+                    render: (val) => (
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        val === 'Active' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                      }`}>
+                        {val || 'Active'}
+                      </span>
+                    )
+                  }
+                ]}
+                data={traineesData.trainees || []}
+              />
+            </div>
+
+            {(!traineesData.trainees || traineesData.trainees.length === 0) && (
+              <div className="text-center py-6 text-slate-400 text-xs font-semibold bg-slate-50 rounded-lg">
+                No trainees currently assigned under this promoter. Click "Assign Trainee Promoter" to add one.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* MODALS */}
+      {/* Assign Trainee Modal */}
+      <Modal 
+        isOpen={isAssignTraineeOpen} 
+        onClose={() => setIsAssignTraineeOpen(false)} 
+        title={`Assign Trainee to ${promoter.full_name}`} 
+        onConfirm={handleAssignTrainee} 
+        confirmText="Confirm Assignment"
+      >
+        <div className="space-y-4 text-xs font-semibold">
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-xs">
+            <span className="font-bold block">Mentorship Agreement:</span>
+            {promoter.full_name} will be designated as the trainer/mentor. For each product sold by this trainee, the mentor will receive the specified training royalty percentage.
+          </div>
+
+          <div className="flex flex-col">
+            <label className="text-[10px] uppercase font-bold text-slate-500 mb-1">Select Trainee Promoter *</label>
+            <select
+              value={selectedTraineeId}
+              onChange={(e) => setSelectedTraineeId(e.target.value)}
+              className="border border-slate-200 rounded-lg p-2.5 text-xs font-semibold text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
+            >
+              <option value="">-- Choose a promoter to train --</option>
+              {allPromotersRoster.map(p => (
+                <option key={p.promoter_id || p.id} value={p.promoter_id || p.id}>
+                  {p.full_name || p.name} ({p.promoter_code || `PRO-${p.id}`}) - {p.mobile_number}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col">
+            <label className="text-[10px] uppercase font-bold text-slate-500 mb-1">
+              Trainer Royalty Percentage on Trainee Sales (%) *
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                step="0.1"
+                min="0.5"
+                max="10.0"
+                value={trainingRoyaltyRate}
+                onChange={(e) => setTrainingRoyaltyRate(e.target.value)}
+                placeholder="2.0"
+                className="w-full border border-slate-200 rounded-lg p-2.5 pr-8 text-xs font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
+            </div>
+            <span className="text-[10px] text-slate-400 mt-1">Standard royalty is 2.0% per trainee product sale.</span>
+          </div>
+        </div>
+      </Modal>
+
       {/* Verify Modal */}
       <Modal isOpen={isVerifyOpen} onClose={() => setIsVerifyOpen(false)} title="Verify Promoter profile" onConfirm={handleVerifyPromoter} confirmText="Submit Action">
         <div className="space-y-4 text-xs font-semibold">

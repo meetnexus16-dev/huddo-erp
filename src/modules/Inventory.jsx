@@ -767,24 +767,6 @@ export default function Inventory({ showToast }) {
         >
           Low Stock Alerts ({lowStockItems.length})
         </button>
-        <button 
-          onClick={() => setActiveTab('transfer')}
-          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'transfer' ? 'border-brand-orange text-brand-orange' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-        >
-          Facility Stock Transfers ({transferHistory.length})
-        </button>
-        <button 
-          onClick={() => setActiveTab('warehouses')}
-          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'warehouses' ? 'border-brand-orange text-brand-orange' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-        >
-          Logistics Facilities ({whList.length})
-        </button>
-        <button 
-          onClick={() => setActiveTab('returns')}
-          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'returns' ? 'border-brand-orange text-brand-orange' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-        >
-          Stock Returns Queue ({returnHistory.length})
-        </button>
       </div>
 
       {/* Control bar */}

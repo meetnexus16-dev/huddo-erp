@@ -37,7 +37,6 @@ purchaseOrderSchema.pre('save', async function (next) {
   next();
 });
 
-purchaseOrderSchema.index({ po_number: 1 });
 purchaseOrderSchema.index({ vendor: 1 });
 
 const PurchaseOrder = mongoose.model('PurchaseOrder', purchaseOrderSchema);

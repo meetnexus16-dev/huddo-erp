@@ -19,13 +19,20 @@ const employeeSchema = new mongoose.Schema({
     basic: amountSchemaType,
     hra: amountSchemaType,
     allowances: amountSchemaType,
-    deductions: amountSchemaType
+    deductions: amountSchemaType,
+    incentive_pct: { type: Number, default: 5 },
+    incentive_earned: amountSchemaType,
+    promoter_override_pct: { type: Number, default: 1 }
   },
+  assigned_promoters: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Promoter' }],
   bank_details: {
-    account_no: { type: String },
-    ifsc: { type: String },
-    bank_name: { type: String },
-    account_holder: { type: String }
+    bank_name: { type: String, trim: true },
+    account_no: { type: String, trim: true },
+    ifsc_code: { type: String, trim: true },
+    ifsc: { type: String, trim: true },
+    account_holder: { type: String, trim: true },
+    branch_name: { type: String, trim: true },
+    upi_id: { type: String, trim: true }
   },
   documents: [{
     type: { type: String }, // e.g. Aadhaar, PAN, Resume
@@ -38,7 +45,6 @@ const employeeSchema = new mongoose.Schema({
 
 employeeSchema.plugin(softDeletePlugin);
 
-employeeSchema.index({ employee_code: 1 });
 employeeSchema.index({ full_name: 1 });
 
 const Employee = mongoose.model('Employee', employeeSchema);

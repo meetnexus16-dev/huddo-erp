@@ -9,6 +9,8 @@ import Employee from '../models/Employee.js';
 import Attendance from '../models/Attendance.js';
 import Target from '../models/Target.js';
 import CommissionRecord from '../models/CommissionRecord.js';
+import RetailSale from '../models/RetailSale.js';
+import Customer from '../models/Customer.js';
 
 // Helper to convert mongoose object ID
 const toObjectId = (id) => new mongoose.Types.ObjectId(id);
@@ -150,6 +152,28 @@ export const getFounderDashboard = async (req, res, next) => {
       revenue: item.revenue
     }));
 
+    // Retail Customers & Store POS Sales metrics
+    const totalRetailCustomers = await Customer.countDocuments({ is_deleted: { $ne: true } });
+    const recentCustomers = await Customer.find({ is_deleted: { $ne: true } })
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .limit(8);
+
+    const [retailSalesCount, retailSalesAgg, recentRetailSales] = await Promise.all([
+      RetailSale.countDocuments(),
+      RetailSale.aggregate([
+        { $group: { _id: null, totalRevenue: { $sum: '$grand_total' }, totalPairs: { $sum: '$pairs_sold' } } }
+      ]),
+      RetailSale.find()
+        .sort({ createdAt: -1 })
+        .limit(8)
+        .populate('retailer', 'business_name city state mobile shop_address')
+        .populate('items.product', 'name sku image hsn')
+        .populate('items.product_variant', 'size color sku_variant mrp selling_price')
+    ]);
+
+    const totalRetailRevenue = retailSalesAgg[0] ? retailSalesAgg[0].totalRevenue : 0;
+    const totalRetailPairs = retailSalesAgg[0] ? retailSalesAgg[0].totalPairs : 0;
+
     const isCeo = req.user && req.user.role && req.user.role.name === 'CEO';
 
     res.status(200).json({
@@ -163,7 +187,11 @@ export const getFounderDashboard = async (req, res, next) => {
           totalRetailers,
           totalPromoters,
           totalEmployees,
-          totalOutstanding: isCeo ? 0 : totalOutstanding
+          totalOutstanding: isCeo ? 0 : totalOutstanding,
+          totalRetailCustomers,
+          totalRetailSales: retailSalesCount,
+          totalRetailRevenue,
+          totalRetailPairs
         },
         statusBreakdown: statusBreakdown.map(item => ({
           name: item._id,
@@ -174,6 +202,37 @@ export const getFounderDashboard = async (req, res, next) => {
           id: o.order_number || o._id,
           amount: isCeo ? 0 : o.subtotal,
           status: o.status
+        })),
+        recentCustomers: recentCustomers.map(c => ({
+          id: c._id,
+          customer_name: c.customer_name,
+          mobile: c.mobile,
+          email: c.email || '—',
+          city: c.city || '—',
+          totalOrders: c.totalOrders || 0,
+          totalSpend: c.totalSpend || 0,
+          lastOrderDate: c.lastOrderDate || '—'
+        })),
+        recentRetailSales: recentRetailSales.map(s => ({
+          _id: s._id,
+          sale_number: s.sale_number,
+          createdAt: s.createdAt,
+          customer_name: s.customer_name,
+          customer_mobile: s.customer_mobile,
+          customer_id: s.customer_id,
+          retailer_name: s.retailer?.business_name || 'WalkEasy Retail Outlet',
+          retailer: s.retailer,
+          city_name: s.city_name || s.retailer?.city || '—',
+          pairs_sold: s.pairs_sold || (Array.isArray(s.items) ? s.items.reduce((acc, i) => acc + (Number(i.quantity) || 1), 0) : 0),
+          grand_total: s.grand_total,
+          subtotal: s.subtotal,
+          discount_amount: s.discount_amount,
+          payment_mode: s.payment_mode,
+          tendered_amount: s.tendered_amount,
+          change_due: s.change_due,
+          counter_number: s.counter_number,
+          cashier_name: s.cashier_name,
+          items: s.items
         })),
         monthlyRevenueTrends: isCeo ? [] : monthlyRevenueTrends,
         statePerformanceData: isCeo ? [] : statePerformanceData

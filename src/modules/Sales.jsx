@@ -9,9 +9,12 @@ export default function Sales({ showToast }) {
   const [orders, setOrders] = useState([]);
   const [retailers, setRetailers] = useState([]);
   const [employees, setEmployees] = useState([]);
-  const [cities, setCities] = useState([]);
+  const [countries, setCountries] = useState([]);
   const [states, setStates] = useState([]);
-  const [filterRegion, setFilterRegion] = useState('All');
+  const [cities, setCities] = useState([]);
+  const [selectedCountry, setSelectedCountry] = useState('All');
+  const [selectedState, setSelectedState] = useState('All');
+  const [selectedCity, setSelectedCity] = useState('All');
 
   const loadSalesData = () => {
     fetch('/api/orders')
@@ -53,14 +56,14 @@ export default function Sales({ showToast }) {
       })
       .catch(err => console.error("Error loading employees:", err));
 
-    fetch('/api/cities')
+    fetch('/api/countries')
       .then(res => res.json())
       .then(resData => {
         if (resData.success && Array.isArray(resData.data)) {
-          setCities(resData.data);
+          setCountries(resData.data);
         }
       })
-      .catch(err => console.error("Error loading cities:", err));
+      .catch(err => console.error("Error loading countries:", err));
 
     fetch('/api/states')
       .then(res => res.json())
@@ -70,22 +73,84 @@ export default function Sales({ showToast }) {
         }
       })
       .catch(err => console.error("Error loading states:", err));
+
+    fetch('/api/cities')
+      .then(res => res.json())
+      .then(resData => {
+        if (resData.success && Array.isArray(resData.data)) {
+          setCities(resData.data);
+        }
+      })
+      .catch(err => console.error("Error loading cities:", err));
   };
 
   useEffect(() => {
     loadSalesData();
   }, []);
 
-  // Filter orders
+  const handleCountryChange = (val) => {
+    setSelectedCountry(val);
+    setSelectedState('All');
+    setSelectedCity('All');
+  };
+
+  const handleStateChange = (val) => {
+    setSelectedState(val);
+    setSelectedCity('All');
+  };
+
+  const handleCityChange = (val) => {
+    setSelectedCity(val);
+  };
+
+  // Cascading state options
+  const filteredStates = states.filter((st) => {
+    if (selectedCountry === 'All') return true;
+    const countryName = st.country?.name || (typeof st.country === 'string' ? st.country : '');
+    const countryId = st.country?._id || st.country;
+    return countryName === selectedCountry || countryId === selectedCountry;
+  });
+
+  // Cascading city options
+  const filteredCities = cities.filter((ct) => {
+    const stateObj = states.find(s => s._id === (ct.state?._id || ct.state) || s.name === (ct.state?.name || ct.state));
+    const stateName = ct.state?.name || (typeof ct.state === 'string' ? ct.state : stateObj?.name || '');
+    const stateId = ct.state?._id || ct.state || stateObj?._id;
+    const countryName = stateObj?.country?.name || (typeof stateObj?.country === 'string' ? stateObj.country : '');
+
+    if (selectedCountry !== 'All' && countryName && countryName !== selectedCountry) {
+      return false;
+    }
+    if (selectedState !== 'All') {
+      return stateName === selectedState || stateId === selectedState;
+    }
+    return true;
+  });
+
+  // Filter orders by Country, State, and City
   const filteredOrders = orders.filter(ord => {
-    if (filterRegion === 'All') return true;
-    return ord.city === filterRegion;
+    const cityObj = cities.find(c => c.name === ord.city || c._id === ord.city);
+    const cityName = cityObj?.name || ord.city || '';
+    const stateObj = states.find(s => s._id === (cityObj?.state?._id || cityObj?.state) || s.name === (cityObj?.state?.name || cityObj?.state));
+    const stateName = cityObj?.state?.name || (typeof cityObj?.state === 'string' ? cityObj.state : stateObj?.name || '');
+    const countryName = stateObj?.country?.name || (typeof stateObj?.country === 'string' ? stateObj.country : 'India');
+
+    if (selectedCountry !== 'All' && countryName !== selectedCountry) return false;
+    if (selectedState !== 'All' && stateName !== selectedState) return false;
+    if (selectedCity !== 'All' && cityName !== selectedCity) return false;
+    return true;
   });
 
   const handleExportSales = () => {
     const filename = `huddo_sales_ledger_${Date.now()}.csv`;
-    const csvContent = "Order ID,Retailer Outlet,City Region,Order Date,Total Value,Payment Code\n" + 
-      filteredOrders.map(ord => `"${ord.id}","${ord.retailerName}","${ord.city}","${ord.date}",${ord.amount},"${ord.paymentStatus}"`).join("\n");
+    const csvContent = "Order ID,Retailer Outlet,Country,State,City Region,Order Date,Total Value,Payment Code\n" + 
+      filteredOrders.map(ord => {
+        const cityObj = cities.find(c => c.name === ord.city || c._id === ord.city);
+        const stateObj = states.find(s => s._id === (cityObj?.state?._id || cityObj?.state) || s.name === (cityObj?.state?.name || cityObj?.state));
+        const countryName = stateObj?.country?.name || (typeof stateObj?.country === 'string' ? stateObj.country : 'India');
+        const stateName = stateObj?.name || '';
+        return `"${ord.id}","${ord.retailerName}","${countryName}","${stateName}","${ord.city}","${ord.date}",${ord.amount},"${ord.paymentStatus}"`;
+      }).join("\n");
       
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -311,17 +376,45 @@ export default function Sales({ showToast }) {
 
       {/* Header and Filter Row */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-wrap gap-4 items-center justify-between text-left">
-        <div className="flex gap-4">
+        <div className="flex flex-wrap gap-3 items-center">
+          <div>
+            <label className="block text-[9px] uppercase font-bold text-slate-400 mb-0.5">Filter By Country</label>
+            <select 
+              value={selectedCountry}
+              onChange={(e) => handleCountryChange(e.target.value)}
+              className="text-xs border border-slate-200 rounded-lg p-2 bg-white font-medium"
+            >
+              <option value="All">All Countries</option>
+              {countries.map(c => (
+                <option key={c._id || c.id} value={c.name}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[9px] uppercase font-bold text-slate-400 mb-0.5">Filter By State</label>
+            <select 
+              value={selectedState}
+              onChange={(e) => handleStateChange(e.target.value)}
+              className="text-xs border border-slate-200 rounded-lg p-2 bg-white font-medium"
+            >
+              <option value="All">All States</option>
+              {filteredStates.map(s => (
+                <option key={s._id || s.id} value={s.name}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+
           <div>
             <label className="block text-[9px] uppercase font-bold text-slate-400 mb-0.5">Filter By City Hub</label>
             <select 
-              value={filterRegion}
-              onChange={(e) => setFilterRegion(e.target.value)}
-              className="text-xs border border-slate-200 rounded-lg p-2 bg-white"
+              value={selectedCity}
+              onChange={(e) => handleCityChange(e.target.value)}
+              className="text-xs border border-slate-200 rounded-lg p-2 bg-white font-medium"
             >
               <option value="All">All Cities</option>
-              {cities.map(c => (
-                <option key={c._id} value={c.name}>{c.name}</option>
+              {filteredCities.map(c => (
+                <option key={c._id || c.id} value={c.name}>{c.name}</option>
               ))}
             </select>
           </div>

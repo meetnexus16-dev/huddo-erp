@@ -23,6 +23,8 @@ const productSchema = new mongoose.Schema({
   retailerMargin: { type: Number, default: 20 },
   cityManagerIncentive: { type: Number, default: 2 },
   stateManagerIncentive: { type: Number, default: 1 },
+  employeeIncentive: { type: Number, default: 5 }, // Product sales incentive % for employee
+  trainerRoyalty: { type: Number, default: 2 }, // Training royalty % for trainer
   hsn_code: { type: String },
   franchise_points: { type: Number },
   colorConfigs: { type: mongoose.Schema.Types.Mixed }
@@ -31,7 +33,6 @@ const productSchema = new mongoose.Schema({
 productSchema.plugin(softDeletePlugin);
 
 productSchema.index({ name: 1 });
-productSchema.index({ sku: 1 });
 
 const Product = mongoose.model('Product', productSchema);
 export default Product;

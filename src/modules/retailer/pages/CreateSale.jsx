@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   ScanLine, Search, Plus, Trash2, Save, RefreshCw, Package,
-  Percent, ShoppingBag, History, Minus, CheckCircle2, Eye
+  Percent, ShoppingBag, History, Minus, CheckCircle2, Eye,
+  Download, Printer, User, Phone, CreditCard, Receipt, Check,
+  Share2, MessageSquare, Copy, Mail, MapPin
 } from 'lucide-react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { useRetailerAuth } from '../context/RetailerAuthContext';
 import CustomModal from '../components/CustomModal';
 import ProductImage from '../../../components/ProductImage';
+import { generateRetailInvoicePdf, printRetailInvoice, getWhatsAppShareText } from '../../../utils/generateRetailInvoicePdf';
 
 const COLOR_NAME_MAP = {
   '#EF4444': 'Red',
@@ -56,6 +59,24 @@ export default function CreateSale({ showToast }) {
   const lastScanRef = useRef({ code: '', at: 0 });
   const [lastSavedSale, setLastSavedSale] = useState(null);
   const [viewingSale, setViewingSale] = useState(null);
+
+  // Customer & Bill Details Modal
+  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
+  const [customerForm, setCustomerForm] = useState({
+    name: '',
+    mobile: '',
+    customer_id: '',
+    city: '',
+    email: '',
+    payment_mode: 'Cash',
+    tendered: '',
+    counter: 'Counter 4',
+    cashier: '100125'
+  });
+  const [existingCustomerNotice, setExistingCustomerNotice] = useState(null);
+  const [isLookingUpCustomer, setIsLookingUpCustomer] = useState(false);
+  const [invoiceSuccessModal, setInvoiceSuccessModal] = useState(null);
+  const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
 
   const loadStock = () => {
     setLoading(true);
@@ -286,17 +307,100 @@ export default function CreateSale({ showToast }) {
     };
   }, [cart, discountMode, billDiscountPercent]);
 
-  const handleSaveSale = async () => {
+  const handleOpenCustomerModal = () => {
     if (cart.length === 0) {
       showToast?.('Add at least one product before saving.', 'error');
       return;
     }
+    const storeCity = user?.city?.name || user?.city || 'Surat';
+    setExistingCustomerNotice(null);
+    setCustomerForm({
+      name: '',
+      mobile: '',
+      customer_id: '',
+      city: storeCity,
+      email: '',
+      payment_mode: 'Cash',
+      tendered: cartTotals.grand.toString(),
+      counter: 'Counter 4',
+      cashier: user?.name || user?.business_name || '100125'
+    });
+    setIsCustomerModalOpen(true);
+  };
+
+  const handleMobileLookup = async (mobileInput) => {
+    const clean = mobileInput.replace(/\D/g, '');
+    const autoId = clean.length >= 4 ? `CUST-${clean.slice(-4)}` : '';
+    setCustomerForm((f) => ({
+      ...f,
+      mobile: clean,
+      customer_id: f.customer_id && !f.customer_id.startsWith('CUST-') ? f.customer_id : autoId
+    }));
+
+    if (clean.length === 10) {
+      setIsLookingUpCustomer(true);
+      try {
+        const res = await fetch(`/api/retailer/customers/lookup?mobile=${clean}`);
+        const resData = await res.json();
+        if (resData.success && resData.data) {
+          const c = resData.data;
+          setCustomerForm((f) => ({
+            ...f,
+            name: c.customer_name || f.name,
+            email: c.email && c.email !== '—' && c.email !== 'N/A' ? c.email : f.email,
+            city: c.city || f.city,
+            customer_id: c.id || autoId
+          }));
+          setExistingCustomerNotice({
+            name: c.customer_name,
+            orders: c.totalOrders || 1,
+            spend: c.totalSpend || 0,
+            city: c.city
+          });
+          showToast?.(`Existing customer found: ${c.customer_name}`, 'info');
+        } else {
+          setExistingCustomerNotice(null);
+        }
+      } catch {
+        setExistingCustomerNotice(null);
+      } finally {
+        setIsLookingUpCustomer(false);
+      }
+    } else {
+      setExistingCustomerNotice(null);
+    }
+  };
+
+  const handleConfirmSale = async (e) => {
+    if (e) e.preventDefault();
+    if (!customerForm.name.trim()) {
+      showToast?.('Customer Name is required.', 'error');
+      return;
+    }
+    if (!customerForm.mobile.trim() || customerForm.mobile.trim().length < 10) {
+      showToast?.('Valid 10-digit Customer Mobile Number is required.', 'error');
+      return;
+    }
     setSubmitting(true);
     try {
+      const tenderedAmt = Number(customerForm.tendered) || cartTotals.grand;
+      const changeDueAmt = tenderedAmt > cartTotals.grand ? Math.round((tenderedAmt - cartTotals.grand) * 100) / 100 : 0;
+      const custIdFinal = customerForm.customer_id?.trim() || `CUST-${customerForm.mobile.trim().slice(-4)}`;
+
       const payload = {
         discount_mode: discountMode,
         bill_discount_percent: discountMode === 'bill' ? Number(billDiscountPercent) || 0 : 0,
         note,
+        customer_name: customerForm.name.trim(),
+        customer_mobile: customerForm.mobile.trim(),
+        customer_id: custIdFinal,
+        customer_email: customerForm.email?.trim() || '',
+        customer_city: customerForm.city?.trim() || '',
+        payment_mode: customerForm.payment_mode,
+        tendered_amount: tenderedAmt,
+        change_due: changeDueAmt,
+        counter_number: customerForm.counter || 'Counter 4',
+        cashier_name: customerForm.cashier || user?.name || user?.business_name || '100125',
         items: cart.map((item) => ({
           product_variant: item.variant.id,
           quantity: item.quantity,
@@ -312,12 +416,15 @@ export default function CreateSale({ showToast }) {
       if (!res.ok || !data.success) {
         throw new Error(data.message || 'Failed to save sale.');
       }
-      setLastSavedSale(data.data);
+      const savedSale = data.data;
+      setLastSavedSale(savedSale);
+      setInvoiceSuccessModal(savedSale);
+      setIsCustomerModalOpen(false);
       setCart([]);
       setBillDiscountPercent(0);
       setDiscountMode('none');
       setNote('');
-      showToast?.(`Sale ${data.data.sale_number} saved. Inventory updated.`, 'success');
+      showToast?.(`Sale ${savedSale.sale_number} recorded for ${savedSale.customer_name}.`, 'success');
       loadStock();
     } catch (err) {
       showToast?.(err.message || 'Failed to save sale.', 'error');
@@ -390,9 +497,10 @@ export default function CreateSale({ showToast }) {
                   <tr>
                     <th className="px-4 py-3">Sale #</th>
                     <th className="px-4 py-3">Date</th>
+                    <th className="px-4 py-3">Customer</th>
                     <th className="px-4 py-3 text-right">Pairs</th>
-                    <th className="px-4 py-3 text-right">Discount</th>
                     <th className="px-4 py-3 text-right">Total</th>
+                    <th className="px-4 py-3 text-center">Tax Invoice</th>
                     <th className="px-4 py-3 text-center">View</th>
                   </tr>
                 </thead>
@@ -403,9 +511,34 @@ export default function CreateSale({ showToast }) {
                       <td className="px-4 py-3 text-slate-600">
                         {sale.createdAt ? new Date(sale.createdAt).toLocaleString('en-IN') : '—'}
                       </td>
+                      <td className="px-4 py-3">
+                        <span className="font-bold text-slate-800 block">{sale.customer_name || 'Walk-in Customer'}</span>
+                        {sale.customer_mobile && (
+                          <span className="text-[10px] text-slate-400 font-mono block">{sale.customer_mobile}</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-right font-bold">{sale.pairs_sold || 0}</td>
-                      <td className="px-4 py-3 text-right text-slate-600">{formatINR(sale.discount_amount)}</td>
                       <td className="px-4 py-3 text-right font-extrabold text-brand-orange">{formatINR(sale.grand_total)}</td>
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => generateRetailInvoicePdf(sale, user)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-orange-50 text-brand-orange border border-orange-200 text-[10px] font-bold hover:bg-orange-100 transition-colors shadow-2xs"
+                            title="Download PDF Tax Invoice (Westside style)"
+                          >
+                            <Download className="w-3 h-3" /> PDF
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => printRetailInvoice(sale, user)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-slate-50 text-slate-700 border border-slate-200 text-[10px] font-bold hover:bg-slate-100 transition-colors"
+                            title="Print Invoice Slip"
+                          >
+                            <Printer className="w-3 h-3" /> Print
+                          </button>
+                        </div>
+                      </td>
                       <td className="px-4 py-3 text-center">
                         <button
                           type="button"
@@ -749,11 +882,11 @@ export default function CreateSale({ showToast }) {
                 <button
                   type="button"
                   disabled={submitting || cart.length === 0}
-                  onClick={handleSaveSale}
-                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-brand-orange text-white text-xs font-bold hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={handleOpenCustomerModal}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-brand-orange text-white text-xs font-bold hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed shadow-xs transition-colors"
                 >
-                  {submitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  {submitting ? 'Saving...' : 'Save Sale'}
+                  <Save className="w-4 h-4" />
+                  Save Sale & Generate Bill
                 </button>
               </div>
             </div>
@@ -762,13 +895,27 @@ export default function CreateSale({ showToast }) {
       )}
 
       {lastSavedSale && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-start gap-3">
-          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-          <div className="text-xs">
-            <p className="font-bold text-emerald-800">
-              Sale {lastSavedSale.sale_number} recorded · {lastSavedSale.pairs_sold} pairs · {formatINR(lastSavedSale.grand_total)}
-            </p>
-            <p className="text-emerald-700 mt-0.5">Your inventory has been reduced for the sold variants.</p>
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+            <div className="text-xs">
+              <p className="font-bold text-emerald-800">
+                Sale {lastSavedSale.sale_number} recorded · {lastSavedSale.pairs_sold} pairs · {formatINR(lastSavedSale.grand_total)}
+              </p>
+              <p className="text-emerald-700 mt-0.5">
+                Customer: {lastSavedSale.customer_name || 'Walk-in'} {lastSavedSale.customer_mobile ? `(${lastSavedSale.customer_mobile})` : ''} · Inventory updated.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => generateRetailInvoicePdf(lastSavedSale, user)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 shadow-2xs transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Download Bill
+            </button>
           </div>
         </div>
       )}
@@ -782,6 +929,40 @@ export default function CreateSale({ showToast }) {
       >
         {viewingSale && (
           <div className="space-y-4 text-xs">
+            {/* Customer & Billing Action Banner */}
+            <div className="bg-orange-50/80 border border-orange-200 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <span className="text-[10px] font-bold text-orange-600 uppercase tracking-wider block">Customer Details</span>
+                <p className="font-extrabold text-slate-800 text-sm">{viewingSale.customer_name || 'Walk-in Customer'}</p>
+                <p className="text-[11px] text-slate-500">
+                  {viewingSale.customer_mobile ? `📱 ${viewingSale.customer_mobile}` : 'No phone number'} · Mode:{' '}
+                  <span className="font-bold text-slate-700">{viewingSale.payment_mode || 'Cash'}</span>
+                  {viewingSale.tendered_amount ? ` · Tendered: ${formatINR(viewingSale.tendered_amount)}` : ''}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => generateRetailInvoicePdf(viewingSale, user)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand-orange text-white text-xs font-bold hover:bg-orange-600 shadow-2xs transition-colors"
+                  title="Download GST Footwear Tax Invoice (Westside style)"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Tax Invoice PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => printRetailInvoice(viewingSale, user)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 shadow-2xs transition-colors"
+                  title="Print Bill Slip"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  Print Bill
+                </button>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 border border-slate-100 rounded-xl p-3.5">
               <div>
                 <span className="text-[9px] font-bold text-slate-400 uppercase block">Date</span>
@@ -878,6 +1059,304 @@ export default function CreateSale({ showToast }) {
                 </table>
               </div>
             </div>
+          </div>
+        )}
+      </CustomModal>
+
+      {/* Customer Details Modal before saving sale */}
+      <CustomModal
+        isOpen={isCustomerModalOpen}
+        onClose={() => !submitting && setIsCustomerModalOpen(false)}
+        title="Customer & Tender Details"
+        subtitle="Enter customer details to generate the GST Tax Invoice"
+        size="md"
+        hideFooter
+      >
+        <form onSubmit={handleConfirmSale} className="space-y-4 text-xs">
+          <div className="bg-orange-50 border border-orange-200 rounded-xl p-3.5 flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold uppercase text-orange-600 block">Total Payable</span>
+              <span className="text-xl font-black text-slate-900">{formatINR(cartTotals.grand)}</span>
+            </div>
+            <div className="text-right">
+              <span className="text-[10px] font-bold uppercase text-orange-600 block">Quantity</span>
+              <span className="text-xs font-bold text-slate-700">{cartTotals.pairs} Pairs</span>
+            </div>
+          </div>
+
+          {existingCustomerNotice && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-start gap-2.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <div className="text-[11px] text-emerald-800">
+                <span className="font-extrabold">{existingCustomerNotice.name}</span> is a returning customer!
+                <div className="text-emerald-700 text-[10px]">
+                  {existingCustomerNotice.orders} past visits &middot; Lifetime spend: {formatINR(existingCustomerNotice.spend)}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-3">
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase block">
+                  Customer Mobile Number <span className="text-rose-500">*</span>
+                </label>
+                {isLookingUpCustomer && (
+                  <span className="text-[10px] text-brand-orange font-bold flex items-center gap-1">
+                    <RefreshCw className="w-3 h-3 animate-spin" /> Checking customer...
+                  </span>
+                )}
+              </div>
+              <div className="relative">
+                <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  required
+                  type="tel"
+                  maxLength={10}
+                  value={customerForm.mobile}
+                  onChange={(e) => handleMobileLookup(e.target.value)}
+                  placeholder="e.g. 7878765065"
+                  className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange/20 font-bold"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                  Customer Name <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    required
+                    type="text"
+                    value={customerForm.name}
+                    onChange={(e) => setCustomerForm((f) => ({ ...f, name: e.target.value }))}
+                    placeholder="e.g. Sanjay Devani"
+                    className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                  Customer ID / Loyalty No.
+                </label>
+                <input
+                  type="text"
+                  value={customerForm.customer_id}
+                  onChange={(e) => setCustomerForm((f) => ({ ...f, customer_id: e.target.value }))}
+                  placeholder="e.g. CUST-5065"
+                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange/20 font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                  City / Region
+                </label>
+                <div className="relative">
+                  <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    value={customerForm.city}
+                    onChange={(e) => setCustomerForm((f) => ({ ...f, city: e.target.value }))}
+                    placeholder="e.g. Surat"
+                    className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                  Email (Optional)
+                </label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="email"
+                    value={customerForm.email}
+                    onChange={(e) => setCustomerForm((f) => ({ ...f, email: e.target.value }))}
+                    placeholder="e.g. customer@example.com"
+                    className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-100">
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Payment Mode</label>
+                <select
+                  value={customerForm.payment_mode}
+                  onChange={(e) => setCustomerForm((f) => ({ ...f, payment_mode: e.target.value }))}
+                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange/20 font-medium"
+                >
+                  <option value="Cash">Cash</option>
+                  <option value="UPI">UPI / QR</option>
+                  <option value="Card">Debit / Credit Card</option>
+                  <option value="NetBanking">Net Banking</option>
+                  <option value="Credit">Store Credit / Khata</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Tendered Amount (₹)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={customerForm.tendered}
+                  onChange={(e) => setCustomerForm((f) => ({ ...f, tendered: e.target.value }))}
+                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-orange/20 font-bold"
+                />
+              </div>
+            </div>
+
+            {Number(customerForm.tendered) > cartTotals.grand && (
+              <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 text-xs">
+                <span className="font-bold text-emerald-800">Change Due to Customer:</span>
+                <span className="font-extrabold text-emerald-700 text-sm">
+                  {formatINR(Math.round((Number(customerForm.tendered) - cartTotals.grand) * 100) / 100)}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => setIsCustomerModalOpen(false)}
+              className="px-4 py-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || !customerForm.name.trim() || !customerForm.mobile.trim() || customerForm.mobile.trim().length < 10}
+              className="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-brand-orange text-white text-xs font-bold hover:bg-orange-600 disabled:opacity-50 shadow-xs"
+            >
+              {submitting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              {submitting ? 'Generating Sale...' : 'Save & Generate Bill'}
+            </button>
+          </div>
+        </form>
+      </CustomModal>
+
+      {/* Invoice Success & Download Modal */}
+      <CustomModal
+        isOpen={Boolean(invoiceSuccessModal)}
+        onClose={() => setInvoiceSuccessModal(null)}
+        title="Sale Completed & Tax Invoice Ready"
+        size="md"
+        hideFooter
+      >
+        {invoiceSuccessModal && (
+          <div className="space-y-4 text-center py-2">
+            <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-xs">
+              <CheckCircle2 className="w-8 h-8" />
+            </div>
+
+            <div>
+              <h3 className="text-base font-extrabold text-slate-900 font-display">Tax Invoice Ready</h3>
+              <p className="text-xs text-slate-500 font-mono mt-0.5">
+                Invoice #{invoiceSuccessModal.sale_number}
+              </p>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-left text-xs space-y-2">
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-semibold">Customer:</span>
+                <span className="font-bold text-slate-800">{invoiceSuccessModal.customer_name || 'Walk-in'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-semibold">Mobile:</span>
+                <span className="font-mono text-slate-700">{invoiceSuccessModal.customer_mobile || '—'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-semibold">Total Quantity:</span>
+                <span className="font-bold text-slate-800">{invoiceSuccessModal.pairs_sold || 0} Pairs</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-semibold">Payment Mode:</span>
+                <span className="font-bold text-slate-800">{invoiceSuccessModal.payment_mode || 'Cash'}</span>
+              </div>
+              <div className="flex justify-between pt-2 border-t border-slate-200 text-sm font-black">
+                <span className="text-slate-900">Total Amount:</span>
+                <span className="text-brand-orange">{formatINR(invoiceSuccessModal.grand_total)}</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => generateRetailInvoicePdf(invoiceSuccessModal, user)}
+                className="inline-flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-lg bg-brand-orange text-white text-xs font-bold hover:bg-orange-600 shadow-xs transition-colors"
+                title="Download Westside format Tax Invoice PDF"
+              >
+                <Download className="w-4 h-4" />
+                Download PDF Bill
+              </button>
+              <button
+                type="button"
+                onClick={() => printRetailInvoice(invoiceSuccessModal, user)}
+                className="inline-flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-lg bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 shadow-xs transition-colors"
+                title="Print Westside format Tax Invoice"
+              >
+                <Printer className="w-4 h-4" />
+                Print Bill
+              </button>
+            </div>
+
+            {/* WhatsApp Manual Share Option */}
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const text = getWhatsAppShareText(invoiceSuccessModal, user);
+                  const cleanPhone = String(invoiceSuccessModal.customer_mobile || '').replace(/\D/g, '');
+                  if (cleanPhone.length >= 10) {
+                    window.open(`https://api.whatsapp.com/send?phone=91${cleanPhone}&text=${encodeURIComponent(text)}`, '_blank');
+                  } else {
+                    navigator.clipboard?.writeText(text);
+                    showToast?.('Invoice text copied to clipboard for WhatsApp.', 'success');
+                  }
+                }}
+                className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors"
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                Share on WhatsApp
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const text = getWhatsAppShareText(invoiceSuccessModal, user);
+                  navigator.clipboard?.writeText(text);
+                  setCopiedWhatsApp(true);
+                  showToast?.('Invoice summary copied to clipboard!', 'success');
+                  setTimeout(() => setCopiedWhatsApp(false), 2000);
+                }}
+                className="inline-flex items-center gap-1 py-2 px-3 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold transition-colors"
+                title="Copy bill text"
+              >
+                {copiedWhatsApp ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedWhatsApp ? 'Copied' : 'Copy'}</span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setInvoiceSuccessModal(null)}
+              className="w-full py-2 text-xs text-slate-500 font-bold hover:text-slate-800"
+            >
+              Close & Continue Selling
+            </button>
           </div>
         )}
       </CustomModal>

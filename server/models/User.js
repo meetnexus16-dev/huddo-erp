@@ -73,6 +73,14 @@ const userSchema = new mongoose.Schema({
     category: { type: String },
     assigned_promoter: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     assigned_city_manager: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
+  },
+  bank_details: {
+    bank_name: { type: String, trim: true },
+    account_no: { type: String, trim: true },
+    ifsc_code: { type: String, trim: true },
+    account_holder: { type: String, trim: true },
+    branch_name: { type: String, trim: true },
+    upi_id: { type: String, trim: true }
   }
 }, { timestamps: true });
 
@@ -184,10 +192,7 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
 };
 
 // Indexes
-userSchema.index({ email: 1 });
 userSchema.index({ mobile: 1 });
-userSchema.index({ employee_id: 1 });
-userSchema.index({ user_code: 1 });
 userSchema.index({ status: 1 });
 
 const User = mongoose.model('User', userSchema);

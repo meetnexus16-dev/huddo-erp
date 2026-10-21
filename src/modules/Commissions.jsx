@@ -400,24 +400,11 @@ export default function Commissions({ showToast }) {
         >
           1. Category Commissions
         </button>
-        {/* TODO : commented page for now and in future uncomment it */}
-        {/* <button 
-          onClick={() => setActiveSubTab('employee')}
-          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${activeSubTab === 'employee' ? 'border-brand-orange text-brand-orange' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-        >
-          2. Employee Incentive Slabs
-        </button> */}
-        <button 
-          onClick={() => setActiveSubTab('referrer-bonus')}
-          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${activeSubTab === 'referrer-bonus' ? 'border-brand-orange text-brand-orange' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-        >
-          4. Referrer Fallback Rates
-        </button>
         <button 
           onClick={() => setActiveSubTab('payouts')}
           className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${activeSubTab === 'payouts' ? 'border-brand-orange text-brand-orange' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
         >
-          5. Commission Payouts
+          2. Commission Payouts
         </button>
       </div>
 
@@ -755,7 +742,7 @@ export default function Commissions({ showToast }) {
 
       {activeSubTab === 'payouts' && (
         <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs">
-          <NetworkWorkspace showToast={showToast} initialTab="payments" />
+          <NetworkWorkspace showToast={showToast} initialTab="payments" allowedTabs={['commissions', 'payments']} />
         </div>
       )}
 

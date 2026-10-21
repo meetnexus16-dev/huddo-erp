@@ -34,7 +34,15 @@ const retailerSchema = new mongoose.Schema({
     is_enabled: { type: Boolean, default: false }
   },
   is_verified: { type: Boolean, default: false },
-  is_active: { type: Boolean, default: true }
+  is_active: { type: Boolean, default: true },
+  bank_details: {
+    bank_name: { type: String, trim: true },
+    account_no: { type: String, trim: true },
+    ifsc_code: { type: String, trim: true },
+    account_holder: { type: String, trim: true },
+    branch_name: { type: String, trim: true },
+    upi_id: { type: String, trim: true }
+  }
 }, { timestamps: true });
 
 retailerSchema.plugin(softDeletePlugin);

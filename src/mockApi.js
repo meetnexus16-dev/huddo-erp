@@ -31,7 +31,15 @@ const getOrSetLocal = (key, defaultVal) => {
 let orders = getOrSetLocal('huddo_orders', initialOrders);
 let invoices = getOrSetLocal('huddo_invoices', initialInvoices);
 let employees = getOrSetLocal('huddo_employees', initialEmployees);
+if (employees.length > 0 && !employees[0].salary_structure) {
+  employees = initialEmployees;
+  localStorage.setItem('huddo_employees', JSON.stringify(employees));
+}
 let retailers = getOrSetLocal('huddo_retailers', initialRetailers);
+if (retailers.length > 0 && !retailers[0].bank_details) {
+  retailers = initialRetailers;
+  localStorage.setItem('huddo_retailers', JSON.stringify(retailers));
+}
 let inventory = getOrSetLocal('huddo_inventory', initialInventory);
 let departments = getOrSetLocal('huddo_departments', initialDepartmentsDetails);
 let returnLogs = getOrSetLocal('huddo_return_logs', []);
@@ -40,7 +48,50 @@ let pettyCash = getOrSetLocal('huddo_petty_cash', [
   { id: 2, date: "2026-06-10", description: "Client travel reimbursement", category: "Travel", type: "expense", amount: 1500.00, created_by: "Rohan Hudda", notes: "Pune client visit", receipt_url: null },
   { id: 3, date: "2026-06-09", description: "Inbound budget allocation", category: "Miscellaneous", type: "income", amount: 5000.00, created_by: "Rohan Hudda", notes: "Approved by Finance Dept", receipt_url: null }
 ]);
-let billingCustomerInfo = getOrSetLocal('huddo_billing_customer_info', []);
+let billingCustomerInfo = getOrSetLocal('huddo_billing_customer_info', [
+  { id: 'CUST-1001', customer_name: 'Sanjay Devani', mobile: '7878765065', email: 'sanjay.d@gmail.com', city: 'Surat', totalOrders: 3, totalSpend: 8490, lastOrderDate: '2026-10-18' },
+  { id: 'CUST-1002', customer_name: 'Priya Sharma', mobile: '9820011223', email: 'priya.s@yahoo.com', city: 'Mumbai', totalOrders: 2, totalSpend: 5400, lastOrderDate: '2026-10-19' },
+  { id: 'CUST-1003', customer_name: 'Amit Patel', mobile: '9876543210', email: 'amit.p@outlook.com', city: 'Ahmedabad', totalOrders: 1, totalSpend: 2999, lastOrderDate: '2026-10-20' }
+]);
+
+let mockRetailSales = getOrSetLocal('huddo_retail_sales', [
+  {
+    _id: 'RSALE-001',
+    sale_number: 'SALE-20261018-4012',
+    createdAt: '2026-10-18T17:31:17.000Z',
+    customer_name: 'Sanjay Devani',
+    customer_mobile: '7878765065',
+    customer_id: 'CUST-5065',
+    customer_email: 'sanjay.d@gmail.com',
+    customer_city: 'Surat',
+    retailer_name: 'Walk Easy Footwear · Adajan',
+    city_name: 'Surat',
+    state_name: 'Gujarat',
+    pairs_sold: 1,
+    subtotal: 999.00,
+    discount_amount: 0.00,
+    grand_total: 999.00,
+    payment_mode: 'Cash',
+    tendered_amount: 1000.00,
+    change_due: 1.00,
+    counter_number: '4',
+    cashier_name: '100125',
+    items: [
+      {
+        sku_variant: '301085190002',
+        product_name: 'Urban Glide Casual Sneaker',
+        size: '8',
+        color: 'Black',
+        quantity: 1,
+        unit_price: 999.00,
+        discount_percent: 0,
+        line_discount_amount: 0,
+        line_total: 999.00,
+        product: { name: 'Urban Glide Casual Sneaker', hsn: '64031900', category: { name: "Men's Casual" } }
+      }
+    ]
+  }
+]);
 
 // Communication Settings Mock State
 let mockSmtp = getOrSetLocal('huddo_communication_smtp', {
@@ -242,6 +293,38 @@ let mockTemplates = getOrSetLocal('huddo_communication_templates', [
     body: 'Hello {{user_name}},\n\n{{date}}: This is a custom notification sent from the administration panel.',
     variables: ['user_name', 'company_name', 'date']
   }
+]);
+
+let mockStateManagers = getOrSetLocal('huddo_state_managers', [
+  {
+    state_manager_id: "U3",
+    name: "Preeti Verma",
+    mobile: "9988776655",
+    email: "preeti@huddoerp.in",
+    assigned_state: "Delhi",
+    status: "Active",
+    joining_date: "2023-04-10",
+    performance: { revenue: 3200000, orders: 60, retailers: 10, target_pct: 80.0 }
+  },
+  {
+    state_manager_id: "U4-mgr",
+    name: "Anil Deshmukh",
+    mobile: "9560412211",
+    email: "anil@huddoerp.in",
+    assigned_state: "Maharashtra",
+    status: "Active",
+    joining_date: "2022-11-15",
+    performance: { revenue: 4500000, orders: 85, retailers: 15, target_pct: 90.0 }
+  }
+]);
+
+let mockCityManagers = getOrSetLocal('huddo_city_managers', [
+  { id: "CM001", name: "Arjun Patel", city: "Ahmedabad", state: "Gujarat", mobile: "+91 91234 56789", email: "arjun@huddoshoes.com", joiningDate: "2022-06-01", status: "Active", retailersCount: 42, monthlyTarget: 500000, achieved: 423000, ordersThisMonth: 87, target_pct: 84.6 },
+  { id: "CM002", name: "Priya Desai", city: "Surat", state: "Gujarat", mobile: "+91 93456 78901", email: "priya@huddoshoes.com", joiningDate: "2023-01-15", status: "Active", retailersCount: 35, monthlyTarget: 400000, achieved: 398000, ordersThisMonth: 74, target_pct: 99.5 },
+  { id: "CM003", name: "Karan Shah", city: "Vadodara", state: "Gujarat", mobile: "+91 94567 89012", email: "karan@huddoshoes.com", joiningDate: "2022-09-10", status: "Active", retailersCount: 28, monthlyTarget: 350000, achieved: 287000, ordersThisMonth: 61, target_pct: 82.0 },
+  { id: "CM004", name: "Neha Joshi", city: "Rajkot", state: "Gujarat", mobile: "+91 95678 90123", email: "neha@huddoshoes.com", joiningDate: "2023-05-20", status: "Active", retailersCount: 22, monthlyTarget: 280000, achieved: 265000, ordersThisMonth: 49, target_pct: 94.6 },
+  { id: "CM005", name: "Mihir Trivedi", city: "Morbi", state: "Gujarat", mobile: "+91 96789 01234", email: "mihir@huddoshoes.com", joiningDate: "2023-08-01", status: "Active", retailersCount: 18, monthlyTarget: 220000, achieved: 134000, ordersThisMonth: 33, target_pct: 60.9 },
+  { id: "CM006", name: "Swati Raval", city: "Bhavnagar", state: "Gujarat", mobile: "+91 97890 12345", email: "swati@huddoshoes.com", joiningDate: "2024-01-10", status: "Inactive", retailersCount: 14, monthlyTarget: 180000, achieved: 0, ordersThisMonth: 0, target_pct: 0.0 }
 ]);
 
 // Backup the original window.fetch
@@ -471,6 +554,139 @@ window.fetch = async function (input, init) {
     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
 
+  // POST /api/employees
+  if (pathname === '/api/employees' && method === 'POST') {
+    const newId = body.employee_code || `EMP${String(employees.length + 1).padStart(3, '0')}`;
+    const newEmp = {
+      id: newId,
+      name: body.full_name || body.name,
+      avatar: body.profile_photo || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
+      email: body.email,
+      mobile: body.mobile,
+      department: body.department || "Sales",
+      designation: body.designation || "Sales Executive",
+      manager: body.manager || body.reporting_manager || "Sanjay Joshi",
+      joiningDate: body.joining_date || new Date().toISOString().split('T')[0],
+      status: body.status || "Active",
+      personalInfo: {
+        address: body.residential_address || body.address || '',
+        aadhaar: body.aadhaar_number || body.aadhaar || '',
+        pan: body.pan_number || body.pan || ''
+      },
+      salary_structure: body.salary_structure || {
+        basic: Number(body.basic_salary || body.salary || 40000),
+        hra: Number(body.hra || 12000),
+        allowances: Number(body.allowances || 3000),
+        incentive_pct: Number(body.incentive_pct || 5.0),
+        incentive_earned: 0,
+        promoter_override_pct: Number(body.promoter_override_pct || 1.0)
+      },
+      assigned_promoters: body.assigned_promoters || [],
+      bank_details: body.bank_details || {
+        bank_name: body.bankName || '',
+        account_no: body.accountNo || '',
+        ifsc_code: body.ifsc || body.ifsc_code || '',
+        account_holder: body.account_holder || body.full_name || body.name || '',
+        branch_name: body.branch_name || '',
+        upi_id: body.upi_id || ''
+      },
+      performance: [ { month: "Current", target: 500000, achieved: 320000 } ],
+      history: [ { date: new Date().toISOString().split('T')[0], event: "Joined Huddo Shoes organizational roster." } ]
+    };
+
+    employees = [...employees, newEmp];
+    localStorage.setItem('huddo_employees', JSON.stringify(employees));
+
+    // Sync assigned promoters in promoters collection
+    try {
+      const storedPromoters = JSON.parse(localStorage.getItem('huddo_promoters') || '[]');
+      if (Array.isArray(storedPromoters) && storedPromoters.length > 0) {
+        const assignedSet = new Set(newEmp.assigned_promoters || []);
+        const updatedPromoters = storedPromoters.map(pr => {
+          if (assignedSet.has(pr.full_name) || assignedSet.has(pr.name)) {
+            return { ...pr, assigned_employee_name: newEmp.name };
+          }
+          return pr;
+        });
+        localStorage.setItem('huddo_promoters', JSON.stringify(updatedPromoters));
+      }
+    } catch (e) {
+      console.warn("Promoter sync error:", e);
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      message: "Employee registered successfully.",
+      data: newEmp
+    }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+  }
+
+  // PUT /api/employees/:id
+  const empUpdateMatch = pathname.match(/^\/api\/employees\/([^/]+)$/);
+  if (empUpdateMatch && method === 'PUT') {
+    const empId = empUpdateMatch[1];
+    const idx = employees.findIndex(e => e.id === empId || e._id === empId || e.employee_code === empId);
+    if (idx === -1) {
+      return new Response(JSON.stringify({ error: "Employee not found" }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    employees[idx] = {
+      ...employees[idx],
+      ...body,
+      personalInfo: {
+        ...(employees[idx].personalInfo || {}),
+        ...(body.personalInfo || {})
+      },
+      salary_structure: {
+        ...(employees[idx].salary_structure || {}),
+        ...(body.salary_structure || {})
+      },
+      bank_details: {
+        ...(employees[idx].bank_details || {}),
+        ...(body.bank_details || {})
+      }
+    };
+
+    localStorage.setItem('huddo_employees', JSON.stringify(employees));
+
+    // Sync assigned promoters in promoters collection
+    try {
+      const storedPromoters = JSON.parse(localStorage.getItem('huddo_promoters') || '[]');
+      if (Array.isArray(storedPromoters) && storedPromoters.length > 0) {
+        const assignedSet = new Set(employees[idx].assigned_promoters || []);
+        const empName = employees[idx].name;
+        const updatedPromoters = storedPromoters.map(pr => {
+          if (assignedSet.has(pr.full_name) || assignedSet.has(pr.name)) {
+            return { ...pr, assigned_employee_name: empName };
+          } else if (pr.assigned_employee_name === empName) {
+            return { ...pr, assigned_employee_name: null };
+          }
+          return pr;
+        });
+        localStorage.setItem('huddo_promoters', JSON.stringify(updatedPromoters));
+      }
+    } catch (e) {
+      console.warn("Promoter sync error:", e);
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      message: "Employee details updated successfully.",
+      data: employees[idx]
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+
+  // DELETE /api/employees/:id
+  if (empUpdateMatch && method === 'DELETE') {
+    const empId = empUpdateMatch[1];
+    employees = employees.filter(e => e.id !== empId && e._id !== empId && e.employee_code !== empId);
+    localStorage.setItem('huddo_employees', JSON.stringify(employees));
+    return new Response(JSON.stringify({
+      success: true,
+      message: "Employee removed from roster."
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+
   // 4. POST /api/inventory/qr-in
   if (pathname === '/api/inventory/qr-in' && method === 'POST') {
     const { product_id, quantity } = body;
@@ -654,9 +870,30 @@ window.fetch = async function (input, init) {
       return new Response(JSON.stringify({ error: "Customer not found" }), { status: 404, headers: { 'Content-Type': 'application/json' } });
     }
 
-    // Get order history from invoices/billing customer mappings
+    // Get order history from invoices/billing customer mappings and retail counter sales
     const history = invoices.filter(inv => inv.customer_mobile === customer.mobile);
-    return new Response(JSON.stringify({ customer, history }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    const retailSales = mockRetailSales.filter(s => s.customer_mobile === customer.mobile || s.customer_phone === customer.mobile);
+    return new Response(JSON.stringify({ customer, history, retailSales }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+
+  // 10A. GET /api/state-managers
+  if (pathname === '/api/state-managers' && method === 'GET') {
+    return new Response(JSON.stringify({ state_managers: mockStateManagers, total: mockStateManagers.length }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+
+  // 10B. POST /api/state-managers/review
+  if (pathname === '/api/state-managers/review' && method === 'POST') {
+    return new Response(JSON.stringify({ success: true, message: 'Performance review recorded' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+
+  // 10C. GET /api/city-managers
+  if (pathname === '/api/city-managers' && method === 'GET') {
+    return new Response(JSON.stringify({ city_managers: mockCityManagers, total: mockCityManagers.length }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+
+  // 10D. POST /api/city-managers/review
+  if (pathname === '/api/city-managers/review' && method === 'POST') {
+    return new Response(JSON.stringify({ success: true, message: 'Performance review recorded' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
 
   // 11. GET /api/petty-cash
@@ -826,6 +1063,208 @@ window.fetch = async function (input, init) {
     
     localStorage.setItem('huddo_billing_customer_info', JSON.stringify(billingCustomerInfo));
     return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+
+  // ==========================================
+  // RETAILER POS, CUSTOMERS & STORE SALES MOCK ENDPOINTS
+  // ==========================================
+  // 14A. GET /api/retailer/customers/lookup
+  if ((pathname === '/api/retailer/customers/lookup' || pathname === '/api/v1/retailer/customers/lookup') && method === 'GET') {
+    const rawMobile = String(params.mobile || '').replace(/\D/g, '').trim();
+    const found = billingCustomerInfo.find(c => c.mobile && c.mobile.endsWith(rawMobile));
+    return new Response(JSON.stringify({ success: true, data: found || null }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+
+  // 14B. GET /api/retailer/stock
+  if ((pathname === '/api/retailer/stock' || pathname === '/api/v1/retailer/stock') && method === 'GET') {
+    const stockItems = [
+      { product_id: 'P101', product_variant_id: 'PV101-8B', product_name: 'Urban Glide Casual Sneaker', sku_variant: '301085190002', category: "Men's Casual", size: '8', color: 'Black', selling_price: 999, mrp: 999, available_qty: 18, image: null },
+      { product_id: 'P101', product_variant_id: 'PV101-9B', product_name: 'Urban Glide Casual Sneaker', sku_variant: '301085190003', category: "Men's Casual", size: '9', color: 'Black', selling_price: 999, mrp: 999, available_qty: 12, image: null },
+      { product_id: 'P102', product_variant_id: 'PV102-7W', product_name: 'AeroFlex Running Shoes', sku_variant: '301085200001', category: 'Sports & Active', size: '7', color: 'White', selling_price: 1499, mrp: 1499, available_qty: 15, image: null },
+      { product_id: 'P102', product_variant_id: 'PV102-8W', product_name: 'AeroFlex Running Shoes', sku_variant: '301085200002', category: 'Sports & Active', size: '8', color: 'White', selling_price: 1499, mrp: 1499, available_qty: 20, image: null },
+      { product_id: 'P103', product_variant_id: 'PV103-6B', product_name: 'ComfortWalk Slip-On Loafers', sku_variant: '301085300001', category: 'Formal', size: '6', color: 'Brown', selling_price: 1299, mrp: 1299, available_qty: 8, image: null },
+      { product_id: 'P103', product_variant_id: 'PV103-7B', product_name: 'ComfortWalk Slip-On Loafers', sku_variant: '301085300002', category: 'Formal', size: '7', color: 'Brown', selling_price: 1299, mrp: 1299, available_qty: 14, image: null }
+    ];
+    return new Response(JSON.stringify({ success: true, data: stockItems }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+
+  // 14C. GET /api/retailer/sales
+  if ((pathname === '/api/retailer/sales' || pathname === '/api/v1/retailer/sales') && method === 'GET') {
+    return new Response(JSON.stringify({ success: true, data: mockRetailSales }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+
+  // 14D. POST /api/retailer/sales
+  if ((pathname === '/api/retailer/sales' || pathname === '/api/v1/retailer/sales') && method === 'POST') {
+    const rawItems = Array.isArray(body?.items) ? body.items : [];
+    const custName = String(body?.customer_name || 'Walk-in Customer').trim();
+    const custMobile = String(body?.customer_mobile || '').trim();
+    const custId = String(body?.customer_id || (custMobile ? `CUST-${custMobile.slice(-4)}` : 'WALKIN')).trim();
+    const custEmail = String(body?.customer_email || '').trim();
+    const custCity = String(body?.customer_city || 'Surat').trim();
+    const paymentMode = String(body?.payment_mode || 'Cash').trim();
+    const tenderedAmt = Number(body?.tendered_amount) || 0;
+    const changeDueAmt = Number(body?.change_due) || 0;
+    const counterNo = String(body?.counter_number || '4').trim();
+    const cashier = String(body?.cashier_name || '100125').trim();
+
+    const today = new Date();
+    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+    const randNum = Math.floor(1000 + Math.random() * 9000);
+    const saleNum = `SALE-${dateStr}-${randNum}`;
+
+    let subtotal = 0;
+    const processedItems = rawItems.map((item, idx) => {
+      const unitPrice = 999;
+      const qty = Number(item.quantity) || 1;
+      const lineTotal = unitPrice * qty;
+      subtotal += lineTotal;
+      return {
+        sku_variant: item.product_variant || `3010851${idx + 1000}`,
+        product_name: 'Huddo Comfort Footwear',
+        size: '8',
+        color: 'Black',
+        quantity: qty,
+        unit_price: unitPrice,
+        discount_percent: item.discount_percent || 0,
+        line_discount_amount: 0,
+        line_total: lineTotal,
+        product: { name: 'Huddo Comfort Footwear', hsn: '64031900', category: { name: "Footwear" } }
+      };
+    });
+
+    const discMode = body?.discount_mode || 'none';
+    const billDiscPercent = Number(body?.bill_discount_percent) || 0;
+    const discAmount = discMode === 'bill' ? Math.round(subtotal * (billDiscPercent / 100)) : 0;
+    const grandTotal = subtotal - discAmount;
+
+    const newSale = {
+      _id: `RSALE-${Date.now()}`,
+      sale_number: saleNum,
+      createdAt: new Date().toISOString(),
+      customer_name: custName,
+      customer_mobile: custMobile,
+      customer_id: custId,
+      customer_email: custEmail,
+      customer_city: custCity,
+      retailer_name: 'Walk Easy Footwear · Adajan',
+      retailer: {
+        business_name: 'Westside A Unit of Trent Ltd',
+        shop_address: 'W144 Imperial Square, Hazira Road Adajan Road Opposite Aalishan Enclave Adjan',
+        city: 'Surat',
+        state: 'Gujarat',
+        pincode: '395009',
+        gstin: '24AAACL1838J1ZM'
+      },
+      city_name: custCity,
+      state_name: 'Gujarat',
+      pairs_sold: processedItems.reduce((acc, i) => acc + i.quantity, 0),
+      subtotal,
+      discount_amount: discAmount,
+      grand_total: grandTotal,
+      payment_mode: paymentMode,
+      tendered_amount: tenderedAmt || grandTotal,
+      change_due: changeDueAmt,
+      counter_number: counterNo,
+      cashier_name: cashier,
+      items: processedItems
+    };
+
+    mockRetailSales = [newSale, ...mockRetailSales];
+    localStorage.setItem('huddo_retail_sales', JSON.stringify(mockRetailSales));
+
+    // Upsert customer in billingCustomerInfo
+    if (custMobile) {
+      const existingIdx = billingCustomerInfo.findIndex(c => c.mobile === custMobile);
+      if (existingIdx > -1) {
+        const exist = billingCustomerInfo[existingIdx];
+        billingCustomerInfo[existingIdx] = {
+          ...exist,
+          customer_name: custName,
+          email: custEmail || exist.email,
+          city: custCity || exist.city,
+          totalOrders: (exist.totalOrders || 0) + 1,
+          totalSpend: (exist.totalSpend || 0) + grandTotal,
+          lastOrderDate: new Date().toISOString().split('T')[0]
+        };
+      } else {
+        billingCustomerInfo.unshift({
+          id: custId,
+          customer_name: custName,
+          mobile: custMobile,
+          email: custEmail || '—',
+          city: custCity || 'Surat',
+          totalOrders: 1,
+          totalSpend: grandTotal,
+          lastOrderDate: new Date().toISOString().split('T')[0]
+        });
+      }
+      localStorage.setItem('huddo_billing_customer_info', JSON.stringify(billingCustomerInfo));
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      message: 'Sale recorded successfully. Inventory updated.',
+      data: newSale
+    }), { status: 201, headers: { 'Content-Type': 'application/json' } });
+  }
+
+  // 14E. GET /api/dashboard/founder
+  if ((pathname === '/api/dashboard/founder' || pathname === '/api/v1/dashboard/founder') && method === 'GET') {
+    const totalRev = orders.filter(o => ['delivered', 'shipped', 'approved'].includes((o.status || '').toLowerCase())).reduce((s, o) => s + (o.amount || 0), 0);
+    const totalRetSales = mockRetailSales.length;
+    const totalRetRev = mockRetailSales.reduce((s, r) => s + (r.grand_total || 0), 0);
+
+    return new Response(JSON.stringify({
+      success: true,
+      data: {
+        overall: {
+          totalRevenue: totalRev || 4500000,
+          totalOrders: orders.length || 142,
+          avgOrderValue: 31690,
+          totalRetailers: retailers.length || 28,
+          totalPromoters: 12,
+          totalEmployees: employees.length || 19,
+          totalOutstanding: 650000,
+          totalRetailCustomers: billingCustomerInfo.length,
+          totalRetailSales: totalRetSales,
+          totalRetailRevenue: totalRetRev,
+          totalRetailPairs: mockRetailSales.reduce((s, r) => s + (r.pairs_sold || 1), 0)
+        },
+        statusBreakdown: [
+          { name: 'Delivered', value: 58 },
+          { name: 'Shipped', value: 24 },
+          { name: 'Approved', value: 35 },
+          { name: 'Processing', value: 15 },
+          { name: 'Pending', value: 10 }
+        ],
+        topRetailers: retailers.slice(0, 5).map(r => ({
+          shopName: r.shopName,
+          city: r.city,
+          revenue: 350000,
+          orderCount: 8
+        })),
+        recentOrders: orders.slice(0, 5).map(o => ({
+          id: o.orderNumber || o.id,
+          amount: o.amount,
+          status: o.status
+        })),
+        recentCustomers: billingCustomerInfo.slice(0, 8),
+        recentRetailSales: mockRetailSales.slice(0, 8),
+        monthlyRevenueTrends: [
+          { month: 'Jun', revenue: 650000 },
+          { month: 'Jul', revenue: 780000 },
+          { month: 'Aug', revenue: 920000 },
+          { month: 'Sep', revenue: 1100000 },
+          { month: 'Oct', revenue: 1050000 }
+        ],
+        statePerformanceData: [
+          { state: 'Maharashtra', revenue: 1850000 },
+          { state: 'Gujarat', revenue: 1420000 },
+          { state: 'Karnataka', revenue: 890000 },
+          { state: 'Delhi NCR', revenue: 340000 }
+        ]
+      }
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
 
   // ==========================================

@@ -39,7 +39,6 @@ invoiceSchema.pre('save', async function (next) {
   next();
 });
 
-invoiceSchema.index({ invoice_number: 1 });
 invoiceSchema.index({ order: 1 });
 invoiceSchema.index({ retailer: 1 });
 

@@ -16,7 +16,7 @@ const notificationTemplateSchema = new mongoose.Schema({
 
 notificationTemplateSchema.plugin(softDeletePlugin);
 
-notificationTemplateSchema.index({ slug: 1 });
+
 
 const NotificationTemplate = mongoose.model('NotificationTemplate', notificationTemplateSchema);
 export default NotificationTemplate;

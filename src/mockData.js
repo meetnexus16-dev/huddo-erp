@@ -68,14 +68,14 @@ export const initialRolePermissions = STANDARD_ROLES.reduce((acc, role) => {
 
 // Initial list of Users inside the platform
 export const initialUsers = [
-  { id: "U1", name: "Rohan Hudda", email: "rohan@huddoerp.in", mobile: "9876543210", role: "Founder", department: "Executive", status: "Active" },
-  { id: "U2", name: "Rajesh Sharma", email: "rajesh@huddoerp.in", mobile: "9812345678", role: "Country Manager", department: "Sales", status: "Active" },
-  { id: "U3", name: "Preeti Verma", email: "preeti@huddoerp.in", mobile: "9988776655", role: "State Manager", department: "Sales", status: "Active" },
-  { id: "U4", name: "Sanjay Joshi", email: "sanjay@huddoerp.in", mobile: "9560412345", role: "City Manager", department: "Sales", status: "Active" },
-  { id: "U5", name: "Vikram Malhotra", email: "vikram@huddoerp.in", mobile: "9123456789", role: "Finance Manager", department: "Finance", status: "Active" },
-  { id: "U6", name: "Neha Sen", email: "neha@huddoerp.in", mobile: "9001122334", role: "HR Manager", department: "HR", status: "Active" },
-  { id: "U7", name: "Sunil Mehta", email: "sunil@huddoerp.in", mobile: "9777888999", role: "Inventory Manager", department: "Inventory", status: "Active" },
-  { id: "U8", name: "Arjun Dev", email: "arjun@huddoerp.in", mobile: "8889990001", role: "Sales Executive", department: "Sales", status: "Active" },
+  { id: "U1", name: "Rohan Hudda", email: "rohan@huddoerp.in", mobile: "9876543210", role: "Founder", department: "Executive", status: "Active", bank_details: { bank_name: "HDFC Bank", account_no: "50200012345678", ifsc_code: "HDFC0000001", account_holder: "Rohan Hudda", branch_name: "Fort Mumbai", upi_id: "rohan@okhdfcbank" } },
+  { id: "U2", name: "Rajesh Sharma", email: "rajesh@huddoerp.in", mobile: "9812345678", role: "Country Manager", department: "Sales", status: "Active", bank_details: { bank_name: "ICICI Bank", account_no: "001105001234", ifsc_code: "ICIC0000011", account_holder: "Rajesh Sharma", branch_name: "Connaught Place Delhi", upi_id: "rajesh@okicici" } },
+  { id: "U3", name: "Preeti Verma", email: "preeti@huddoerp.in", mobile: "9988776655", role: "State Manager", department: "Sales", status: "Active", bank_details: { bank_name: "Axis Bank", account_no: "912010012345678", ifsc_code: "UTIB0000025", account_holder: "Preeti Verma", branch_name: "Bandra West Mumbai", upi_id: "preeti@okaxis" } },
+  { id: "U4", name: "Sanjay Joshi", email: "sanjay@huddoerp.in", mobile: "9560412345", role: "City Manager", department: "Sales", status: "Active", bank_details: { bank_name: "Kotak Mahindra Bank", account_no: "2311456789", ifsc_code: "KKBK0000456", account_holder: "Sanjay Joshi", branch_name: "Andheri East Mumbai", upi_id: "sanjay@kotak" } },
+  { id: "U5", name: "Vikram Malhotra", email: "vikram@huddoerp.in", mobile: "9123456789", role: "Finance Manager", department: "Finance", status: "Active", bank_details: { bank_name: "State Bank of India", account_no: "30501234567", ifsc_code: "SBIN0000300", account_holder: "Vikram Malhotra", branch_name: "Nariman Point Mumbai", upi_id: "vikram@sbi" } },
+  { id: "U6", name: "Neha Sen", email: "neha@huddoerp.in", mobile: "9001122334", role: "HR Manager", department: "HR", status: "Active", bank_details: { bank_name: "HDFC Bank", account_no: "50100499887766", ifsc_code: "HDFC0000045", account_holder: "Neha Sen", branch_name: "Indiranagar Bengaluru", upi_id: "neha@okhdfcbank" } },
+  { id: "U7", name: "Sunil Mehta", email: "sunil@huddoerp.in", mobile: "9777888999", role: "Inventory Manager", department: "Inventory", status: "Active", bank_details: { bank_name: "Punjab National Bank", account_no: "0123002100045678", ifsc_code: "PUNB0012300", account_holder: "Sunil Mehta", branch_name: "Navrangpura Ahmedabad", upi_id: "sunil@pnb" } },
+  { id: "U8", name: "Arjun Dev", email: "arjun@huddoerp.in", mobile: "8889990001", role: "Sales Executive", department: "Sales", status: "Active", bank_details: { bank_name: "Yes Bank", account_no: "002581234567890", ifsc_code: "YESB0000025", account_holder: "Arjun Dev", branch_name: "Koramangala Bengaluru", upi_id: "arjun@yesbank" } },
 ];
 
 // Employee Details
@@ -92,8 +92,24 @@ export const initialEmployees = [
     joiningDate: "2024-01-15",
     status: "Active",
     personalInfo: { address: "Flat 402, Sector 15, Vashi, Navi Mumbai", aadhaar: "4567-8912-3456", pan: "ABCDE1234F" },
-    jobInfo: { salary: "₹45,000 / month" },
-    bankInfo: { bankName: "HDFC Bank", accountNo: "50100412345678", ifsc: "HDFC0000020" },
+    salary_structure: {
+      basic: 45000,
+      hra: 15000,
+      allowances: 5000,
+      incentive_pct: 5.0, // 5% incentive on product sales
+      incentive_earned: 14500,
+      promoter_override_pct: 1.0 // 1% override on assigned promoter network sales
+    },
+    assigned_promoters: ["Suresh Raina", "Harbhajan Singh"],
+    assigned_promoter_ids: [1, 2],
+    bank_details: {
+      bank_name: "HDFC Bank",
+      account_no: "50100412345678",
+      ifsc_code: "HDFC0000020",
+      account_holder: "Amit Kumar",
+      branch_name: "Vashi Sector 15 Navi Mumbai",
+      upi_id: "amit@okhdfcbank"
+    },
     performance: [ { month: "Jan", target: 500000, achieved: 480000 }, { month: "Feb", target: 500000, achieved: 520000 }, { month: "Mar", target: 550000, achieved: 580000 } ],
     history: [ { date: "2024-01-15", event: "Joined Huddo Shoes as Sales Trainee" }, { date: "2025-01-15", event: "Promoted to Sales Executive" } ]
   },
@@ -109,8 +125,24 @@ export const initialEmployees = [
     joiningDate: "2023-06-10",
     status: "Active",
     personalInfo: { address: "A-50, Prestige Park, Bengaluru", aadhaar: "9876-5432-1098", pan: "WXYZ9876A" },
-    jobInfo: { salary: "₹55,000 / month" },
-    bankInfo: { bankName: "ICICI Bank", accountNo: "000401567890", ifsc: "ICIC0000004" },
+    salary_structure: {
+      basic: 55000,
+      hra: 18000,
+      allowances: 7000,
+      incentive_pct: 3.0,
+      incentive_earned: 8200,
+      promoter_override_pct: 0.5
+    },
+    assigned_promoters: [],
+    assigned_promoter_ids: [],
+    bank_details: {
+      bank_name: "ICICI Bank",
+      account_no: "000401567890",
+      ifsc_code: "ICIC0000004",
+      account_holder: "Sunita Rao",
+      branch_name: "MG Road Bengaluru",
+      upi_id: "sunita@okicici"
+    },
     performance: [ { month: "Jan", target: 100, achieved: 100 }, { month: "Feb", target: 100, achieved: 100 }, { month: "Mar", target: 100, achieved: 100 } ],
     history: [ { date: "2023-06-10", event: "Joined Huddo Shoes as Finance Analyst" } ]
   },
@@ -126,8 +158,24 @@ export const initialEmployees = [
     joiningDate: "2022-09-01",
     status: "Active",
     personalInfo: { address: "12, GIDC Estate, Ahmedabad", aadhaar: "1122-3344-5566", pan: "JKLM4321B" },
-    jobInfo: { salary: "₹38,000 / month" },
-    bankInfo: { bankName: "State Bank of India", accountNo: "30234567890", ifsc: "SBIN0001822" },
+    salary_structure: {
+      basic: 38000,
+      hra: 12000,
+      allowances: 4000,
+      incentive_pct: 4.0,
+      incentive_earned: 9400,
+      promoter_override_pct: 0.8
+    },
+    assigned_promoters: ["Gautam Gambhir"],
+    assigned_promoter_ids: [3],
+    bank_details: {
+      bank_name: "State Bank of India",
+      account_no: "30234567890",
+      ifsc_code: "SBIN0001822",
+      account_holder: "Karan Johar",
+      branch_name: "GIDC Vatva Ahmedabad",
+      upi_id: "karan@sbi"
+    },
     performance: [ { month: "Jan", target: 1000, achieved: 950 }, { month: "Feb", target: 1000, achieved: 1020 }, { month: "Mar", target: 1200, achieved: 1180 } ],
     history: [ { date: "2022-09-01", event: "Joined Huddo Shoes as Inventory Supervisor" } ]
   }
@@ -143,27 +191,238 @@ export const initialTeams = [
 
 // Promoters Management
 export const initialPromoters = [
-  { id: "PR01", name: "Suresh Raina", code: "HUDDOPR01", mobile: "9820129034", cities: ["Mumbai", "Pune"], retailersAdded: 8, revenue: 1540000, royaltyEarned: 77000, royaltyPending: 15400, royaltySettled: 61600, status: "Active" },
-  { id: "PR02", name: "Harbhajan Singh", code: "HUDDOPR02", mobile: "9910456723", cities: ["New Delhi"], retailersAdded: 5, revenue: 1280000, royaltyEarned: 64000, royaltyPending: 24000, royaltySettled: 40000, status: "Active" },
-  { id: "PR03", name: "Gautam Gambhir", code: "HUDDOPR03", mobile: "9560901234", cities: ["Ahmedabad"], retailersAdded: 6, revenue: 890000, royaltyEarned: 44500, royaltyPending: 4500, royaltySettled: 40000, status: "Inactive" }
+  {
+    id: "PR01",
+    numeric_id: 1,
+    name: "Suresh Raina",
+    code: "HUDDOPR01",
+    mobile: "9820129034",
+    email: "suresh@raina.com",
+    cities: ["Mumbai", "Pune"],
+    retailersAdded: 8,
+    revenue: 1540000,
+    royaltyEarned: 77000,
+    royaltyPending: 15400,
+    royaltySettled: 61600,
+    status: "Active",
+    trained_by: null,
+    trainer_name: "None (Master Trainer)",
+    training_royalty_percentage: 2.0, // Earns 2% royalty on sales of promoters he trained
+    total_training_royalty_earned: 24500,
+    assigned_employee: "Amit Kumar",
+    bank_details: {
+      bank_name: "HDFC Bank",
+      account_no: "1234567890",
+      ifsc_code: "HDFC0000001",
+      account_holder: "Suresh Raina",
+      branch_name: "Bandra West Mumbai",
+      upi_id: "suresh@okhdfcbank"
+    }
+  },
+  {
+    id: "PR02",
+    numeric_id: 2,
+    name: "Harbhajan Singh",
+    code: "HUDDOPR02",
+    mobile: "9910456723",
+    email: "harbhajan@singh.com",
+    cities: ["New Delhi"],
+    retailersAdded: 5,
+    revenue: 1280000,
+    royaltyEarned: 64000,
+    royaltyPending: 24000,
+    royaltySettled: 40000,
+    status: "Active",
+    trained_by: "PR01",
+    trainer_name: "Suresh Raina (PR01)",
+    training_royalty_percentage: 2.0,
+    total_training_royalty_earned: 11200,
+    assigned_employee: "Amit Kumar",
+    bank_details: {
+      bank_name: "Punjab National Bank",
+      account_no: "9876543210",
+      ifsc_code: "PUNB0000002",
+      account_holder: "Harbhajan Singh",
+      branch_name: "Model Town Jalandhar",
+      upi_id: "harbhajan@pnb"
+    }
+  },
+  {
+    id: "PR03",
+    numeric_id: 3,
+    name: "Gautam Gambhir",
+    code: "HUDDOPR03",
+    mobile: "9560901234",
+    email: "gautam@gambhir.com",
+    cities: ["Ahmedabad"],
+    retailersAdded: 6,
+    revenue: 890000,
+    royaltyEarned: 44500,
+    royaltyPending: 4500,
+    royaltySettled: 40000,
+    status: "Inactive",
+    trained_by: "PR01",
+    trainer_name: "Suresh Raina (PR01)",
+    training_royalty_percentage: 2.0,
+    total_training_royalty_earned: 0,
+    assigned_employee: "Karan Johar",
+    bank_details: {
+      bank_name: "State Bank of India",
+      account_no: "4567890123",
+      ifsc_code: "SBIN0000003",
+      account_holder: "Gautam Gambhir",
+      branch_name: "Old Rajinder Nagar New Delhi",
+      upi_id: "gautam@sbi"
+    }
+  }
 ];
 
 // Product wise Promoter Royalty configuration %
 export const initialRoyaltyConfig = [
-  { productId: "P1", name: "Huddo Air Classic", category: "Sports Shoes", size: "6-11", royaltyPercent: 5.0 },
-  { productId: "P2", name: "Huddo Flex Runner", category: "Sports Shoes", size: "7-12", royaltyPercent: 4.5 },
-  { productId: "P3", name: "Huddo Elegant Derby", category: "Formal Shoes", size: "5-10", royaltyPercent: 6.0 },
-  { productId: "P4", name: "Huddo Leather Loafer", category: "Casual Shoes", size: "6-11", royaltyPercent: 5.5 },
-  { productId: "P5", name: "Huddo Comfort Slide", category: "Sandals", size: "6-12", royaltyPercent: 3.5 },
+  { productId: "P1", name: "Huddo Air Classic", category: "Sports Shoes", size: "6-11", royaltyPercent: 5.0, employeeIncentive: 5.0, trainerRoyalty: 2.0 },
+  { productId: "P2", name: "Huddo Flex Runner", category: "Sports Shoes", size: "7-12", royaltyPercent: 4.5, employeeIncentive: 4.5, trainerRoyalty: 2.0 },
+  { productId: "P3", name: "Huddo Elegant Derby", category: "Formal Shoes", size: "5-10", royaltyPercent: 6.0, employeeIncentive: 6.0, trainerRoyalty: 2.5 },
+  { productId: "P4", name: "Huddo Leather Loafer", category: "Casual Shoes", size: "6-11", royaltyPercent: 5.5, employeeIncentive: 5.5, trainerRoyalty: 2.0 },
+  { productId: "P5", name: "Huddo Comfort Slide", category: "Sandals", size: "6-12", royaltyPercent: 3.5, employeeIncentive: 3.5, trainerRoyalty: 1.5 },
 ];
 
 // Retailers Management
 export const initialRetailers = [
-  { id: "RET001", shopName: "Walk Easy Footwear", owner: "Dinesh Shah", email: "dinesh@walkeasy.in", mobile: "9821012345", address: "Linking Road, Bandra West", state: "Maharashtra", city: "Mumbai", category: "Platinum", promoter: "Suresh Raina", cityManager: "Sanjay Joshi", ordersCount: 14, revenue: 1850000, status: "Approved", gstNo: "27AAAAA1111A1Z1", panNo: "AAAAA1111A", aadhaarNo: "1234-5678-9012" },
-  { id: "RET002", shopName: "Lakhani Shoe Emporium", owner: "Vijay Lakhani", email: "vijay@lakhani.com", mobile: "9930412345", address: "Karol Bagh, Metro Pillar 110", state: "Delhi", city: "New Delhi", category: "Platinum", promoter: "Harbhajan Singh", cityManager: "Amit Bansal", ordersCount: 19, revenue: 2150000, status: "Approved", gstNo: "07BBBBB2222B2Z2", panNo: "BBBBB2222B", aadhaarNo: "2345-6789-0123" },
-  { id: "RET003", shopName: "Metro Steps", owner: "Suresh Gowda", email: "gowda@metrosteps.co.in", mobile: "9560412323", address: "Indiranagar 100ft Rd", state: "Karnataka", city: "Bengaluru", category: "Gold", promoter: "None", cityManager: "Nikhil Gowda", ordersCount: 8, revenue: 980000, status: "Approved", gstNo: "29CCCCC3333C3Z3", panNo: "CCCCC3333C", aadhaarNo: "3456-7890-1234" },
-  { id: "RET004", shopName: "Rajkot Footwear Mart", owner: "Kirit Bhai", email: "kirit@rajkotfoot.com", mobile: "9001122556", address: "Kalavad Road", state: "Gujarat", city: "Ahmedabad", category: "Silver", promoter: "Gautam Gambhir", cityManager: "Harsh Shah", ordersCount: 5, revenue: 450000, status: "Approved", gstNo: "24DDDDD4444D4Z4", panNo: "DDDDD4444D", aadhaarNo: "4567-8901-2345" },
-  { id: "RET005", shopName: "Apex Sole Distributors", owner: "Manish Joshi", email: "manish@apexsole.com", mobile: "9810101010", address: "FC Road", state: "Maharashtra", city: "Pune", category: "Standard", promoter: "Suresh Raina", cityManager: "Rahul Shinde", ordersCount: 2, revenue: 150000, status: "Pending Verification", gstNo: "27EEEEE5555E5Z5", panNo: "EEEEE5555E", aadhaarNo: "5678-9012-3456" }
+  {
+    id: "RET001",
+    shopName: "Walk Easy Footwear",
+    owner: "Dinesh Shah",
+    email: "dinesh@walkeasy.in",
+    mobile: "9821012345",
+    address: "Linking Road, Bandra West",
+    state: "Maharashtra",
+    city: "Mumbai",
+    category: "Platinum",
+    promoter: "Suresh Raina",
+    cityManager: "Sanjay Joshi",
+    ordersCount: 14,
+    revenue: 1850000,
+    status: "Approved",
+    gstNo: "27AAAAA1111A1Z1",
+    panNo: "AAAAA1111A",
+    aadhaarNo: "1234-5678-9012",
+    bank_details: {
+      bank_name: "HDFC Bank",
+      account_no: "50200055443322",
+      ifsc_code: "HDFC0000240",
+      account_holder: "Walk Easy Footwear",
+      branch_name: "Bandra West",
+      upi_id: "walkeasy@okhdfcbank"
+    }
+  },
+  {
+    id: "RET002",
+    shopName: "Lakhani Shoe Emporium",
+    owner: "Vijay Lakhani",
+    email: "vijay@lakhani.com",
+    mobile: "9930412345",
+    address: "Karol Bagh, Metro Pillar 110",
+    state: "Delhi",
+    city: "New Delhi",
+    category: "Platinum",
+    promoter: "Harbhajan Singh",
+    cityManager: "Amit Bansal",
+    ordersCount: 19,
+    revenue: 2150000,
+    status: "Approved",
+    gstNo: "07BBBBB2222B2Z2",
+    panNo: "BBBBB2222B",
+    aadhaarNo: "2345-6789-0123",
+    bank_details: {
+      bank_name: "Punjab National Bank",
+      account_no: "0145002100088997",
+      ifsc_code: "PUNB0014500",
+      account_holder: "Lakhani Shoe Emporium",
+      branch_name: "Karol Bagh New Delhi",
+      upi_id: "lakhani@pnb"
+    }
+  },
+  {
+    id: "RET003",
+    shopName: "Metro Steps",
+    owner: "Suresh Gowda",
+    email: "gowda@metrosteps.co.in",
+    mobile: "9560412323",
+    address: "Indiranagar 100ft Rd",
+    state: "Karnataka",
+    city: "Bengaluru",
+    category: "Gold",
+    promoter: "None",
+    cityManager: "Nikhil Gowda",
+    ordersCount: 8,
+    revenue: 980000,
+    status: "Approved",
+    gstNo: "29CCCCC3333C3Z3",
+    panNo: "CCCCC3333C",
+    aadhaarNo: "3456-7890-1234",
+    bank_details: {
+      bank_name: "Canara Bank",
+      account_no: "0412101009876",
+      ifsc_code: "CNRB0000412",
+      account_holder: "Metro Steps",
+      branch_name: "Indiranagar Bengaluru",
+      upi_id: "metrosteps@canara"
+    }
+  },
+  {
+    id: "RET004",
+    shopName: "Rajkot Footwear Mart",
+    owner: "Kirit Bhai",
+    email: "kirit@rajkotfoot.com",
+    mobile: "9001122556",
+    address: "Kalavad Road",
+    state: "Gujarat",
+    city: "Ahmedabad",
+    category: "Silver",
+    promoter: "Gautam Gambhir",
+    cityManager: "Harsh Shah",
+    ordersCount: 5,
+    revenue: 450000,
+    status: "Approved",
+    gstNo: "24DDDDD4444D4Z4",
+    panNo: "DDDDD4444D",
+    aadhaarNo: "4567-8901-2345",
+    bank_details: {
+      bank_name: "Bank of Baroda",
+      account_no: "28450100012345",
+      ifsc_code: "BARB0KALAVA",
+      account_holder: "Rajkot Footwear Mart",
+      branch_name: "Kalavad Road Rajkot",
+      upi_id: "rajkotfoot@barodampay"
+    }
+  },
+  {
+    id: "RET005",
+    shopName: "Apex Sole Distributors",
+    owner: "Manish Joshi",
+    email: "manish@apexsole.com",
+    mobile: "9810101010",
+    address: "FC Road",
+    state: "Maharashtra",
+    city: "Pune",
+    category: "Standard",
+    promoter: "Suresh Raina",
+    cityManager: "Rahul Shinde",
+    ordersCount: 2,
+    revenue: 150000,
+    status: "Pending Verification",
+    gstNo: "27EEEEE5555E5Z5",
+    panNo: "EEEEE5555E",
+    aadhaarNo: "5678-9012-3456",
+    bank_details: {
+      bank_name: "Axis Bank",
+      account_no: "919010055443322",
+      ifsc_code: "UTIB0000192",
+      account_holder: "Apex Sole Distributors",
+      branch_name: "FC Road Pune",
+      upi_id: "apexsole@axis"
+    }
+  }
 ];
 
 // Product Catalogue

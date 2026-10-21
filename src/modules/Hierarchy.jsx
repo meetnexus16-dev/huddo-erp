@@ -4,11 +4,14 @@ import { DataTable, Modal, DefaultPasswordNotice } from '../components/Common';
 import GeoCascadeSelect from '../components/GeoCascadeSelect';
 import { confirmGeoCreation, fetchGeoCreationPreview } from '../utils/geoPreview';
 import { useConfirm } from '../context/ConfirmContext';
+import { useAuth } from '../context/AuthContext';
 import { getUserCreatedMessage } from '../constants/defaultCredentials';
 
 export default function Hierarchy({ showToast, userRole }) {
+  const { user } = useAuth();
   const { confirm } = useConfirm();
   const [activeTab, setActiveTab] = useState('tree'); // tree | countries | states | cities
+  const [founderManager, setFounderManager] = useState(user?.name || 'Founder');
   const [countries, setCountries] = useState([]);
   const [states, setStates] = useState([]);
   const [cities, setCities] = useState([]);
@@ -197,7 +200,19 @@ export default function Hierarchy({ showToast, userRole }) {
     } else {
       setCeoManager("Not Assigned");
     }
-  }, [employees, users, ceoCandidates]);
+
+    // Dynamic Founder resolution
+    const founderUser = users.find(u => 
+      u.role?.name === 'Founder' || 
+      u.roleName === 'Founder' ||
+      (typeof u.role === 'string' && u.role === 'Founder')
+    );
+    if (founderUser?.name) {
+      setFounderManager(founderUser.name);
+    } else if (user?.name) {
+      setFounderManager(user.name);
+    }
+  }, [employees, users, ceoCandidates, user]);
 
   useEffect(() => {
     // Fetch state revenues
@@ -960,7 +975,7 @@ export default function Hierarchy({ showToast, userRole }) {
                     <TreeNodeCard
                       level="founder"
                       badge="Founder"
-                      title="Rohan Hudda"
+                      title={founderManager}
                       meta={['Owner side controls active']}
                     />
                     <ul>

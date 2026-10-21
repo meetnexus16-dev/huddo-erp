@@ -105,6 +105,7 @@ export default function UserRoleManagement({ showToast }) {
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [newUserData, setNewUserData] = useState({
     name: '', email: '', mobile: '', role: 'Team Member', department: 'Sales', status: 'Active',
+    bank_name: '', account_no: '', ifsc_code: '', account_holder: '', branch_name: '', upi_id: '',
     ...emptyGeo()
   });
 
@@ -112,6 +113,7 @@ export default function UserRoleManagement({ showToast }) {
   const [isEditUserOpen, setIsEditUserOpen] = useState(false);
   const [editUserData, setEditUserData] = useState({
     id: '', name: '', email: '', mobile: '', role: 'Team Member', department: 'Sales', status: 'Active',
+    bank_name: '', account_no: '', ifsc_code: '', account_holder: '', branch_name: '', upi_id: '',
     ...emptyGeo()
   });
   const [editLoading, setEditLoading] = useState(false);
@@ -209,7 +211,15 @@ export default function UserRoleManagement({ showToast }) {
         departmentName: newUserData.department,
         password: DEFAULT_USER_PASSWORD,
         is_active: newUserData.status === 'Active',
-        status: newUserData.status
+        status: newUserData.status,
+        bank_details: {
+          bank_name: newUserData.bank_name || '',
+          account_no: newUserData.account_no || '',
+          ifsc_code: newUserData.ifsc_code || '',
+          account_holder: newUserData.account_holder || newUserData.name,
+          branch_name: newUserData.branch_name || '',
+          upi_id: newUserData.upi_id || ''
+        }
       }, newUserData);
 
       const res = await fetch('/api/users', {
@@ -227,6 +237,7 @@ export default function UserRoleManagement({ showToast }) {
       setIsAddUserOpen(false);
       setNewUserData({
         name: '', email: '', mobile: '', role: 'Team Member', department: 'Sales', status: 'Active',
+        bank_name: '', account_no: '', ifsc_code: '', account_holder: '', branch_name: '', upi_id: '',
         ...emptyGeo()
       });
       showToast(resData.message || 'User created successfully.', 'success');
@@ -237,6 +248,7 @@ export default function UserRoleManagement({ showToast }) {
   };
 
   const openEditUser = (user) => {
+    const rawBank = user.raw?.bank_details || user.bank_details || {};
     setEditUserData({
       id: user.id,
       name: user.name,
@@ -248,7 +260,13 @@ export default function UserRoleManagement({ showToast }) {
       country_name: user.countryName || '',
       state_name: user.stateName || '',
       city_name: user.cityName || '',
-      country_iso: ''
+      country_iso: '',
+      bank_name: rawBank.bank_name || '',
+      account_no: rawBank.account_no || '',
+      ifsc_code: rawBank.ifsc_code || rawBank.ifsc || '',
+      account_holder: rawBank.account_holder || user.name || '',
+      branch_name: rawBank.branch_name || '',
+      upi_id: rawBank.upi_id || ''
     });
     setIsEditUserOpen(true);
   };
@@ -276,7 +294,15 @@ export default function UserRoleManagement({ showToast }) {
         roleName: editUserData.role,
         departmentName: editUserData.department,
         status: editUserData.status,
-        is_active: editUserData.status === 'Active'
+        is_active: editUserData.status === 'Active',
+        bank_details: {
+          bank_name: editUserData.bank_name || '',
+          account_no: editUserData.account_no || '',
+          ifsc_code: editUserData.ifsc_code || '',
+          account_holder: editUserData.account_holder || editUserData.name,
+          branch_name: editUserData.branch_name || '',
+          upi_id: editUserData.upi_id || ''
+        }
       }, editUserData);
 
       const res = await fetch(`/api/users/${editUserData.id}`, {
@@ -615,6 +641,56 @@ export default function UserRoleManagement({ showToast }) {
             </div>
           </div>
           {renderGeoFields(newUserData, setNewUserData)}
+
+          {/* Bank & Payout Details */}
+          <div className="border-t border-slate-100 pt-3 space-y-3">
+            <span className="text-xs font-bold text-slate-500 uppercase block">Bank & Payout Details (Optional)</span>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Bank Name</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. HDFC Bank" 
+                  value={newUserData.bank_name} 
+                  onChange={(e) => setNewUserData({...newUserData, bank_name: e.target.value})} 
+                  className="w-full text-xs border border-slate-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Account Number</label>
+                <input 
+                  type="text" 
+                  placeholder="50100412345678" 
+                  value={newUserData.account_no} 
+                  onChange={(e) => setNewUserData({...newUserData, account_no: e.target.value})} 
+                  className="w-full text-xs border border-slate-200 rounded-lg p-2 font-mono focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">IFSC Code</label>
+                <input 
+                  type="text" 
+                  placeholder="HDFC0000020" 
+                  value={newUserData.ifsc_code} 
+                  onChange={(e) => setNewUserData({...newUserData, ifsc_code: e.target.value.toUpperCase()})} 
+                  className="w-full text-xs border border-slate-200 rounded-lg p-2 font-mono uppercase focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">UPI ID</label>
+                <input 
+                  type="text" 
+                  placeholder="name@okhdfcbank" 
+                  value={newUserData.upi_id} 
+                  onChange={(e) => setNewUserData({...newUserData, upi_id: e.target.value})} 
+                  className="w-full text-xs border border-slate-200 rounded-lg p-2 font-mono focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
+                />
+              </div>
+            </div>
+          </div>
+
           <DefaultPasswordNotice />
           <div className="flex items-center justify-between border-t border-slate-100 pt-3">
             <span className="text-sm font-semibold text-slate-700">Account Access Status</span>
@@ -700,6 +776,55 @@ export default function UserRoleManagement({ showToast }) {
             </div>
           </div>
           {renderGeoFields(editUserData, setEditUserData)}
+
+          {/* Bank & Payout Details */}
+          <div className="border-t border-slate-100 pt-3 space-y-3">
+            <span className="text-xs font-bold text-slate-500 uppercase block">Bank & Payout Details (Optional)</span>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Bank Name</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. HDFC Bank" 
+                  value={editUserData.bank_name} 
+                  onChange={(e) => setEditUserData({...editUserData, bank_name: e.target.value})} 
+                  className="w-full text-xs border border-slate-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Account Number</label>
+                <input 
+                  type="text" 
+                  placeholder="50100412345678" 
+                  value={editUserData.account_no} 
+                  onChange={(e) => setEditUserData({...editUserData, account_no: e.target.value})} 
+                  className="w-full text-xs border border-slate-200 rounded-lg p-2 font-mono focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">IFSC Code</label>
+                <input 
+                  type="text" 
+                  placeholder="HDFC0000020" 
+                  value={editUserData.ifsc_code} 
+                  onChange={(e) => setEditUserData({...editUserData, ifsc_code: e.target.value.toUpperCase()})} 
+                  className="w-full text-xs border border-slate-200 rounded-lg p-2 font-mono uppercase focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">UPI ID</label>
+                <input 
+                  type="text" 
+                  placeholder="name@okhdfcbank" 
+                  value={editUserData.upi_id} 
+                  onChange={(e) => setEditUserData({...editUserData, upi_id: e.target.value})} 
+                  className="w-full text-xs border border-slate-200 rounded-lg p-2 font-mono focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
+                />
+              </div>
+            </div>
+          </div>
           <div className="flex items-center justify-between border-t border-slate-100 pt-3">
             <span className="text-sm font-semibold text-slate-700">Account Access Status</span>
             <button
