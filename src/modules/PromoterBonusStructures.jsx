@@ -18,7 +18,7 @@ export default function PromoterBonusStructures({ showToast }) {
   const [form, setForm] = useState({
     promoted_role: 'Retailer',
     product_category: '',
-    extra_bonus_percentage: 0,
+    extra_bonus_percentage: '',
     description: ''
   });
   const [editingId, setEditingId] = useState(null);
@@ -37,7 +37,7 @@ export default function PromoterBonusStructures({ showToast }) {
 
   const openCreate = () => {
     setEditingId(null);
-    setForm({ promoted_role: 'Retailer', product_category: '', extra_bonus_percentage: 0, description: '' });
+    setForm({ promoted_role: 'Retailer', product_category: '', extra_bonus_percentage: '', description: '' });
     setModalOpen(true);
   };
 
@@ -46,7 +46,7 @@ export default function PromoterBonusStructures({ showToast }) {
     setForm({
       promoted_role: row.promoted_role,
       product_category: row.product_category?._id || '',
-      extra_bonus_percentage: row.extra_bonus_percentage || 0,
+      extra_bonus_percentage: row.extra_bonus_percentage ?? '',
       description: row.description || ''
     });
     setModalOpen(true);
@@ -60,7 +60,7 @@ export default function PromoterBonusStructures({ showToast }) {
         id: editingId,
         promoted_role: form.promoted_role,
         product_category: form.product_category || null,
-        extra_bonus_percentage: Number(form.extra_bonus_percentage),
+        extra_bonus_percentage: form.extra_bonus_percentage === '' ? 0 : Number(form.extra_bonus_percentage),
         description: form.description
       })
     });
@@ -138,7 +138,7 @@ export default function PromoterBonusStructures({ showToast }) {
           </div>
           <div>
             <label className="text-sm font-semibold text-slate-700">Referrer Commission % (global fallback)</label>
-            <input type="number" min="0" step="0.1" value={form.extra_bonus_percentage} onChange={(e) => setForm({ ...form, extra_bonus_percentage: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
+            <input type="number" min="0" step="0.1" placeholder="0.0" value={form.extra_bonus_percentage ?? ''} onChange={(e) => setForm({ ...form, extra_bonus_percentage: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
           </div>
           <div>
             <label className="text-sm font-semibold text-slate-700">Description</label>

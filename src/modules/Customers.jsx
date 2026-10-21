@@ -218,7 +218,7 @@ export default function Customers({ showToast }) {
                               <button
                                 onClick={() => generateRetailInvoicePdf(sale, sale.retailer || {})}
                                 className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-bold transition-all shadow-2xs"
-                                title="Download Westside PDF Bill"
+                                title="Download Huddo Shoes PDF Bill"
                               >
                                 <Download className="w-3 h-3" />
                                 <span>PDF Bill</span>

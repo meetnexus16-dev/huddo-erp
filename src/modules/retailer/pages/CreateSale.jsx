@@ -9,7 +9,7 @@ import { Html5QrcodeScanner } from 'html5-qrcode';
 import { useRetailerAuth } from '../context/RetailerAuthContext';
 import CustomModal from '../components/CustomModal';
 import ProductImage from '../../../components/ProductImage';
-import { generateRetailInvoicePdf, printRetailInvoice, getWhatsAppShareText } from '../../../utils/generateRetailInvoicePdf';
+import { generateRetailInvoicePdf, printRetailInvoice, getWhatsAppShareText, shareRetailInvoiceWhatsApp } from '../../../utils/generateRetailInvoicePdf';
 
 const COLOR_NAME_MAP = {
   '#EF4444': 'Red',
@@ -47,7 +47,7 @@ export default function CreateSale({ showToast }) {
   const [cart, setCart] = useState([]);
   const [selectedOptions, setSelectedOptions] = useState({});
   const [discountMode, setDiscountMode] = useState('none');
-  const [billDiscountPercent, setBillDiscountPercent] = useState(0);
+  const [billDiscountPercent, setBillDiscountPercent] = useState('');
   const [note, setNote] = useState('');
   const [view, setView] = useState('create');
   const [salesHistory, setSalesHistory] = useState([]);
@@ -224,7 +224,7 @@ export default function CreateSale({ showToast }) {
         next[idx] = { ...next[idx], quantity: nextQty };
         return next;
       }
-      return [...prev, { product, variant, quantity: Math.min(qty, variant.stock), discount_percent: 0 }];
+      return [...prev, { product, variant, quantity: Math.min(qty, variant.stock), discount_percent: '' }];
     });
     showToast?.(`Added ${product.name} (S-${variant.size} · ${getColorName(variant.color)})`, 'success');
   };
@@ -277,7 +277,7 @@ export default function CreateSale({ showToast }) {
   };
 
   const setLineDiscount = (variantId, percent) => {
-    const v = Math.min(100, Math.max(0, Number(percent) || 0));
+    const v = percent === '' ? '' : Math.min(100, Math.max(0, Number(percent)));
     setCart((prev) => prev.map((i) => (i.variant.id === variantId ? { ...i, discount_percent: v } : i)));
   };
 
@@ -288,7 +288,7 @@ export default function CreateSale({ showToast }) {
       const line = item.variant.price * item.quantity;
       gross += line;
       if (discountMode === 'line') {
-        lineDiscount += line * ((item.discount_percent || 0) / 100);
+        lineDiscount += line * ((Number(item.discount_percent) || 0) / 100);
       }
     });
     gross = Math.round(gross * 100) / 100;
@@ -421,7 +421,7 @@ export default function CreateSale({ showToast }) {
       setInvoiceSuccessModal(savedSale);
       setIsCustomerModalOpen(false);
       setCart([]);
-      setBillDiscountPercent(0);
+      setBillDiscountPercent('');
       setDiscountMode('none');
       setNote('');
       showToast?.(`Sale ${savedSale.sale_number} recorded for ${savedSale.customer_name}.`, 'success');
@@ -791,7 +791,7 @@ export default function CreateSale({ showToast }) {
                           {formatINR(
                             item.variant.price *
                               item.quantity *
-                              (discountMode === 'line' ? 1 - (item.discount_percent || 0) / 100 : 1)
+                              (discountMode === 'line' ? 1 - ((Number(item.discount_percent) || 0) / 100) : 1)
                           )}
                         </span>
                       </div>
@@ -802,7 +802,8 @@ export default function CreateSale({ showToast }) {
                             type="number"
                             min="0"
                             max="100"
-                            value={item.discount_percent || 0}
+                            placeholder="0"
+                            value={item.discount_percent ?? ''}
                             onChange={(e) => setLineDiscount(item.variant.id, e.target.value)}
                             className="w-20 px-2 py-1 text-[11px] border border-slate-200 rounded-md"
                           />
@@ -846,8 +847,19 @@ export default function CreateSale({ showToast }) {
                       type="number"
                       min="0"
                       max="100"
+                      placeholder="0"
                       value={billDiscountPercent}
-                      onChange={(e) => setBillDiscountPercent(Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '') {
+                          setBillDiscountPercent('');
+                        } else {
+                          const num = Number(val);
+                          if (!isNaN(num)) {
+                            setBillDiscountPercent(Math.min(100, Math.max(0, num)));
+                          }
+                        }
+                      }}
                       className="w-24 px-2 py-1.5 text-xs border border-slate-200 rounded-lg"
                     />
                     <span className="text-[10px] text-slate-500 font-semibold">% off entire bill</span>
@@ -944,12 +956,21 @@ export default function CreateSale({ showToast }) {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  onClick={() => shareRetailInvoiceWhatsApp(viewingSale, user, showToast)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 shadow-2xs transition-colors"
+                  title="Send Invoice Details + PDF on WhatsApp"
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  WhatsApp
+                </button>
+                <button
+                  type="button"
                   onClick={() => generateRetailInvoicePdf(viewingSale, user)}
                   className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand-orange text-white text-xs font-bold hover:bg-orange-600 shadow-2xs transition-colors"
-                  title="Download GST Footwear Tax Invoice (Westside style)"
+                  title="Download Huddo Shoes Tax Invoice PDF"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  Tax Invoice PDF
+                  Download PDF
                 </button>
                 <button
                   type="button"
@@ -1296,8 +1317,8 @@ export default function CreateSale({ showToast }) {
               <button
                 type="button"
                 onClick={() => generateRetailInvoicePdf(invoiceSuccessModal, user)}
-                className="inline-flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-lg bg-brand-orange text-white text-xs font-bold hover:bg-orange-600 shadow-xs transition-colors"
-                title="Download Westside format Tax Invoice PDF"
+                className="inline-flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-lg bg-brand-orange text-white text-xs font-bold hover:bg-orange-600 shadow-xs transition-colors cursor-pointer"
+                title="Download Huddo Shoes Tax Invoice PDF"
               >
                 <Download className="w-4 h-4" />
                 Download PDF Bill
@@ -1305,49 +1326,46 @@ export default function CreateSale({ showToast }) {
               <button
                 type="button"
                 onClick={() => printRetailInvoice(invoiceSuccessModal, user)}
-                className="inline-flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-lg bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 shadow-xs transition-colors"
-                title="Print Westside format Tax Invoice"
+                className="inline-flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-lg bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 shadow-xs transition-colors cursor-pointer"
+                title="Print Huddo Shoes Tax Invoice"
               >
                 <Printer className="w-4 h-4" />
                 Print Bill
               </button>
             </div>
 
-            {/* WhatsApp Manual Share Option */}
-            <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  const text = getWhatsAppShareText(invoiceSuccessModal, user);
-                  const cleanPhone = String(invoiceSuccessModal.customer_mobile || '').replace(/\D/g, '');
-                  if (cleanPhone.length >= 10) {
-                    window.open(`https://api.whatsapp.com/send?phone=91${cleanPhone}&text=${encodeURIComponent(text)}`, '_blank');
-                  } else {
-                    navigator.clipboard?.writeText(text);
-                    showToast?.('Invoice text copied to clipboard for WhatsApp.', 'success');
-                  }
-                }}
-                className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors"
-              >
-                <MessageSquare className="w-3.5 h-3.5" />
-                Share on WhatsApp
-              </button>
+            {/* WhatsApp Share Option: Both Details and PDF */}
+            <div className="pt-2 border-t border-slate-100 flex flex-col gap-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => shareRetailInvoiceWhatsApp(invoiceSuccessModal, user, showToast)}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
+                  title="Send both Bill Details and attach PDF on WhatsApp"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  <span>Send on WhatsApp (Details + PDF)</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  const text = getWhatsAppShareText(invoiceSuccessModal, user);
-                  navigator.clipboard?.writeText(text);
-                  setCopiedWhatsApp(true);
-                  showToast?.('Invoice summary copied to clipboard!', 'success');
-                  setTimeout(() => setCopiedWhatsApp(false), 2000);
-                }}
-                className="inline-flex items-center gap-1 py-2 px-3 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold transition-colors"
-                title="Copy bill text"
-              >
-                {copiedWhatsApp ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedWhatsApp ? 'Copied' : 'Copy'}</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const text = getWhatsAppShareText(invoiceSuccessModal, user);
+                    navigator.clipboard?.writeText(text);
+                    setCopiedWhatsApp(true);
+                    showToast?.('Invoice summary copied to clipboard!', 'success');
+                    setTimeout(() => setCopiedWhatsApp(false), 2000);
+                  }}
+                  className="inline-flex items-center gap-1 py-2.5 px-3 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold transition-colors cursor-pointer"
+                  title="Copy formatted bill text"
+                >
+                  {copiedWhatsApp ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedWhatsApp ? 'Copied' : 'Copy'}</span>
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-400 text-center leading-relaxed">
+                Sends formatted bill summary and attaches / downloads "huddo shoes invoice.pdf" for direct WhatsApp dispatch.
+              </p>
             </div>
 
             <button

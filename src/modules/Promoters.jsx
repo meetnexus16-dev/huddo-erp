@@ -144,7 +144,7 @@ export default function Promoters({ showToast }) {
 
   const handleUpdateRoyaltyPercent = (productId, newPercent) => {
     setRoyaltyConfig(royaltyConfig.map(item => 
-      item.productId === productId ? { ...item, royaltyPercent: Number(newPercent) } : item
+      item.productId === productId ? { ...item, royaltyPercent: newPercent === '' ? '' : newPercent } : item
     ));
   };
 
@@ -309,7 +309,8 @@ export default function Promoters({ showToast }) {
                     <input 
                       type="number"
                       step="0.1"
-                      value={prod.royaltyPercent}
+                      placeholder="0.0"
+                      value={prod.royaltyPercent ?? ''}
                       onChange={(e) => handleUpdateRoyaltyPercent(prod.productId, e.target.value)}
                       className="border border-slate-200 text-slate-800 rounded p-1 w-20 text-right font-bold focus:outline-none focus:ring-1 focus:ring-brand-orange"
                     />

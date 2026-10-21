@@ -40,11 +40,11 @@ export default function Employees({ showToast }) {
     joiningDate: new Date().toISOString().split('T')[0],
     status: 'Active',
     // Salary & Incentives
-    basicSalary: 45000,
-    hra: 15000,
-    allowances: 5000,
-    incentivePct: 5.0, // % incentive per product sale
-    promoterOverridePct: 1.0, // % override on supervised promoters' sales
+    basicSalary: '',
+    hra: '',
+    allowances: '',
+    incentivePct: '', // % incentive per product sale
+    promoterOverridePct: '', // % override on supervised promoters' sales
     // Bank Details
     bankName: '',
     accountNo: '',
@@ -1026,8 +1026,8 @@ export default function Employees({ showToast }) {
                   <input 
                     type="number" 
                     placeholder="45000" 
-                    value={formData.basicSalary} 
-                    onChange={(e) => setFormData({...formData, basicSalary: Number(e.target.value)})} 
+                    value={formData.basicSalary ?? ''} 
+                    onChange={(e) => setFormData({...formData, basicSalary: e.target.value === '' ? '' : e.target.value})} 
                     className="w-full text-sm border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
                   />
                 </div>
@@ -1036,8 +1036,8 @@ export default function Employees({ showToast }) {
                   <input 
                     type="number" 
                     placeholder="15000" 
-                    value={formData.hra} 
-                    onChange={(e) => setFormData({...formData, hra: Number(e.target.value)})} 
+                    value={formData.hra ?? ''} 
+                    onChange={(e) => setFormData({...formData, hra: e.target.value === '' ? '' : e.target.value})} 
                     className="w-full text-sm border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
                   />
                 </div>
@@ -1046,8 +1046,8 @@ export default function Employees({ showToast }) {
                   <input 
                     type="number" 
                     placeholder="5000" 
-                    value={formData.allowances} 
-                    onChange={(e) => setFormData({...formData, allowances: Number(e.target.value)})} 
+                    value={formData.allowances ?? ''} 
+                    onChange={(e) => setFormData({...formData, allowances: e.target.value === '' ? '' : e.target.value})} 
                     className="w-full text-sm border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
                   />
                 </div>
@@ -1062,9 +1062,9 @@ export default function Employees({ showToast }) {
                     <input 
                       type="number" 
                       step="0.1" 
-                      placeholder="5.0" 
-                      value={formData.incentivePct} 
-                      onChange={(e) => setFormData({...formData, incentivePct: Number(e.target.value)})} 
+                      placeholder="0.0" 
+                      value={formData.incentivePct ?? ''} 
+                      onChange={(e) => setFormData({...formData, incentivePct: e.target.value === '' ? '' : e.target.value})} 
                       className="w-full text-sm border border-slate-200 rounded-lg p-2.5 pr-8 focus:outline-none focus:ring-2 focus:ring-brand-orange/20 font-bold" 
                     />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
@@ -1080,9 +1080,9 @@ export default function Employees({ showToast }) {
                     <input 
                       type="number" 
                       step="0.1" 
-                      placeholder="1.0" 
-                      value={formData.promoterOverridePct} 
-                      onChange={(e) => setFormData({...formData, promoterOverridePct: Number(e.target.value)})} 
+                      placeholder="0.0" 
+                      value={formData.promoterOverridePct ?? ''} 
+                      onChange={(e) => setFormData({...formData, promoterOverridePct: e.target.value === '' ? '' : e.target.value})} 
                       className="w-full text-sm border border-slate-200 rounded-lg p-2.5 pr-8 focus:outline-none focus:ring-2 focus:ring-brand-orange/20 font-bold" 
                     />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>

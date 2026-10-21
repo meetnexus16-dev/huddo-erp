@@ -31,13 +31,13 @@ const EMPTY_FORM = {
   has_colors: true,
   size_options: '',
   color_options: [],
-  cityManager: 2,
-  stateManager: 1,
-  countryManager: 0.5,
-  promoterRetailer: DEFAULT_PROMOTER_COMMISSIONS.retailer,
-  promoterCityManager: DEFAULT_PROMOTER_COMMISSIONS.cityManager,
-  promoterStateManager: DEFAULT_PROMOTER_COMMISSIONS.stateManager,
-  promoterCountryManager: DEFAULT_PROMOTER_COMMISSIONS.countryManager
+  cityManager: '',
+  stateManager: '',
+  countryManager: '',
+  promoterRetailer: '',
+  promoterCityManager: '',
+  promoterStateManager: '',
+  promoterCountryManager: ''
 };
 
 const MANAGER_COMMISSION_FIELDS = [
@@ -98,13 +98,13 @@ export default function ProductCategories({ showToast }) {
       has_colors: row.has_colors !== false,
       size_options: Array.isArray(row.size_options) ? row.size_options.join(', ') : '',
       color_options: Array.isArray(row.color_options) ? row.color_options : [],
-      cityManager: commissions.cityManager ?? 2,
-      stateManager: commissions.stateManager ?? 1,
-      countryManager: commissions.countryManager ?? 0.5,
-      promoterRetailer: promoter.retailer ?? DEFAULT_PROMOTER_COMMISSIONS.retailer,
-      promoterCityManager: promoter.cityManager ?? DEFAULT_PROMOTER_COMMISSIONS.cityManager,
-      promoterStateManager: promoter.stateManager ?? DEFAULT_PROMOTER_COMMISSIONS.stateManager,
-      promoterCountryManager: promoter.countryManager ?? DEFAULT_PROMOTER_COMMISSIONS.countryManager
+      cityManager: commissions.cityManager ?? '',
+      stateManager: commissions.stateManager ?? '',
+      countryManager: commissions.countryManager ?? '',
+      promoterRetailer: promoter.retailer ?? '',
+      promoterCityManager: promoter.cityManager ?? '',
+      promoterStateManager: promoter.stateManager ?? '',
+      promoterCountryManager: promoter.countryManager ?? ''
     });
     setModalOpen(true);
   };
@@ -122,14 +122,14 @@ export default function ProductCategories({ showToast }) {
   };
 
   const buildCommissionsPayload = () => ({
-    cityManager: Number(formData.cityManager),
-    stateManager: Number(formData.stateManager),
-    countryManager: Number(formData.countryManager),
+    cityManager: Number(formData.cityManager || 0),
+    stateManager: Number(formData.stateManager || 0),
+    countryManager: Number(formData.countryManager || 0),
     promoterCommissions: {
-      retailer: Number(formData.promoterRetailer),
-      cityManager: Number(formData.promoterCityManager),
-      stateManager: Number(formData.promoterStateManager),
-      countryManager: Number(formData.promoterCountryManager)
+      retailer: Number(formData.promoterRetailer || 0),
+      cityManager: Number(formData.promoterCityManager || 0),
+      stateManager: Number(formData.promoterStateManager || 0),
+      countryManager: Number(formData.promoterCountryManager || 0)
     }
   });
 
@@ -441,7 +441,8 @@ export default function ProductCategories({ showToast }) {
                     min="0"
                     max="100"
                     step="0.1"
-                    value={formData[key]}
+                    placeholder="0.0"
+                    value={formData[key] ?? ''}
                     onChange={(e) => setFormData({ ...formData, [key]: e.target.value })}
                     className="w-full text-sm border border-slate-200 rounded-lg p-2 bg-white font-semibold"
                   />
@@ -465,7 +466,8 @@ export default function ProductCategories({ showToast }) {
                     min="0"
                     max="100"
                     step="0.1"
-                    value={formData[formKey]}
+                    placeholder="0.0"
+                    value={formData[formKey] ?? ''}
                     onChange={(e) => setFormData({ ...formData, [formKey]: e.target.value })}
                     className="w-full text-sm border border-slate-200 rounded-lg p-2 bg-white font-semibold"
                   />

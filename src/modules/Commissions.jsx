@@ -216,7 +216,7 @@ export default function Commissions({ showToast }) {
   const handleUpdateCategoryCommission = (id, roleKey, newPct) => {
     setCategories(categories.map((c) =>
       c._id === id
-        ? { ...c, commissions: { ...c.commissions, [roleKey]: Number(newPct) } }
+        ? { ...c, commissions: { ...c.commissions, [roleKey]: newPct === '' ? '' : Number(newPct) } }
         : c
     ));
   };
@@ -230,7 +230,7 @@ export default function Commissions({ showToast }) {
               ...c.commissions,
               promoterCommissions: {
                 ...(c.commissions?.promoterCommissions || {}),
-                [roleKey]: Number(newPct)
+                [roleKey]: newPct === '' ? '' : Number(newPct)
               }
             }
           }
@@ -240,13 +240,25 @@ export default function Commissions({ showToast }) {
 
   const handleSaveMargins = async () => {
     try {
-      const promises = categories.map((cat) =>
-        fetch(`/api/product-categories/${cat._id}`, {
+      const promises = categories.map((cat) => {
+        const sanitizedComms = {
+          ...cat.commissions,
+          cityManager: Number(cat.commissions?.cityManager || 0),
+          stateManager: Number(cat.commissions?.stateManager || 0),
+          countryManager: Number(cat.commissions?.countryManager || 0),
+          promoterCommissions: {
+            retailer: Number(cat.commissions?.promoterCommissions?.retailer || 0),
+            cityManager: Number(cat.commissions?.promoterCommissions?.cityManager || 0),
+            stateManager: Number(cat.commissions?.promoterCommissions?.stateManager || 0),
+            countryManager: Number(cat.commissions?.promoterCommissions?.countryManager || 0)
+          }
+        };
+        return fetch(`/api/product-categories/${cat._id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ commissions: cat.commissions })
-        })
-      );
+          body: JSON.stringify({ commissions: sanitizedComms })
+        });
+      });
       const results = await Promise.all(promises);
       const failed = results.find((res) => !res.ok);
       if (failed) {
@@ -461,7 +473,8 @@ export default function Commissions({ showToast }) {
                             min="0"
                             max="100"
                             step="0.1"
-                            value={cat.commissions?.[roleKey] ?? 0}
+                            placeholder="0"
+                            value={cat.commissions?.[roleKey] ?? ''}
                             onChange={(e) => handleUpdateCategoryCommission(cat._id, roleKey, e.target.value)}
                             className="border border-slate-200 text-slate-800 rounded p-1 w-20 text-right font-bold focus:outline-none focus:ring-1 focus:ring-brand-orange bg-white"
                           />
@@ -474,7 +487,8 @@ export default function Commissions({ showToast }) {
                             min="0"
                             max="100"
                             step="0.1"
-                            value={cat.commissions?.promoterCommissions?.[roleKey] ?? 0}
+                            placeholder="0"
+                            value={cat.commissions?.promoterCommissions?.[roleKey] ?? ''}
                             onChange={(e) => handleUpdatePromoterCommission(cat._id, roleKey, e.target.value)}
                             className="border border-purple-200 text-purple-900 rounded p-1 w-20 text-right font-bold focus:outline-none focus:ring-1 focus:ring-purple-400 bg-white"
                           />

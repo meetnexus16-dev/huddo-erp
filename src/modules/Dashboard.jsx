@@ -183,7 +183,7 @@ export default function Dashboard({ onNavigate, userRole = 'Founder' }) {
           type="button"
           onClick={() => generateRetailInvoicePdf(row, row.retailer)}
           className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-bold shadow-2xs transition-colors"
-          title="Download Westside format Tax Invoice"
+          title="Download Huddo Shoes format Tax Invoice"
         >
           <Download className="w-3 h-3" />
           <span>PDF Bill</span>

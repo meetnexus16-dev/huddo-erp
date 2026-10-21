@@ -38,7 +38,7 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
   const [selectedApproval, setSelectedApproval] = useState(null);
   const [approvalAction, setApprovalAction] = useState('Approved');
   const [approvalRemarks, setApprovalRemarks] = useState('');
-  const [commissionForm, setCommissionForm] = useState({ period_type: 'Monthly', period_label: '2026-06', commission_percentage: 1.5 });
+  const [commissionForm, setCommissionForm] = useState({ period_type: 'Monthly', period_label: '2026-06', commission_percentage: '' });
 
   // Tab Data States
   const [states, setStates] = useState([]);
@@ -317,7 +317,10 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
       const res = await fetch(`/api/country-managers/${cmId}/commissions/calculate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(commissionForm)
+        body: JSON.stringify({
+          ...commissionForm,
+          commission_percentage: commissionForm.commission_percentage === '' ? 0 : Number(commissionForm.commission_percentage)
+        })
       });
       if (res.ok) {
         showToast("Commission incentive calculated successfully", "success");
@@ -1254,8 +1257,9 @@ export default function CountryManagerDetail({ cmId, onNavigate, showToast, user
             <input
               type="number"
               step="0.1"
-              value={commissionForm.commission_percentage}
-              onChange={(e) => setCommissionForm({ ...commissionForm, commission_percentage: Number(e.target.value) })}
+              placeholder="0.0"
+              value={commissionForm.commission_percentage ?? ''}
+              onChange={(e) => setCommissionForm({ ...commissionForm, commission_percentage: e.target.value })}
               className="w-full text-sm border border-slate-200 rounded-lg p-2.5"
             />
             <p className="text-[10px] text-slate-400 font-medium mt-1">

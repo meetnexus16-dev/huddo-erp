@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { 
-  User, MapPin, Camera, Trash2, Key, ShieldCheck, Clock, UserCheck
+  User, MapPin, Camera, Trash2, Key, ShieldCheck, Clock, UserCheck, CreditCard
 } from 'lucide-react';
 import { authFetch } from '../utils/authFetch';
 import { useConfirm } from '../context/ConfirmContext';

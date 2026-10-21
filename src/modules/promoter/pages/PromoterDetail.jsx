@@ -4,7 +4,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   ArrowLeft, Edit, CheckCircle, ShieldAlert, Award, Store, DollarSign, Percent, 
-  TrendingUp, FileText, Bell, Plus, Download, UserCheck, AlertCircle, RefreshCw, Send, Check
+  TrendingUp, FileText, Bell, Plus, Download, UserCheck, AlertCircle, RefreshCw, Send, Check, CreditCard
 } from 'lucide-react';
 
 import { 
@@ -57,7 +57,7 @@ export default function PromoterDetail({ promoterId, onNavigate, showToast, user
   const [configType, setConfigType] = useState('Global');
   const [configProductId, setConfigProductId] = useState('');
   const [configRetailerId, setConfigRetailerId] = useState('');
-  const [configRate, setConfigRate] = useState('5.00');
+  const [configRate, setConfigRate] = useState('');
 
   // Upload document form
   const [docType, setDocType] = useState('Aadhaar');
@@ -84,7 +84,7 @@ export default function PromoterDetail({ promoterId, onNavigate, showToast, user
   const [traineesData, setTraineesData] = useState({ trainer: null, trainees: [] });
   const [isAssignTraineeOpen, setIsAssignTraineeOpen] = useState(false);
   const [selectedTraineeId, setSelectedTraineeId] = useState('');
-  const [trainingRoyaltyRate, setTrainingRoyaltyRate] = useState('2.0');
+  const [trainingRoyaltyRate, setTrainingRoyaltyRate] = useState('');
   const [allPromotersRoster, setAllPromotersRoster] = useState([]);
 
   // Fetch Core Profile and Dashboard data
@@ -248,7 +248,7 @@ export default function PromoterDetail({ promoterId, onNavigate, showToast, user
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           trainee_id: selectedTraineeId,
-          royalty_percentage: Number(trainingRoyaltyRate)
+          royalty_percentage: trainingRoyaltyRate === '' ? 0 : Number(trainingRoyaltyRate)
         })
       });
       const data = await res.json();
@@ -256,6 +256,7 @@ export default function PromoterDetail({ promoterId, onNavigate, showToast, user
         showToast("Trainee promoter assigned successfully with royalty percentage.", "success");
         setIsAssignTraineeOpen(false);
         setSelectedTraineeId('');
+        setTrainingRoyaltyRate('');
         fetchTrainees();
       } else {
         showToast(data.error || "Failed to assign trainee.", "error");
@@ -396,12 +397,13 @@ export default function PromoterDetail({ promoterId, onNavigate, showToast, user
           config_type: configType,
           product_id: configProductId || null,
           retailer_id: configRetailerId || null,
-          royalty_percentage: Number(configRate)
+          royalty_percentage: configRate === '' ? 0 : Number(configRate)
         })
       });
       if (res.ok) {
         showToast("Royalty rate override successfully added.", "success");
         setIsAddConfigOpen(false);
+        setConfigRate('');
         fetchRoyalty();
       }
     } catch (err) {
@@ -1697,7 +1699,7 @@ export default function PromoterDetail({ promoterId, onNavigate, showToast, user
           )}
           <div className="flex flex-col">
             <label className="text-[10px] uppercase font-bold text-slate-400 mb-1">Royalty Rate Override (%)</label>
-            <input type="number" step={0.01} value={configRate} onChange={(e) => setConfigRate(e.target.value)} className="border border-slate-200 rounded p-2 text-xs font-bold text-slate-700" />
+            <input type="number" step={0.01} placeholder="0.00" value={configRate ?? ''} onChange={(e) => setConfigRate(e.target.value)} className="border border-slate-200 rounded p-2 text-xs font-bold text-slate-700" />
           </div>
         </div>
       </Modal>
