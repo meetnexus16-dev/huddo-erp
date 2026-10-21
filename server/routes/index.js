@@ -166,6 +166,8 @@ import networkRouter from './networkRouter.js';
 import stateManagerRouter from './stateManagerRouter.js';
 import cityManagerRouter from './cityManagerRouter.js';
 import managerRouter from './managerRouter.js';
+import employeeSelfRouter from './employeeSelfRouter.js';
+import Task from '../models/Task.js';
 import {
   listPromoterBonusStructures,
   upsertPromoterBonusStructure,
@@ -196,6 +198,7 @@ router.use('/network', networkRouter);
 router.use('/state-managers', stateManagerRouter);
 router.use('/city-managers', cityManagerRouter);
 router.use('/manager', managerRouter);
+router.use('/employee-self', employeeSelfRouter);
 
 // ==========================================
 // 1. AUTHENTICATION ROUTES
@@ -460,7 +463,8 @@ const modules = [
   { path: 'performance-reviews', model: PerformanceReview, populate: ['employee', 'reviewer'] },
   { path: 'leads', model: Lead },
   { path: 'return-logs', model: ReturnLog },
-  { path: 'customers', model: Customer }
+  { path: 'customers', model: Customer },
+  { path: 'tasks', model: Task, populate: ['assigned_to', 'created_by'] }
 ];
 
 modules.forEach(({ path, model, populate = [] }) => {

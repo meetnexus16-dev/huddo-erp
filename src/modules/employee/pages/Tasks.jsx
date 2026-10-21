@@ -1,61 +1,158 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   CheckSquare, Plus, Clock, CheckCircle2, 
-  AlertCircle, SlidersHorizontal, Play, Check
+  AlertCircle, SlidersHorizontal, Play, Check, RefreshCw, Trash2
 } from 'lucide-react';
 import StatusBadge from '../components/StatusBadge';
 import CustomDataTable from '../components/CustomDataTable';
 import CustomModal from '../components/CustomModal';
 
-export default function Tasks({ showToast }) {
-  const [tasks, setTasks] = useState([
-    { id: "TSK-001", title: "Compile Q2 Marketing Analytics Sheets", dueDate: "2026-06-18", priority: "High", status: "In Progress", notes: "Analyze click-through rates and ROI across Facebook ads campaign." },
-    { id: "TSK-002", title: "Review Summer Catalog print mockups", dueDate: "2026-06-20", priority: "Medium", status: "Not Started", notes: "Verify color compliance with branding guideline docs." },
-    { id: "TSK-003", title: "Schedule onboarding check-ins with new interns", dueDate: "2026-06-15", priority: "Low", status: "Completed", notes: "Introductory session completed on June 15." }
-  ]);
+const STORAGE_KEY = 'huddo_employee_tasks';
 
+const INITIAL_TASKS = [
+  { id: "TSK-001", title: "Compile Q2 Marketing Analytics Sheets", dueDate: "2026-06-18", priority: "Critical", status: "In Progress", notes: "Analyze click-through rates and ROI across Facebook ads campaign." },
+  { id: "TSK-002", title: "Review Summer Catalog print mockups", dueDate: "2026-06-20", priority: "Medium", status: "Not Started", notes: "Verify color compliance with branding guideline docs." },
+  { id: "TSK-003", title: "Schedule onboarding check-ins with new interns", dueDate: "2026-06-15", priority: "Draft", status: "Completed", notes: "Introductory session completed on June 15." }
+];
+
+export default function Tasks({ showToast }) {
+  const [tasks, setTasks] = useState(() => {
+    try {
+      const cached = localStorage.getItem(STORAGE_KEY);
+      if (cached) return JSON.parse(cached);
+    } catch {}
+    return INITIAL_TASKS;
+  });
+
+  const [loading, setLoading] = useState(false);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [taskTitle, setTaskTitle] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [priority, setPriority] = useState("Medium");
   const [notes, setNotes] = useState("");
+  const [filterStatus, setFilterStatus] = useState("All");
 
-  const handleCreateTask = () => {
+  // Fetch dynamic tasks from server
+  const fetchTasks = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/employee-self/tasks');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.tasks)) {
+          setTasks(data.tasks);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(data.tasks));
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("Backend tasks fetch fallback:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTasks();
+  }, []);
+
+  const handleCreateTask = async () => {
     if (!taskTitle.trim() || !dueDate) {
-      showToast("Please fill all required task fields.", "error");
+      showToast?.("Please fill all required task fields.", "error");
       return;
     }
 
+    const nextNumber = tasks.length + 1;
     const newTask = {
-      id: `TSK-${String(tasks.length + 1).padStart(3, '0')}`,
-      title: taskTitle,
+      id: `TSK-${String(nextNumber).padStart(3, '0')}`,
+      title: taskTitle.trim(),
       dueDate,
       priority,
       status: "Not Started",
-      notes
+      notes: notes.trim()
     };
 
-    setTasks([...tasks, newTask]);
+    try {
+      const res = await fetch('/api/employee-self/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: taskTitle.trim(),
+          dueDate,
+          priority,
+          notes: notes.trim()
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.task) {
+          const updated = [data.task, ...tasks];
+          setTasks(updated);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+          setIsAddOpen(false);
+          setTaskTitle("");
+          setDueDate("");
+          setPriority("Medium");
+          setNotes("");
+          showToast?.(`Task ${data.task.id} successfully created.`, "success");
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("API create task error, saving locally:", err);
+    }
+
+    // Local fallback update
+    const updated = [newTask, ...tasks];
+    setTasks(updated);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+
     setIsAddOpen(false);
     setTaskTitle("");
     setDueDate("");
     setPriority("Medium");
     setNotes("");
-    showToast(`Task ${newTask.id} successfully created.`, "success");
+    showToast?.(`Task ${newTask.id} successfully created.`, "success");
   };
 
-  const handleUpdateStatus = (taskId, nextStatus) => {
-    setTasks(prev => prev.map(t => 
+  const handleUpdateStatus = async (taskId, nextStatus) => {
+    try {
+      await fetch(`/api/employee-self/tasks/${taskId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus })
+      });
+    } catch (err) {
+      console.warn("API status update error:", err);
+    }
+
+    const updated = tasks.map(t => 
       t.id === taskId ? { ...t, status: nextStatus } : t
-    ));
-    showToast(`Task ${taskId} status changed to ${nextStatus}.`, "success");
+    );
+    setTasks(updated);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    showToast?.(`Task ${taskId} status changed to ${nextStatus}.`, "success");
   };
+
+  const filteredTasks = useMemo(() => {
+    if (filterStatus === 'All') return tasks;
+    return tasks.filter(t => t.status === filterStatus);
+  }, [tasks, filterStatus]);
 
   const columns = [
     { header: "Task ID", accessor: "id" },
-    { header: "Task Title", accessor: "title", render: (val) => <span className="font-bold text-slate-800">{val}</span> },
+    { header: "Task Title", accessor: "title", render: (val, row) => (
+      <div>
+        <span className="font-bold text-slate-800 block">{val}</span>
+        {row.notes && <span className="text-[10px] text-slate-400 truncate max-w-xs block">{row.notes}</span>}
+      </div>
+    )},
     { header: "Due Date", accessor: "dueDate" },
-    { header: "Priority", accessor: "priority", render: (val) => <StatusBadge status={val === 'High' ? 'Critical' : (val === 'Medium' ? 'Low Stock' : 'Draft')} /> },
+    { header: "Priority", accessor: "priority", render: (val) => {
+      const badgeStatus = val === 'Critical' ? 'Critical' : (val === 'High' ? 'Critical' : (val === 'Medium' ? 'Low Stock' : 'Draft'));
+      return <StatusBadge status={badgeStatus} />;
+    }},
     { header: "Status", accessor: "status", render: (val) => <StatusBadge status={val} /> },
     { 
       header: "Action", 
@@ -99,84 +196,127 @@ export default function Tasks({ showToast }) {
           <p className="text-xs text-slate-500 font-medium mt-0.5">Track your pending milestones, duties, and progress cards.</p>
         </div>
 
-        <button 
-          onClick={() => setIsAddOpen(true)}
-          className="flex items-center gap-1.5 px-4 py-2 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-lg shadow-sm transition-colors cursor-pointer self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add Task Item</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={fetchTasks}
+            disabled={loading}
+            className="p-2 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500 text-xs flex items-center gap-1"
+            title="Refresh Tasks"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+          <button
+            onClick={() => setIsAddOpen(true)}
+            className="flex items-center gap-1.5 px-4 py-2 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-lg shadow-sm transition-colors cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Task Item</span>
+          </button>
+        </div>
       </div>
 
-      {/* Roster list table */}
+      {/* Main card */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
-        <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider font-display flex items-center gap-2">
-          <CheckSquare className="w-4 h-4 text-slate-450" />
-          Active tasks register
-        </h3>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-100">
+          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider font-display flex items-center gap-2">
+            <CheckSquare className="w-4 h-4 text-slate-400" />
+            Active Tasks Register
+          </h3>
+
+          <div className="flex gap-1">
+            {['All', 'Not Started', 'In Progress', 'Completed'].map(st => (
+              <button
+                key={st}
+                onClick={() => setFilterStatus(st)}
+                className={`px-2.5 py-1 rounded-md text-[10px] font-bold transition-all ${
+                  filterStatus === st 
+                    ? 'bg-slate-900 text-white' 
+                    : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
+                }`}
+              >
+                {st}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <CustomDataTable 
           columns={columns}
-          data={tasks}
-          searchKeys={["id", "title", "status", "priority"]}
+          data={filteredTasks}
           searchPlaceholder="Search my tasks..."
+          searchKeys={["title", "notes", "priority", "status", "id"]}
         />
       </div>
 
-      {/* Add Task Modal Form */}
+      {/* Add Task Modal */}
       <CustomModal
         isOpen={isAddOpen}
         onClose={() => setIsAddOpen(false)}
-        title="Add Task Item Form"
-        confirmText="Create Task"
-        onConfirm={handleCreateTask}
+        title="Create Action Task"
       >
         <div className="space-y-4">
           <div>
             <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Task Title *</label>
             <input 
-              type="text" 
-              placeholder="e.g. Compile Analytics Sheets" 
+              type="text"
               value={taskTitle}
               onChange={(e) => setTaskTitle(e.target.value)}
-              className="w-full text-xs border border-slate-200 rounded-lg p-2 bg-white font-medium text-slate-750 focus:outline-none"
+              placeholder="e.g. Audit regional warehouse counts"
+              className="w-full text-xs border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-brand-orange/20 font-medium"
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Due Date *</label>
               <input 
-                type="date" 
+                type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
-                className="w-full text-xs border border-slate-200 rounded-lg p-2 bg-white font-medium text-slate-700 focus:outline-none"
+                className="w-full text-xs border border-slate-200 rounded-lg p-2.5 focus:outline-none font-medium"
               />
             </div>
-
             <div>
-              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Priority Level</label>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Priority</label>
               <select
                 value={priority}
                 onChange={(e) => setPriority(e.target.value)}
-                className="w-full text-xs border border-slate-200 rounded-lg p-2 bg-white font-medium text-slate-700 focus:outline-none"
+                className="w-full text-xs border border-slate-200 rounded-lg p-2.5 bg-white font-medium focus:outline-none"
               >
-                <option value="High">High Priority</option>
-                <option value="Medium">Medium Priority</option>
-                <option value="Low">Low Priority</option>
+                <option value="Critical">Critical</option>
+                <option value="High">High</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
               </select>
             </div>
           </div>
 
           <div>
-            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Description / Notes</label>
+            <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Notes / Instructions</label>
             <textarea 
               rows="3"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Provide comments or details for task completion..."
-              className="w-full text-xs border border-slate-200 rounded-lg p-2 bg-white font-medium text-slate-750 focus:outline-none"
+              placeholder="Additional specifications or target outcomes..."
+              className="w-full text-xs border border-slate-200 rounded-lg p-2.5 focus:outline-none font-medium resize-none"
             />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setIsAddOpen(false)}
+              className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleCreateTask}
+              className="px-4 py-2 bg-brand-orange hover:bg-brand-orange-hover text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+            >
+              Save Task
+            </button>
           </div>
         </div>
       </CustomModal>

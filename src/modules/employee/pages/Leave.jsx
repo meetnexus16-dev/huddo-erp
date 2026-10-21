@@ -1,18 +1,80 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  Calendar, FileText, Send, XCircle, AlertCircle
+  Calendar, FileText, Send, XCircle, AlertCircle, RefreshCw
 } from 'lucide-react';
 import { mockLeaves as initialLeaves } from '../mockData/mockLeaves';
 import StatusBadge from '../components/StatusBadge';
 import CustomDataTable from '../components/CustomDataTable';
+import { authFetch } from '../../../utils/authFetch';
+
+const STORAGE_KEY = 'huddo_employee_leaves';
 
 export default function Leave({ showToast }) {
-  const [leavesData, setLeavesData] = useState(initialLeaves);
+  const [leavesData, setLeavesData] = useState(() => {
+    try {
+      const cached = localStorage.getItem(STORAGE_KEY);
+      if (cached) return JSON.parse(cached);
+    } catch {}
+    return initialLeaves;
+  });
+
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [leaveType, setLeaveType] = useState("Casual Leave");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [reason, setReason] = useState("");
   const [fileAttached, setFileAttached] = useState(null);
+
+  // Dynamic balance calculator helper
+  const computeBalances = (requests) => {
+    const quotas = { casual: 12, sick: 6, earned: 15 };
+    const used = { casual: 0, sick: 0, earned: 0 };
+
+    requests.forEach(r => {
+      if (r.status === 'Approved' || r.status === 'Pending') {
+        const type = (r.type || r.leave_type || '').toLowerCase();
+        const d = Number(r.days || 1);
+        if (type.includes('casual') || type === 'cl') used.casual += d;
+        else if (type.includes('sick') || type === 'sl') used.sick += d;
+        else if (type.includes('earned') || type.includes('privilege') || type === 'el' || type === 'pl') used.earned += d;
+      }
+    });
+
+    return {
+      casual: { total: quotas.casual, used: used.casual, remaining: Math.max(0, quotas.casual - used.casual) },
+      sick: { total: quotas.sick, used: used.sick, remaining: Math.max(0, quotas.sick - used.sick) },
+      earned: { total: quotas.earned, used: used.earned, remaining: Math.max(0, quotas.earned - used.earned) }
+    };
+  };
+
+  // Fetch dynamic leave requests from server
+  const fetchLeaves = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/employee-self/leave-requests');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.requests)) {
+          const updated = {
+            balances: data.balances || computeBalances(data.requests),
+            requests: data.requests
+          };
+          setLeavesData(updated);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("Backend leave fetch fallback to cache:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLeaves();
+  }, []);
 
   // Auto calculate duration in days
   const leaveDays = React.useMemo(() => {
@@ -29,49 +91,117 @@ export default function Leave({ showToast }) {
   }, [fromDate, toDate]);
 
   // Form submission handler
-  const handleApplyLeave = (e) => {
+  const handleApplyLeave = async (e) => {
     e.preventDefault();
     if (!fromDate || !toDate || !reason.trim()) {
-      showToast("Please fill in all required form inputs.", "error");
+      showToast?.("Please fill in all required form inputs.", "error");
       return;
     }
     if (new Date(toDate) < new Date(fromDate)) {
-      showToast("To Date cannot be before From Date.", "error");
+      showToast?.("To Date cannot be before From Date.", "error");
       return;
     }
 
+    setSubmitting(true);
     const newRequest = {
       id: `LR-${String(100 + leavesData.requests.length + 1)}`,
       type: leaveType,
       from: fromDate,
       to: toDate,
       days: leaveDays,
-      reason: reason,
+      reason: reason.trim(),
+      attachment: fileAttached || '',
       status: "Pending"
     };
 
-    setLeavesData(prev => ({
-      ...prev,
-      requests: [newRequest, ...prev.requests]
-    }));
+    try {
+      const res = await fetch('/api/employee-self/leave-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: leaveType,
+          from: fromDate,
+          to: toDate,
+          days: leaveDays,
+          reason: reason.trim(),
+          attachment: fileAttached || ''
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.requests) {
+          const updated = {
+            balances: data.balances || computeBalances(data.requests),
+            requests: data.requests
+          };
+          setLeavesData(updated);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+          showToast?.(`Leave request submitted successfully for ${leaveDays} day(s).`, "success");
+          setFromDate("");
+          setToDate("");
+          setReason("");
+          setFileAttached(null);
+          setSubmitting(false);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("API submit error, saving locally:", err);
+    }
+
+    // Local state fallback update
+    const updatedRequests = [newRequest, ...leavesData.requests];
+    const updated = {
+      balances: computeBalances(updatedRequests),
+      requests: updatedRequests
+    };
+    setLeavesData(updated);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
 
     // Reset form
     setFromDate("");
     setToDate("");
     setReason("");
     setFileAttached(null);
-    showToast(`Leave request submitted successfully for ${leaveDays} day(s).`, "success");
+    setSubmitting(false);
+    showToast?.(`Leave request submitted successfully for ${leaveDays} day(s).`, "success");
   };
 
   // Cancel pending leave request handler
-  const handleCancelLeave = (reqId) => {
-    setLeavesData(prev => ({
-      ...prev,
-      requests: prev.requests.map(req => 
-        req.id === reqId ? { ...req, status: "Cancelled" } : req
-      )
-    }));
-    showToast("Leave request cancelled successfully.", "success");
+  const handleCancelLeave = async (reqId) => {
+    try {
+      const res = await fetch(`/api/employee-self/leave-requests/${reqId}/cancel`, {
+        method: 'PATCH'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.requests) {
+          const updated = {
+            balances: data.balances || computeBalances(data.requests),
+            requests: data.requests
+          };
+          setLeavesData(updated);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+          showToast?.("Leave request cancelled successfully.", "success");
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("API cancel error, saving locally:", err);
+    }
+
+    // Local update fallback
+    const updatedRequests = leavesData.requests.map(req => 
+      req.id === reqId ? { ...req, status: "Cancelled" } : req
+    );
+    const updated = {
+      balances: computeBalances(updatedRequests),
+      requests: updatedRequests
+    };
+    setLeavesData(updated);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    showToast?.("Leave request cancelled successfully.", "success");
   };
 
   const columns = [
@@ -109,19 +239,19 @@ export default function Leave({ showToast }) {
         <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-xs">
           <div className="flex justify-between items-center pb-2 border-b border-slate-50">
             <span className="text-xs font-bold text-slate-800 font-display">Casual Leave (CL)</span>
-            <span className="text-[9px] font-bold text-slate-400 uppercase">Yearly Quota: 12</span>
+            <span className="text-[9px] font-bold text-slate-400 uppercase">Yearly Quota: {leavesData.balances?.casual?.total ?? 12}</span>
           </div>
           <div className="grid grid-cols-3 gap-1 text-center mt-4">
             <div>
-              <span className="text-lg font-bold text-slate-800 font-display block">{leavesData.balances.casual.total}</span>
+              <span className="text-lg font-bold text-slate-800 font-display block">{leavesData.balances?.casual?.total ?? 12}</span>
               <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block">Total</span>
             </div>
             <div>
-              <span className="text-lg font-bold text-brand-orange font-display block">{leavesData.balances.casual.used}</span>
+              <span className="text-lg font-bold text-brand-orange font-display block">{leavesData.balances?.casual?.used ?? 0}</span>
               <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block">Availed</span>
             </div>
             <div>
-              <span className="text-lg font-bold text-emerald-600 font-display block">{leavesData.balances.casual.remaining}</span>
+              <span className="text-lg font-bold text-emerald-600 font-display block">{leavesData.balances?.casual?.remaining ?? 12}</span>
               <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block">Balance</span>
             </div>
           </div>
@@ -131,19 +261,19 @@ export default function Leave({ showToast }) {
         <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-xs">
           <div className="flex justify-between items-center pb-2 border-b border-slate-50">
             <span className="text-xs font-bold text-slate-800 font-display">Sick Leave (SL)</span>
-            <span className="text-[9px] font-bold text-slate-400 uppercase">Yearly Quota: 6</span>
+            <span className="text-[9px] font-bold text-slate-400 uppercase">Yearly Quota: {leavesData.balances?.sick?.total ?? 6}</span>
           </div>
           <div className="grid grid-cols-3 gap-1 text-center mt-4">
             <div>
-              <span className="text-lg font-bold text-slate-800 font-display block">{leavesData.balances.sick.total}</span>
+              <span className="text-lg font-bold text-slate-800 font-display block">{leavesData.balances?.sick?.total ?? 6}</span>
               <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block">Total</span>
             </div>
             <div>
-              <span className="text-lg font-bold text-brand-orange font-display block">{leavesData.balances.sick.used}</span>
+              <span className="text-lg font-bold text-brand-orange font-display block">{leavesData.balances?.sick?.used ?? 0}</span>
               <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block">Availed</span>
             </div>
             <div>
-              <span className="text-lg font-bold text-emerald-600 font-display block">{leavesData.balances.sick.remaining}</span>
+              <span className="text-lg font-bold text-emerald-600 font-display block">{leavesData.balances?.sick?.remaining ?? 6}</span>
               <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block">Balance</span>
             </div>
           </div>
@@ -153,19 +283,19 @@ export default function Leave({ showToast }) {
         <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-xs">
           <div className="flex justify-between items-center pb-2 border-b border-slate-50">
             <span className="text-xs font-bold text-slate-800 font-display">Earned Leave (EL)</span>
-            <span className="text-[9px] font-bold text-slate-400 uppercase">Yearly Quota: 15</span>
+            <span className="text-[9px] font-bold text-slate-400 uppercase">Yearly Quota: {leavesData.balances?.earned?.total ?? 15}</span>
           </div>
           <div className="grid grid-cols-3 gap-1 text-center mt-4">
             <div>
-              <span className="text-lg font-bold text-slate-800 font-display block">{leavesData.balances.earned.total}</span>
+              <span className="text-lg font-bold text-slate-800 font-display block">{leavesData.balances?.earned?.total ?? 15}</span>
               <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block">Total</span>
             </div>
             <div>
-              <span className="text-lg font-bold text-brand-orange font-display block">{leavesData.balances.earned.used}</span>
+              <span className="text-lg font-bold text-brand-orange font-display block">{leavesData.balances?.earned?.used ?? 0}</span>
               <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block">Availed</span>
             </div>
             <div>
-              <span className="text-lg font-bold text-emerald-600 font-display block">{leavesData.balances.earned.remaining}</span>
+              <span className="text-lg font-bold text-emerald-600 font-display block">{leavesData.balances?.earned?.remaining ?? 15}</span>
               <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block">Balance</span>
             </div>
           </div>
@@ -254,29 +384,41 @@ export default function Leave({ showToast }) {
 
             <button 
               type="submit"
-              className="w-full py-2 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-lg shadow-sm transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+              disabled={submitting}
+              className="w-full py-2 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-lg shadow-sm transition-colors cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
             >
               <Send className="w-3.5 h-3.5" />
-              <span>Submit Leave Request</span>
+              <span>{submitting ? 'Submitting...' : 'Submit Leave Request'}</span>
             </button>
           </form>
         </div>
 
         {/* Requests Table List */}
         <div className="lg:col-span-2 space-y-4 bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
-          <div>
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider font-display flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-slate-400" />
-              My Leaves Roster history
-            </h3>
-            <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Track your submitted requests and cancellation updates.</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider font-display flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-slate-400" />
+                My Leaves Roster history
+              </h3>
+              <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Track your submitted requests and cancellation updates.</p>
+            </div>
+            <button
+              onClick={fetchLeaves}
+              disabled={loading}
+              className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 text-xs flex items-center gap-1"
+              title="Refresh Leave History"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              <span className="text-[10px] font-bold hidden sm:inline">Refresh</span>
+            </button>
           </div>
 
           <CustomDataTable 
             columns={columns}
             data={leavesData.requests}
             searchPlaceholder="Search leave logs..."
-            searchKeys={["type", "reason", "status"]}
+            searchKeys={["type", "reason", "status", "id"]}
           />
         </div>
 

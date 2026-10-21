@@ -27,6 +27,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Mount API routes
 app.use('/api/v1', router);
+app.use('/api', router);
 
 // Default status healthcheck route
 app.get('/health', (req, res) => {
