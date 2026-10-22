@@ -66,3 +66,24 @@ export const verifyJWT = async (req, res, next) => {
     next(error);
   }
 };
+
+export const optionalVerifyJWT = async (req, res, next) => {
+  try {
+    let token;
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+      token = req.headers.authorization.split(' ')[1];
+    }
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET || 'your_jwt_access_secret_key_change_me_in_production');
+        if (decoded?.id) {
+          req.user = await User.findById(decoded.id).populate('role');
+        }
+      } catch {}
+    }
+    next();
+  } catch (error) {
+    next();
+  }
+};
+

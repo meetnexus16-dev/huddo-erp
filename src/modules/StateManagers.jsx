@@ -5,6 +5,7 @@ import {
   Store, Award, X, CheckCircle2 
 } from 'lucide-react';
 import { DataTable } from '../components/Common';
+import { getAccessToken } from '../utils/authSession';
 
 export default function StateManagers({ showToast, onNavigate }) {
   const [stateManagers, setStateManagers] = useState([]);
@@ -31,66 +32,25 @@ export default function StateManagers({ showToast, onNavigate }) {
   const fetchManagers = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/state-managers');
+      const token = getAccessToken();
+      const res = await fetch('/api/state-managers', {
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+      });
       if (res.ok) {
         const data = await res.json();
-        setStateManagers(data.state_managers || data || []);
+        const list = Array.isArray(data?.state_managers) ? data.state_managers : (Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []));
+        setStateManagers(list);
       } else {
-        // Fallback to country-managers endpoint or static data if backend offline
-        const fallbackRes = await fetch('/api/country-managers/1/state-managers');
+        const fallbackRes = await fetch('/api/country-managers/1/state-managers', {
+          headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+        });
         if (fallbackRes.ok) {
           const fallbackData = await fallbackRes.json();
-          setStateManagers(fallbackData.state_managers || []);
-        } else {
-          // Default seeded State Managers matching HUDDO ERP structure
-          setStateManagers([
-            {
-              state_manager_id: "U3",
-              name: "Preeti Verma",
-              mobile: "9988776655",
-              email: "preeti@huddoerp.in",
-              assigned_state: "Delhi",
-              status: "Active",
-              joining_date: "2023-04-10",
-              performance: { revenue: 3200000, orders: 60, retailers: 10, target_pct: 80.0 }
-            },
-            {
-              state_manager_id: "U4-mgr",
-              name: "Anil Deshmukh",
-              mobile: "9560412211",
-              email: "anil@huddoerp.in",
-              assigned_state: "Maharashtra",
-              status: "Active",
-              joining_date: "2022-11-15",
-              performance: { revenue: 4500000, orders: 85, retailers: 15, target_pct: 90.0 }
-            }
-          ]);
+          setStateManagers(fallbackData.state_managers || fallbackData.data || []);
         }
       }
     } catch (err) {
-      console.warn("Failed to fetch state managers, using default dataset", err);
-      setStateManagers([
-        {
-          state_manager_id: "U3",
-          name: "Preeti Verma",
-          mobile: "9988776655",
-          email: "preeti@huddoerp.in",
-          assigned_state: "Delhi",
-          status: "Active",
-          joining_date: "2023-04-10",
-          performance: { revenue: 3200000, orders: 60, retailers: 10, target_pct: 80.0 }
-        },
-        {
-          state_manager_id: "U4-mgr",
-          name: "Anil Deshmukh",
-          mobile: "9560412211",
-          email: "anil@huddoerp.in",
-          assigned_state: "Maharashtra",
-          status: "Active",
-          joining_date: "2022-11-15",
-          performance: { revenue: 4500000, orders: 85, retailers: 15, target_pct: 90.0 }
-        }
-      ]);
+      console.warn("Failed to fetch state managers:", err);
     } finally {
       setLoading(false);
     }

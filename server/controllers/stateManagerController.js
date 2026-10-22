@@ -58,8 +58,18 @@ export const getAllStateManagers = async (req, res, next) => {
         startOfMonth.setDate(1);
         startOfMonth.setHours(0, 0, 0, 0);
 
+        const cities = await City.find({ state: state._id, is_deleted: { $ne: true } }).select('_id name');
+        const cityIds = cities.map(c => c._id);
+        const cityNames = cities.map(c => c.name);
+
         const orders = await Order.find({
-          retailer: { $in: retailerIds },
+          $or: [
+            ...(retailerIds.length ? [{ retailer: { $in: retailerIds } }] : []),
+            { state: state._id },
+            { state_name: state.name },
+            ...(cityIds.length ? [{ city: { $in: cityIds } }] : []),
+            ...(cityNames.length ? [{ customer_city: { $in: cityNames } }] : [])
+          ],
           status: { $in: ['Approved', 'Processing', 'Packed', 'Shipped', 'Delivered'] },
           createdAt: { $gte: startOfMonth }
         });
@@ -152,7 +162,12 @@ export const getAllCityManagers = async (req, res, next) => {
         startOfMonth.setHours(0, 0, 0, 0);
 
         const orders = await Order.find({
-          retailer: { $in: retailerIds },
+          $or: [
+            ...(retailerIds.length ? [{ retailer: { $in: retailerIds } }] : []),
+            { city: city._id },
+            { city_name: city.name },
+            { customer_city: city.name }
+          ],
           status: { $in: ['Approved', 'Processing', 'Packed', 'Shipped', 'Delivered'] },
           createdAt: { $gte: startOfMonth }
         });

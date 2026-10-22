@@ -5,6 +5,7 @@ import {
   Store, Award, X, CheckCircle2 
 } from 'lucide-react';
 import { DataTable } from '../components/Common';
+import { getAccessToken } from '../utils/authSession';
 
 export default function CityManagers({ showToast, onNavigate }) {
   const [cityManagers, setCityManagers] = useState([]);
@@ -31,31 +32,17 @@ export default function CityManagers({ showToast, onNavigate }) {
   const fetchManagers = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/city-managers');
+      const token = getAccessToken();
+      const res = await fetch('/api/city-managers', {
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+      });
       if (res.ok) {
         const data = await res.json();
-        setCityManagers(data.city_managers || data || []);
-      } else {
-        // Fallback to static mock dataset
-        setCityManagers([
-          { id: "CM001", name: "Arjun Patel", city: "Ahmedabad", state: "Gujarat", mobile: "+91 91234 56789", email: "arjun@huddoshoes.com", joiningDate: "2022-06-01", status: "Active", retailersCount: 42, monthlyTarget: 500000, achieved: 423000, ordersThisMonth: 87, target_pct: 84.6 },
-          { id: "CM002", name: "Priya Desai", city: "Surat", state: "Gujarat", mobile: "+91 93456 78901", email: "priya@huddoshoes.com", joiningDate: "2023-01-15", status: "Active", retailersCount: 35, monthlyTarget: 400000, achieved: 398000, ordersThisMonth: 74, target_pct: 99.5 },
-          { id: "CM003", name: "Karan Shah", city: "Vadodara", state: "Gujarat", mobile: "+91 94567 89012", email: "karan@huddoshoes.com", joiningDate: "2022-09-10", status: "Active", retailersCount: 28, monthlyTarget: 350000, achieved: 287000, ordersThisMonth: 61, target_pct: 82.0 },
-          { id: "CM004", name: "Neha Joshi", city: "Rajkot", state: "Gujarat", mobile: "+91 95678 90123", email: "neha@huddoshoes.com", joiningDate: "2023-05-20", status: "Active", retailersCount: 22, monthlyTarget: 280000, achieved: 265000, ordersThisMonth: 49, target_pct: 94.6 },
-          { id: "CM005", name: "Mihir Trivedi", city: "Morbi", state: "Gujarat", mobile: "+91 96789 01234", email: "mihir@huddoshoes.com", joiningDate: "2023-08-01", status: "Active", retailersCount: 18, monthlyTarget: 220000, achieved: 134000, ordersThisMonth: 33, target_pct: 60.9 },
-          { id: "CM006", name: "Swati Raval", city: "Bhavnagar", state: "Gujarat", mobile: "+91 97890 12345", email: "swati@huddoshoes.com", joiningDate: "2024-01-10", status: "Inactive", retailersCount: 14, monthlyTarget: 180000, achieved: 0, ordersThisMonth: 0, target_pct: 0.0 }
-        ]);
+        const list = Array.isArray(data?.city_managers) ? data.city_managers : (Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []));
+        setCityManagers(list);
       }
     } catch (err) {
-      console.warn("Failed to fetch city managers, using fallback dataset", err);
-      setCityManagers([
-        { id: "CM001", name: "Arjun Patel", city: "Ahmedabad", state: "Gujarat", mobile: "+91 91234 56789", email: "arjun@huddoshoes.com", joiningDate: "2022-06-01", status: "Active", retailersCount: 42, monthlyTarget: 500000, achieved: 423000, ordersThisMonth: 87, target_pct: 84.6 },
-        { id: "CM002", name: "Priya Desai", city: "Surat", state: "Gujarat", mobile: "+91 93456 78901", email: "priya@huddoshoes.com", joiningDate: "2023-01-15", status: "Active", retailersCount: 35, monthlyTarget: 400000, achieved: 398000, ordersThisMonth: 74, target_pct: 99.5 },
-        { id: "CM003", name: "Karan Shah", city: "Vadodara", state: "Gujarat", mobile: "+91 94567 89012", email: "karan@huddoshoes.com", joiningDate: "2022-09-10", status: "Active", retailersCount: 28, monthlyTarget: 350000, achieved: 287000, ordersThisMonth: 61, target_pct: 82.0 },
-        { id: "CM004", name: "Neha Joshi", city: "Rajkot", state: "Gujarat", mobile: "+91 95678 90123", email: "neha@huddoshoes.com", joiningDate: "2023-05-20", status: "Active", retailersCount: 22, monthlyTarget: 280000, achieved: 265000, ordersThisMonth: 49, target_pct: 94.6 },
-        { id: "CM005", name: "Mihir Trivedi", city: "Morbi", state: "Gujarat", mobile: "+91 96789 01234", email: "mihir@huddoshoes.com", joiningDate: "2023-08-01", status: "Active", retailersCount: 18, monthlyTarget: 220000, achieved: 134000, ordersThisMonth: 33, target_pct: 60.9 },
-        { id: "CM006", name: "Swati Raval", city: "Bhavnagar", state: "Gujarat", mobile: "+91 97890 12345", email: "swati@huddoshoes.com", joiningDate: "2024-01-10", status: "Inactive", retailersCount: 14, monthlyTarget: 180000, achieved: 0, ordersThisMonth: 0, target_pct: 0.0 }
-      ]);
+      console.warn("Failed to fetch city managers:", err);
     } finally {
       setLoading(false);
     }

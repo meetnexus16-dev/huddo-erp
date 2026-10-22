@@ -94,9 +94,17 @@ export async function buildCityManagersForState(stateId) {
     return acc;
   }, {});
 
-  const monthOrders = retailers.length
+  const cityIds = cities.map((c) => c._id);
+  const cityNames = cities.map((c) => c.name);
+  const retailerIds = retailers.map((r) => r._id);
+
+  const monthOrders = (retailerIds.length || cityIds.length)
     ? await Order.find({
-      retailer: { $in: retailers.map((r) => r._id) },
+      $or: [
+        ...(retailerIds.length ? [{ retailer: { $in: retailerIds } }] : []),
+        ...(cityIds.length ? [{ city: { $in: cityIds } }] : []),
+        ...(cityNames.length ? [{ city_name: { $in: cityNames } }, { customer_city: { $in: cityNames } }] : [])
+      ],
       status: { $in: APPROVED_ORDER_STATUSES },
       createdAt: { $gte: startOfMonth }
     })
@@ -109,10 +117,16 @@ export async function buildCityManagersForState(stateId) {
       const managerId = manager._id.toString();
       const cityRetailers = retailers.filter((r) => r.city?.toString() === city._id.toString());
       const cityRetailerIds = new Set(cityRetailers.map((r) => r._id.toString()));
-      const ordersThisMonth = monthOrders.filter((o) => cityRetailerIds.has(o.retailer?.toString())).length;
-      const achieved = monthOrders
-        .filter((o) => cityRetailerIds.has(o.retailer?.toString()))
-        .reduce((sum, o) => sum + Number(o.grand_total || o.subtotal || 0), 0);
+      const cityIdStr = city._id.toString();
+      const cityNameLower = (city.name || '').toLowerCase();
+      const cityOrders = monthOrders.filter((o) =>
+        (o.retailer && cityRetailerIds.has(o.retailer.toString())) ||
+        (o.city && o.city.toString() === cityIdStr) ||
+        (o.city_name && o.city_name.toLowerCase() === cityNameLower) ||
+        (o.customer_city && o.customer_city.toLowerCase() === cityNameLower)
+      );
+      const ordersThisMonth = cityOrders.length;
+      const achieved = cityOrders.reduce((sum, o) => sum + Number(o.grand_total || o.subtotal || 0), 0);
 
       return {
         id: managerId,
@@ -164,9 +178,16 @@ export async function buildCityManagersForGeo(geo) {
     return acc;
   }, {});
 
-  const monthOrders = retailers.length
+  const cityNames = cities.map((c) => c.name);
+  const retailerIds = retailers.map((r) => r._id);
+
+  const monthOrders = (retailerIds.length || cityIds.length)
     ? await Order.find({
-      retailer: { $in: retailers.map((r) => r._id) },
+      $or: [
+        ...(retailerIds.length ? [{ retailer: { $in: retailerIds } }] : []),
+        ...(cityIds.length ? [{ city: { $in: cityIds } }] : []),
+        ...(cityNames.length ? [{ city_name: { $in: cityNames } }, { customer_city: { $in: cityNames } }] : [])
+      ],
       status: { $in: APPROVED_ORDER_STATUSES },
       createdAt: { $gte: startOfMonth }
     })
@@ -179,10 +200,16 @@ export async function buildCityManagersForGeo(geo) {
       const managerId = manager._id.toString();
       const cityRetailers = retailers.filter((r) => r.city?.toString() === city._id.toString());
       const cityRetailerIds = new Set(cityRetailers.map((r) => r._id.toString()));
-      const ordersThisMonth = monthOrders.filter((o) => cityRetailerIds.has(o.retailer?.toString())).length;
-      const achieved = monthOrders
-        .filter((o) => cityRetailerIds.has(o.retailer?.toString()))
-        .reduce((sum, o) => sum + Number(o.grand_total || o.subtotal || 0), 0);
+      const cityIdStr = city._id.toString();
+      const cityNameLower = (city.name || '').toLowerCase();
+      const cityOrders = monthOrders.filter((o) =>
+        (o.retailer && cityRetailerIds.has(o.retailer.toString())) ||
+        (o.city && o.city.toString() === cityIdStr) ||
+        (o.city_name && o.city_name.toLowerCase() === cityNameLower) ||
+        (o.customer_city && o.customer_city.toLowerCase() === cityNameLower)
+      );
+      const ordersThisMonth = cityOrders.length;
+      const achieved = cityOrders.reduce((sum, o) => sum + Number(o.grand_total || o.subtotal || 0), 0);
 
       return {
         id: managerId,
@@ -217,17 +244,23 @@ export async function buildStateManagersForGeo(geo) {
   for (const state of states) {
     if (!state.manager) continue;
     const mgr = state.manager;
-    const cities = await City.find({ state: state._id, is_deleted: { $ne: true } }).select('_id');
-    const retailers = await retailersInCities(cities.map((c) => c._id));
+    const cities = await City.find({ state: state._id, is_deleted: { $ne: true } }).select('_id name');
+    const cityIds = cities.map((c) => c._id);
+    const cityNames = cities.map((c) => c.name);
+    const retailers = await retailersInCities(cityIds);
     const retailerIds = retailers.map((r) => r._id);
 
-    const orders = retailerIds.length
-      ? await Order.find({
-        retailer: { $in: retailerIds },
-        status: { $in: APPROVED_ORDER_STATUSES },
-        createdAt: { $gte: startOfMonth }
-      })
-      : [];
+    const orders = await Order.find({
+      $or: [
+        ...(retailerIds.length ? [{ retailer: { $in: retailerIds } }] : []),
+        { state: state._id },
+        { state_name: state.name },
+        ...(cityIds.length ? [{ city: { $in: cityIds } }] : []),
+        ...(cityNames.length ? [{ customer_city: { $in: cityNames } }] : [])
+      ],
+      status: { $in: APPROVED_ORDER_STATUSES },
+      createdAt: { $gte: startOfMonth }
+    });
     const monthlyRevenue = orders.reduce((sum, o) => sum + (o.grand_total || o.subtotal || 0), 0);
 
     managersList.push({

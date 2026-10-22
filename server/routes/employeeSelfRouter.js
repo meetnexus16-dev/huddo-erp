@@ -16,6 +16,8 @@ import State from '../models/State.js';
 import Country from '../models/Country.js';
 import CommissionRecord from '../models/CommissionRecord.js';
 import Customer from '../models/Customer.js';
+import ProductCategory from '../models/ProductCategory.js';
+import { resolveCommissionsFromCategory } from '../utils/promoterBonus.js';
 import Order from '../models/Order.js';
 import { calculateSingleEmployeePayroll } from '../controllers/payrollController.js';
 
@@ -974,14 +976,70 @@ router.post('/sales', async (req, res) => {
     let stateDoc = null;
     let countryDoc = null;
 
-    if (seller?.city) {
-      cityDoc = await City.findById(seller.city?._id || seller.city).populate('manager');
+    // 1. Resolve cityDoc: from customer_city in body, or seller's assigned city, or fallback to first active city with manager
+    const requestedCity = (customer_city || req.body.city || req.body.city_name || '').trim();
+    if (requestedCity) {
+      if (mongoose.Types.ObjectId.isValid(requestedCity)) {
+        cityDoc = await City.findById(requestedCity).populate('manager').populate({ path: 'state', populate: 'country manager' });
+      }
+      if (!cityDoc) {
+        cityDoc = await City.findOne({
+          name: { $regex: new RegExp(`^${requestedCity}$`, 'i') },
+          is_deleted: { $ne: true }
+        }).populate('manager').populate({ path: 'state', populate: 'country manager' });
+      }
     }
-    if (seller?.state) {
-      stateDoc = await State.findById(seller.state?._id || seller.state).populate('manager');
+
+    if (!cityDoc && seller?.city) {
+      cityDoc = await City.findById(seller.city?._id || seller.city)
+        .populate('manager').populate({ path: 'state', populate: 'country manager' });
     }
-    if (seller?.country) {
+
+    if (!cityDoc) {
+      cityDoc = await City.findOne({ manager: { $ne: null }, is_deleted: { $ne: true } })
+        .populate('manager').populate({ path: 'state', populate: 'country manager' });
+      if (!cityDoc) {
+        cityDoc = await City.findOne({ is_deleted: { $ne: true } })
+          .populate('manager').populate({ path: 'state', populate: 'country manager' });
+      }
+    }
+
+    // 2. Resolve stateDoc from cityDoc or seller
+    if (cityDoc?.state) {
+      const stateId = cityDoc.state?._id || cityDoc.state;
+      stateDoc = await State.findById(stateId).populate('manager country');
+    }
+    if (!stateDoc && seller?.state) {
+      stateDoc = await State.findById(seller.state?._id || seller.state).populate('manager country');
+    }
+    if (!stateDoc) {
+      stateDoc = await State.findOne({ manager: { $ne: null }, is_deleted: { $ne: true } }).populate('manager country');
+    }
+
+    // 3. Resolve countryDoc from stateDoc, cityDoc, or seller
+    if (stateDoc?.country) {
+      const countryId = stateDoc.country?._id || stateDoc.country;
+      countryDoc = await Country.findById(countryId).populate('manager');
+    }
+    if (!countryDoc && (cityDoc?.state?.country)) {
+      countryDoc = await Country.findById(cityDoc.state.country?._id || cityDoc.state.country).populate('manager');
+    }
+    if (!countryDoc && seller?.country) {
       countryDoc = await Country.findById(seller.country?._id || seller.country).populate('manager');
+    }
+    if (!countryDoc) {
+      countryDoc = await Country.findOne({ is_deleted: { $ne: true } }).populate('manager');
+    }
+
+    // Auto-link seller's city, state, country if missing on user profile
+    if (seller && (!seller.city || !seller.state || !seller.country)) {
+      const userGeoUpdates = {};
+      if (!seller.city && cityDoc?._id) userGeoUpdates.city = cityDoc._id;
+      if (!seller.state && stateDoc?._id) userGeoUpdates.state = stateDoc._id;
+      if (!seller.country && countryDoc?._id) userGeoUpdates.country = countryDoc._id;
+      if (Object.keys(userGeoUpdates).length > 0) {
+        await User.findByIdAndUpdate(seller._id, { $set: userGeoUpdates });
+      }
     }
 
     // 3a. Create RetailSale document
@@ -1082,8 +1140,13 @@ router.post('/sales', async (req, res) => {
     for (const item of saleItems) {
       const variant = variantMap.get(item.product_variant.toString());
       const product = variant?.product;
-      const category = product?.category;
-
+      let category = product?.category;
+      if (category && (!category.commissions || mongoose.Types.ObjectId.isValid(category))) {
+        category = await ProductCategory.findById(category._id || category);
+      }
+      const commissions = resolveCommissionsFromCategory(category);
+      const franchisePoints = Number(product?.franchise_points || 0);
+      const baseCommissionPool = franchisePoints > 0 ? (franchisePoints * item.quantity) : (item.line_total || (item.unit_price * item.quantity));
       const lineTotal = item.line_total || (item.unit_price * item.quantity);
 
       // (a) Team Member Direct Incentive: strictly follow Founder's configured rate on Employee model
@@ -1102,16 +1165,17 @@ router.post('/sales', async (req, res) => {
           amount: tmIncentiveAmount,
           percentage: tmIncentivePct,
           quantity: item.quantity,
+          base_franchise_points: franchisePoints,
           description: `Team Member direct sales incentive (${tmIncentivePct}%) on ${product?.name} (${item.quantity} pairs)`,
           status: 'Approved'
         });
       }
 
-      // (b) City Manager Incentive (product.cityManagerIncentive or category.commissions.cityManager or 2%)
+      // (b) City Manager Incentive (category.commissions.cityManager or product.cityManagerIncentive or 2%)
       const cityManagerUser = cityDoc?.manager;
       if (cityManagerUser?._id) {
-        const cmIncentivePct = Number(product?.cityManagerIncentive) || Number(category?.commissions?.cityManager) || 2;
-        const cmAmount = Math.round((lineTotal * (cmIncentivePct / 100)) * 100) / 100;
+        const cmIncentivePct = Number(commissions.cityManager || product?.cityManagerIncentive || 2);
+        const cmAmount = Math.round((baseCommissionPool * (cmIncentivePct / 100)) * 100) / 100;
         if (cmAmount > 0) {
           commissionRecords.push({
             user: cityManagerUser._id,
@@ -1123,17 +1187,18 @@ router.post('/sales', async (req, res) => {
             amount: cmAmount,
             percentage: cmIncentivePct,
             quantity: item.quantity,
+            base_franchise_points: franchisePoints,
             description: `City Manager incentive (${cmIncentivePct}%) on ${product?.name} from ${cityDoc.name}`,
             status: 'Approved'
           });
         }
       }
 
-      // (c) State Manager Incentive (product.stateManagerIncentive or category.commissions.stateManager or 1%)
+      // (c) State Manager Incentive (category.commissions.stateManager or product.stateManagerIncentive or 1%)
       const stateManagerUser = stateDoc?.manager;
       if (stateManagerUser?._id) {
-        const smIncentivePct = Number(product?.stateManagerIncentive) || Number(category?.commissions?.stateManager) || 1;
-        const smAmount = Math.round((lineTotal * (smIncentivePct / 100)) * 100) / 100;
+        const smIncentivePct = Number(commissions.stateManager || product?.stateManagerIncentive || 1);
+        const smAmount = Math.round((baseCommissionPool * (smIncentivePct / 100)) * 100) / 100;
         if (smAmount > 0) {
           commissionRecords.push({
             user: stateManagerUser._id,
@@ -1145,6 +1210,7 @@ router.post('/sales', async (req, res) => {
             amount: smAmount,
             percentage: smIncentivePct,
             quantity: item.quantity,
+            base_franchise_points: franchisePoints,
             description: `State Manager incentive (${smIncentivePct}%) on ${product?.name} from ${stateDoc.name}`,
             status: 'Approved'
           });
@@ -1154,8 +1220,8 @@ router.post('/sales', async (req, res) => {
       // (d) Country Manager Incentive (category.commissions.countryManager or 0.5%)
       const countryManagerUser = countryDoc?.manager;
       if (countryManagerUser?._id) {
-        const ctryIncentivePct = Number(category?.commissions?.countryManager) || 0.5;
-        const ctryAmount = Math.round((lineTotal * (ctryIncentivePct / 100)) * 100) / 100;
+        const ctryIncentivePct = Number(commissions.countryManager || 0.5);
+        const ctryAmount = Math.round((baseCommissionPool * (ctryIncentivePct / 100)) * 100) / 100;
         if (ctryAmount > 0) {
           commissionRecords.push({
             user: countryManagerUser._id,
@@ -1167,6 +1233,7 @@ router.post('/sales', async (req, res) => {
             amount: ctryAmount,
             percentage: ctryIncentivePct,
             quantity: item.quantity,
+            base_franchise_points: franchisePoints,
             description: `Country Manager incentive (${ctryIncentivePct}%) on ${product?.name} from ${countryDoc.name}`,
             status: 'Approved'
           });

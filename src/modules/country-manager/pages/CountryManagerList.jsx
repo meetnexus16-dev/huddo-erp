@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Users, UserPlus, Search, RefreshCw, Eye, Edit2, ShieldAlert, Trash2, Globe, TrendingUp, CheckCircle, Shield } from 'lucide-react';
 import { DataTable } from '../../../components/Common';
 import { useConfirm } from '../../../context/ConfirmContext';
+import { getAccessToken } from '../../../utils/authSession';
 
 export default function CountryManagerList({ onNavigate, showToast }) {
   const { confirm } = useConfirm();
@@ -35,7 +36,10 @@ export default function CountryManagerList({ onNavigate, showToast }) {
       if (filters.status && filters.status !== 'All') query.append('status', filters.status);
       if (filters.country && filters.country !== 'All') query.append('country_id', filters.country);
 
-      const res = await fetch(`/api/country-managers?${query.toString()}`);
+      const token = getAccessToken();
+      const res = await fetch(`/api/country-managers?${query.toString()}`, {
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+      });
       const result = await res.json();
       if (res.ok) {
         setManagers(Array.isArray(result.data) ? result.data : []);

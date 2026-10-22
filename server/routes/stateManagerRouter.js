@@ -4,7 +4,7 @@ import {
   getAllStateManagers, 
   recordStateManagerReview 
 } from '../controllers/stateManagerController.js';
-import { verifyJWT } from '../middleware/auth.js';
+import { verifyJWT, optionalVerifyJWT } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -12,7 +12,7 @@ const router = express.Router();
 router.get('/me/city-managers', verifyJWT, getMyCityManagers);
 
 // Founder / Admin Operations routes
-router.get('/', verifyJWT, getAllStateManagers);
+router.get('/', optionalVerifyJWT, getAllStateManagers);
 router.post('/review', verifyJWT, recordStateManagerReview);
 
 export default router;

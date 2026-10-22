@@ -14,7 +14,7 @@ import PerformanceReview from '../models/PerformanceReview.js';
 import upload from '../middleware/upload.js';
 import { saveFileToDisk } from '../utils/fileUpload.js';
 import { calculateAndStoreOrderCommissions } from '../utils/commissionEngine.js';
-import { verifyJWT } from '../middleware/auth.js';
+import { verifyJWT, optionalVerifyJWT } from '../middleware/auth.js';
 import {
   assignCountryManager,
   assignStateManager,
@@ -225,7 +225,7 @@ function getPeriodDates(periodType, periodLabel) {
 }
 
 // 1. GET /api/v1/country-managers (List)
-router.get('/', verifyJWT, async (req, res, next) => {
+router.get('/', optionalVerifyJWT, async (req, res, next) => {
   try {
     const { search, status, country_id } = req.query;
     
@@ -284,7 +284,12 @@ router.get('/', verifyJWT, async (req, res, next) => {
         const retailerIds = retailers.map(r => r._id);
         
         const orders = await Order.find({
-          retailer: { $in: retailerIds },
+          $or: [
+            ...(retailerIds.length ? [{ retailer: { $in: retailerIds } }] : []),
+            ...(stateIds.length ? [{ state: { $in: stateIds } }] : []),
+            { country: countryObj._id },
+            { country_name: countryObj.name }
+          ],
           status: { $in: ['Approved', 'Processing', 'Packed', 'Shipped', 'Delivered'] },
           createdAt: { $gte: startOfMonth }
         });
@@ -670,8 +675,18 @@ router.get('/:id/states', verifyJWT, async (req, res, next) => {
       const retailers = await Retailer.find({ state: state._id });
       const retailerIds = retailers.map(r => r._id);
       
+      const cities = await City.find({ state: state._id, is_deleted: { $ne: true } }).select('_id name');
+      const cityIds = cities.map(c => c._id);
+      const cityNames = cities.map(c => c.name);
+
       const orders = await Order.find({
-        retailer: { $in: retailerIds },
+        $or: [
+          ...(retailerIds.length ? [{ retailer: { $in: retailerIds } }] : []),
+          { state: state._id },
+          { state_name: state.name },
+          ...(cityIds.length ? [{ city: { $in: cityIds } }] : []),
+          ...(cityNames.length ? [{ customer_city: { $in: cityNames } }] : [])
+        ],
         status: { $in: ['Approved', 'Processing', 'Packed', 'Shipped', 'Delivered'] },
         createdAt: { $gte: startOfMonth }
       });
@@ -867,8 +882,18 @@ router.get('/:id/state-managers', verifyJWT, async (req, res, next) => {
         startOfMonth.setDate(1);
         startOfMonth.setHours(0, 0, 0, 0);
         
+        const cities = await City.find({ state: state._id, is_deleted: { $ne: true } }).select('_id name');
+        const cityIds = cities.map(c => c._id);
+        const cityNames = cities.map(c => c.name);
+
         const orders = await Order.find({
-          retailer: { $in: retailerIds },
+          $or: [
+            ...(retailerIds.length ? [{ retailer: { $in: retailerIds } }] : []),
+            { state: state._id },
+            { state_name: state.name },
+            ...(cityIds.length ? [{ city: { $in: cityIds } }] : []),
+            ...(cityNames.length ? [{ customer_city: { $in: cityNames } }] : [])
+          ],
           status: { $in: ['Approved', 'Processing', 'Packed', 'Shipped', 'Delivered'] },
           createdAt: { $gte: startOfMonth }
         });
@@ -955,11 +980,17 @@ router.get('/:id/dashboard', verifyJWT, async (req, res, next) => {
     const retailerIds = retailers.map((retailer) => retailer._id);
     const approvedStatuses = ['Approved', 'Processing', 'Packed', 'Shipped', 'Delivered'];
 
-    const currentOrders = retailerIds.length
-      ? await Order.find({ retailer: { $in: retailerIds }, status: { $in: approvedStatuses }, createdAt: { $gte: startOfMonth } })
+    const territoryOrCondition = [
+      ...(retailerIds.length ? [{ retailer: { $in: retailerIds } }] : []),
+      ...(stateIds.length ? [{ state: { $in: stateIds } }] : []),
+      ...(countryObj ? [{ country: countryObj._id }, { country_name: countryObj.name }] : [])
+    ];
+
+    const currentOrders = territoryOrCondition.length
+      ? await Order.find({ $or: territoryOrCondition, status: { $in: approvedStatuses }, createdAt: { $gte: startOfMonth } })
       : [];
-    const prevOrders = retailerIds.length
-      ? await Order.find({ retailer: { $in: retailerIds }, status: { $in: approvedStatuses }, createdAt: { $gte: startOfPrevMonth, $lte: endOfPrevMonth } })
+    const prevOrders = territoryOrCondition.length
+      ? await Order.find({ $or: territoryOrCondition, status: { $in: approvedStatuses }, createdAt: { $gte: startOfPrevMonth, $lte: endOfPrevMonth } })
       : [];
 
     const currentRevenue = currentOrders.reduce((sum, order) => sum + (order.grand_total || order.subtotal || 0), 0);
@@ -986,7 +1017,11 @@ router.get('/:id/dashboard', verifyJWT, async (req, res, next) => {
     for (const state of states) {
       const stateRetailers = retailers.filter((retailer) => retailer.state?.toString() === state._id.toString());
       const stateRetailerIds = stateRetailers.map((retailer) => retailer._id);
-      const stateOrders = currentOrders.filter((order) => stateRetailerIds.some((id) => id.toString() === order.retailer?.toString()));
+      const stateOrders = currentOrders.filter((order) => 
+        (order.retailer && stateRetailerIds.some((id) => id.toString() === order.retailer?.toString())) ||
+        (order.state && order.state.toString() === state._id.toString()) ||
+        (order.state_name && order.state_name.toLowerCase() === state.name.toLowerCase())
+      );
       const stateRevenue = stateOrders.reduce((sum, order) => sum + (order.grand_total || order.subtotal || 0), 0);
       statePerformance.push({
         state_id: state._id.toString(),
@@ -1010,7 +1045,12 @@ router.get('/:id/dashboard', verifyJWT, async (req, res, next) => {
     for (const city of cities) {
       const cityRetailers = retailers.filter((retailer) => retailer.city?.toString() === city._id.toString());
       const cityRetailerIds = cityRetailers.map((retailer) => retailer._id);
-      const cityOrders = currentOrders.filter((order) => cityRetailerIds.some((id) => id.toString() === order.retailer?.toString()));
+      const cityOrders = currentOrders.filter((order) => 
+        (order.retailer && cityRetailerIds.some((id) => id.toString() === order.retailer?.toString())) ||
+        (order.city && order.city.toString() === city._id.toString()) ||
+        (order.city_name && order.city_name.toLowerCase() === city.name.toLowerCase()) ||
+        (order.customer_city && order.customer_city.toLowerCase() === city.name.toLowerCase())
+      );
       const cityRevenue = cityOrders.reduce((sum, order) => sum + (order.grand_total || order.subtotal || 0), 0);
       cityPerformance.push({
         city_name: city.name,
@@ -1545,16 +1585,23 @@ router.get('/:id/analytics/sales-trends', verifyJWT, async (req, res, next) => {
     const user = await resolveCMUser(req.params.id);
     if (!user) return res.status(404).json({ success: false, message: 'Country Manager not found' });
 
-    const { retailers } = await getCountryContextForUser(user);
+    const { countryObj, states, retailers } = await getCountryContextForUser(user);
     const retailerIds = retailers.map((r) => r._id);
+    const stateIds = states.map((s) => s._id);
     const start = new Date();
     start.setDate(1);
     start.setMonth(start.getMonth() - 5);
     start.setHours(0, 0, 0, 0);
 
-    const orders = retailerIds.length
+    const trendsCondition = [
+      ...(retailerIds.length ? [{ retailer: { $in: retailerIds } }] : []),
+      ...(stateIds.length ? [{ state: { $in: stateIds } }] : []),
+      ...(countryObj ? [{ country: countryObj._id }, { country_name: countryObj.name }] : [])
+    ];
+
+    const orders = trendsCondition.length
       ? await Order.find({
-          retailer: { $in: retailerIds },
+          $or: trendsCondition,
           status: { $in: ['Approved', 'Processing', 'Packed', 'Shipped', 'Delivered'] },
           createdAt: { $gte: start }
         }).populate({
