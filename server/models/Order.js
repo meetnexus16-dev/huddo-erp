@@ -2,10 +2,17 @@ import mongoose from 'mongoose';
 import { softDeletePlugin, amountSchemaType } from './plugins.js';
 
 const orderItemSchema = new mongoose.Schema({
-  product_variant: { type: mongoose.Schema.Types.ObjectId, ref: 'ProductVariant', required: true },
+  product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+  product_variant: { type: mongoose.Schema.Types.ObjectId, ref: 'ProductVariant' },
+  product_name: { type: String },
+  sku: { type: String },
+  size: { type: String },
+  color: { type: String },
   quantity: { type: Number, required: true },
   unit_price: amountSchemaType,
-  total_price: amountSchemaType
+  total_price: amountSchemaType,
+  discount_percent: { type: Number, default: 0 },
+  line_discount_amount: amountSchemaType
 }, { _id: false });
 
 const statusHistorySchema = new mongoose.Schema({
@@ -29,7 +36,27 @@ const approvalStageSchema = new mongoose.Schema({
 
 const orderSchema = new mongoose.Schema({
   order_number: { type: String, unique: true },
-  retailer: { type: mongoose.Schema.Types.ObjectId, ref: 'Retailer', required: true },
+  order_type: { 
+    type: String, 
+    enum: ['Wholesale', 'Retailer', 'TeamMemberPOS', 'DirectSale'], 
+    default: 'Retailer' 
+  },
+  retailer: { type: mongoose.Schema.Types.ObjectId, ref: 'Retailer', required: false },
+  customer_name: { type: String, trim: true },
+  customer_mobile: { type: String, trim: true },
+  customer_city: { type: String, trim: true },
+  seller_user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  city: { type: mongoose.Schema.Types.ObjectId, ref: 'City' },
+  state: { type: mongoose.Schema.Types.ObjectId, ref: 'State' },
+  country: { type: mongoose.Schema.Types.ObjectId, ref: 'Country' },
+  city_name: { type: String },
+  state_name: { type: String },
+  country_name: { type: String },
+  counter_number: { type: String },
+  payment_mode: { type: String, default: 'Cash' },
+  tendered_amount: { type: Number },
+  change_due: { type: Number },
+  note: { type: String },
   items: [orderItemSchema],
   subtotal: amountSchemaType,
   tax_amount: amountSchemaType,

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Percent, DollarSign, Wallet, CheckSquare, 
   Gift, SlidersHorizontal, ArrowDownToLine
@@ -6,14 +6,44 @@ import {
 import { mockCommissions } from '../mockData/mockCommissions';
 import StatusBadge from '../components/StatusBadge';
 import CustomDataTable from '../components/CustomDataTable';
+import { getAccessToken } from '../../../utils/authSession';
 
 export default function Commission({ showToast }) {
   const [filterMonth, setFilterMonth] = useState("All");
+  const [liveCommissions, setLiveCommissions] = useState([]);
+  const [liveEarned, setLiveEarned] = useState(0);
 
-  const filteredRecords = React.useMemo(() => {
-    if (filterMonth === "All") return mockCommissions.records;
-    return mockCommissions.records.filter(r => r.date.startsWith(`2026-0${filterMonth}`) || r.date.startsWith(`2026-${filterMonth}`));
-  }, [filterMonth]);
+  useEffect(() => {
+    const token = getAccessToken();
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+    fetch('/api/employee-self/commissions', { headers })
+      .then(res => res.json())
+      .then(resData => {
+        if (resData.success && Array.isArray(resData.data) && resData.data.length > 0) {
+          const mapped = resData.data.map(c => ({
+            id: c._id ? `COMM-${c._id.slice(-4).toUpperCase()}` : 'COMM',
+            orderId: c.order ? `ORD-${String(c.order).slice(-4).toUpperCase()}` : (c.retail_sale ? `POS-${String(c.retail_sale).slice(-4).toUpperCase()}` : 'DIRECT-POS'),
+            saleAmount: c.sale_amount || (c.amount && c.percentage ? Math.round((c.amount / c.percentage) * 100) : 0),
+            percentage: c.percentage || 1,
+            amount: c.amount || 0,
+            status: c.status || 'Approved',
+            date: c.createdAt ? c.createdAt.split('T')[0] : new Date().toISOString().split('T')[0]
+          }));
+          setLiveCommissions(mapped);
+          setLiveEarned(resData.totalEarned || mapped.reduce((sum, r) => sum + r.amount, 0));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const recordsToUse = liveCommissions.length > 0 ? liveCommissions : mockCommissions.records;
+  const currentMonthEarned = liveCommissions.length > 0 ? liveEarned : mockCommissions.summary.thisMonthEarned;
+
+  const filteredRecords = useMemo(() => {
+    if (filterMonth === "All") return recordsToUse;
+    return recordsToUse.filter(r => r.date.startsWith(`2026-0${filterMonth}`) || r.date.startsWith(`2026-${filterMonth}`));
+  }, [filterMonth, recordsToUse]);
 
   const handleExportLedger = () => {
     console.log("Exporting Commission Ledger:", filteredRecords);
@@ -38,7 +68,7 @@ export default function Commission({ showToast }) {
         <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-xs flex items-center justify-between">
           <div>
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Lifetime Commissions</span>
-            <span className="text-xl font-bold text-slate-800 mt-1 block">₹{mockCommissions.summary.lifetimeEarned.toLocaleString()}</span>
+            <span className="text-xl font-bold text-slate-800 mt-1 block">₹{(liveCommissions.length > 0 ? liveEarned : mockCommissions.summary.lifetimeEarned).toLocaleString()}</span>
             <span className="text-xs text-slate-500 font-medium">Accumulated rewards ledger</span>
           </div>
           <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-650">
@@ -49,8 +79,8 @@ export default function Commission({ showToast }) {
         <div className="bg-white border border-slate-200 p-5 rounded-xl shadow-xs flex items-center justify-between">
           <div>
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Commissions This Month</span>
-            <span className="text-xl font-bold text-slate-800 mt-1 block">₹{mockCommissions.summary.thisMonthEarned.toLocaleString()}</span>
-            <span className="text-xs text-emerald-605 font-medium">+15.2% vs previous month</span>
+            <span className="text-xl font-bold text-slate-800 mt-1 block">₹{currentMonthEarned.toLocaleString()}</span>
+            <span className="text-xs text-emerald-605 font-medium">Verified sales incentives</span>
           </div>
           <div className="w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center text-brand-orange">
             <Percent className="w-5 h-5" />

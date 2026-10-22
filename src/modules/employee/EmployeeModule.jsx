@@ -170,7 +170,8 @@ function EmployeeWorkspace({ userRole, showToast, onSwitchRole }) {
           ...common,
           { id: "Attendance", label: "My Attendance", icon: Clock },
           { id: "Direct Sales", label: "Direct Sales (POS)", icon: ShoppingBag },
-          { id: "My Tasks", label: "My Tasks", icon: CheckSquare }
+          { id: "My Tasks", label: "My Tasks", icon: CheckSquare },
+          { id: "My Payslip", label: "My Payslip & Incentive", icon: Landmark }
         ];
     }
   };
@@ -272,6 +273,8 @@ function EmployeeWorkspace({ userRole, showToast, onSwitchRole }) {
         return <TeamMemberSales showToast={showToast} />;
       case 'My Tasks':
         return <Tasks showToast={showToast} />;
+      case 'My Payslip':
+        return <Payroll showToast={showToast} isSelfView={true} />;
 
       default:
         return <Dashboard onNavigate={goToTab} showToast={showToast} />;

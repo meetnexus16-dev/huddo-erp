@@ -2,19 +2,34 @@ import React, { useState, useEffect } from 'react';
 import { 
   Users, Plus, Eye, Edit2, CheckCircle, XCircle, AlertCircle, FileText, 
   ChevronRight, X, PhoneCall, CreditCard, Percent, Award, Briefcase, 
-  DollarSign, Building2, Shield, Calendar, Search, ArrowUpRight, RefreshCw
+  DollarSign, Building2, Shield, Calendar, Search, ArrowUpRight, RefreshCw,
+  User, UserPlus
 } from 'lucide-react';
 import { initialEmployees, initialPromoters } from '../mockData';
 import { DataTable, Modal } from '../components/Common';
 import { useConfirm } from '../context/ConfirmContext';
+import { getAccessToken } from '../utils/authSession';
 
 export default function Employees({ showToast }) {
   const { confirm } = useConfirm();
   const [employees, setEmployees] = useState([]);
   const [promotersList, setPromotersList] = useState([]);
+  const [usersList, setUsersList] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingUsers, setLoadingUsers] = useState(false);
   const [loadingPromoters, setLoadingPromoters] = useState(false);
   const [promoterSearchQuery, setPromoterSearchQuery] = useState('');
+
+  // Quick Add User Account Modal State
+  const [isQuickAddUserOpen, setIsQuickAddUserOpen] = useState(false);
+  const [creatingUser, setCreatingUser] = useState(false);
+  const [newUserData, setNewUserData] = useState({
+    name: '',
+    email: '',
+    mobile: '',
+    roleName: 'TeamMember',
+    password: 'User@123'
+  });
 
   // Filters & Search
   const [activeDeptTab, setActiveDeptTab] = useState('All');
@@ -26,8 +41,15 @@ export default function Employees({ showToast }) {
   const [viewingEmployee, setViewingEmployee] = useState(null);
   const [formTab, setFormTab] = useState('personal'); // personal | job | salary | bank | promoters
 
+  // Manual Incentive Grant State (Founder privilege)
+  const [manualIncentiveEmp, setManualIncentiveEmp] = useState(null);
+  const [manualIncentiveAmount, setManualIncentiveAmount] = useState('');
+  const [manualIncentiveNote, setManualIncentiveNote] = useState('');
+  const [submittingIncentive, setSubmittingIncentive] = useState(false);
+
   // Form State
   const emptyForm = {
+    userId: '',
     name: '',
     email: '',
     mobile: '',
@@ -58,11 +80,119 @@ export default function Employees({ showToast }) {
 
   const [formData, setFormData] = useState(emptyForm);
 
+  // Dynamic fetch users list from database for user account linking
+  const fetchUsersList = async () => {
+    setLoadingUsers(true);
+    try {
+      const token = getAccessToken();
+      const res = await fetch('/api/users?limit=500&page=1', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      if (res.ok) {
+        const resData = await res.json();
+        const raw = Array.isArray(resData?.data) ? resData.data : (Array.isArray(resData) ? resData : []);
+        setUsersList(raw);
+      }
+    } catch (err) {
+      console.warn("Error loading users list:", err);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  // User dropdown selection handler
+  const handleSelectUser = (selectedId) => {
+    if (!selectedId) {
+      setFormData(prev => ({
+        ...prev,
+        userId: '',
+        name: '',
+        email: '',
+        mobile: ''
+      }));
+      return;
+    }
+
+    const found = usersList.find(u => String(u._id || u.id) === String(selectedId));
+    if (found) {
+      setFormData(prev => ({
+        ...prev,
+        userId: found._id || found.id,
+        name: found.name || prev.name,
+        email: found.email || prev.email,
+        mobile: found.mobile || prev.mobile,
+        designation: found.designationName || found.designation || prev.designation
+      }));
+    }
+  };
+
+  // Quick User Account Creation handler
+  const handleQuickCreateUser = async () => {
+    if (!newUserData.name?.trim() || !newUserData.email?.trim() || !newUserData.mobile?.trim()) {
+      showToast?.("Name, Email, and Mobile are required.", "error");
+      return;
+    }
+
+    setCreatingUser(true);
+    try {
+      const token = getAccessToken();
+      const res = await fetch('/api/users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          name: newUserData.name.trim(),
+          email: newUserData.email.trim(),
+          mobile: newUserData.mobile.trim(),
+          password: newUserData.password || 'User@123',
+          roleName: newUserData.roleName || 'TeamMember',
+          designationName: newUserData.roleName === 'TeamMember' ? 'Sales Executive' : newUserData.roleName,
+          approval_status: 'Approved',
+          is_active: true
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && (data.success || data._id || data.data)) {
+        const created = data.data || data;
+        showToast?.(`User account created for "${created.name}".`, "success");
+        setUsersList(prev => [created, ...prev]);
+        setFormData(prev => ({
+          ...prev,
+          userId: created._id || created.id,
+          name: created.name,
+          email: created.email,
+          mobile: created.mobile
+        }));
+        setIsQuickAddUserOpen(false);
+        setNewUserData({
+          name: '',
+          email: '',
+          mobile: '',
+          roleName: 'TeamMember',
+          password: 'User@123'
+        });
+      } else {
+        showToast?.(data.message || 'Could not create user account.', 'error');
+      }
+    } catch (err) {
+      console.error("Error creating user:", err);
+      showToast?.('Error creating user account.', 'error');
+    } finally {
+      setCreatingUser(false);
+    }
+  };
+
   // Dynamic fetch promoters list for supervisory assignment
   const fetchPromotersList = async () => {
     setLoadingPromoters(true);
     try {
-      const res = await fetch('/api/promoters?limit=100');
+      const token = getAccessToken();
+      const res = await fetch('/api/promoters?limit=100', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       const resData = await res.json();
       
       const rawList = Array.isArray(resData)
@@ -116,7 +246,10 @@ export default function Employees({ showToast }) {
   // Fetch employees & promoters list
   const loadData = () => {
     setLoading(true);
-    fetch('/api/employees')
+    const token = getAccessToken();
+    fetch('/api/employees', {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    })
       .then(res => res.json())
       .then(resData => {
         if (resData.success && Array.isArray(resData.data)) {
@@ -134,6 +267,7 @@ export default function Employees({ showToast }) {
       .finally(() => setLoading(false));
 
     fetchPromotersList();
+    fetchUsersList();
   };
 
   useEffect(() => {
@@ -145,8 +279,18 @@ export default function Employees({ showToast }) {
     const bank = emp.bank_details || emp.bankInfo || {};
     const personal = emp.personalInfo || {};
 
+    const basic = salary.basic !== undefined ? Number(salary.basic) : (emp.jobInfo?.salary ? parseInt(String(emp.jobInfo.salary).replace(/\D/g, '')) : 45000);
+    const hra = salary.hra !== undefined ? Number(salary.hra) : 15000;
+    const allowances = salary.allowances !== undefined ? Number(salary.allowances) : 5000;
+    const deductions = salary.deductions !== undefined ? Number(salary.deductions) : 0;
+    const incentivePct = salary.incentive_pct !== undefined ? Number(salary.incentive_pct) : 5.0;
+    const incentiveEarned = salary.incentive_earned !== undefined ? Number(salary.incentive_earned) : 0;
+    const promoterOverridePct = salary.promoter_override_pct !== undefined ? Number(salary.promoter_override_pct) : 1.0;
+
     return {
       id: emp.id || emp.employee_code || emp._id,
+      mongoId: emp._id,
+      userId: emp.user?._id || emp.user || '',
       name: emp.name || emp.full_name,
       avatar: emp.avatar || emp.profile_photo || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150",
       email: emp.email,
@@ -162,12 +306,13 @@ export default function Employees({ showToast }) {
         pan: personal.pan || emp.pan_number || ''
       },
       salary_structure: {
-        basic: Number(salary.basic ?? (emp.jobInfo?.salary ? parseInt(String(emp.jobInfo.salary).replace(/\D/g, '')) : 45000)) || 45000,
-        hra: Number(salary.hra ?? 15000) || 15000,
-        allowances: Number(salary.allowances ?? 5000) || 5000,
-        incentive_pct: Number(salary.incentive_pct ?? 5.0) || 5.0,
-        incentive_earned: Number(salary.incentive_earned ?? 12500) || 12500,
-        promoter_override_pct: Number(salary.promoter_override_pct ?? 1.0) || 1.0
+        basic: isNaN(basic) ? 45000 : basic,
+        hra: isNaN(hra) ? 15000 : hra,
+        allowances: isNaN(allowances) ? 5000 : allowances,
+        deductions: isNaN(deductions) ? 0 : deductions,
+        incentive_pct: isNaN(incentivePct) ? 5.0 : incentivePct,
+        incentive_earned: isNaN(incentiveEarned) ? 0 : incentiveEarned,
+        promoter_override_pct: isNaN(promoterOverridePct) ? 1.0 : promoterOverridePct
       },
       assigned_promoters: Array.isArray(emp.assigned_promoters) ? emp.assigned_promoters : [],
       bank_details: {
@@ -183,20 +328,87 @@ export default function Employees({ showToast }) {
     };
   };
 
+  // Award Manual Performance Incentive by Founder
+  const handleAwardManualIncentive = async () => {
+    if (!manualIncentiveEmp) return;
+    const amt = Number(manualIncentiveAmount);
+    if (!amt || amt <= 0) {
+      showToast?.('Please enter a valid positive incentive amount.', 'error');
+      return;
+    }
+
+    setSubmittingIncentive(true);
+    try {
+      const token = getAccessToken();
+      const targetId = manualIncentiveEmp.mongoId || manualIncentiveEmp.id;
+      const res = await fetch(`/api/employees/${targetId}/manual-incentive`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          amount: amt,
+          note: manualIncentiveNote.trim() || 'Performance bonus awarded by Founder'
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast?.(data.message || `₹${amt.toLocaleString('en-IN')} incentive credited!`, 'success');
+        setEmployees(prev => prev.map(e => {
+          if (e.id === manualIncentiveEmp.id || (manualIncentiveEmp.mongoId && e.mongoId === manualIncentiveEmp.mongoId)) {
+            return {
+              ...e,
+              salary_structure: {
+                ...e.salary_structure,
+                incentive_earned: (e.salary_structure.incentive_earned || 0) + amt
+              }
+            };
+          }
+          return e;
+        }));
+
+        if (viewingEmployee && (viewingEmployee.id === manualIncentiveEmp.id || viewingEmployee.mongoId === targetId)) {
+          setViewingEmployee(prev => ({
+            ...prev,
+            salary_structure: {
+              ...prev.salary_structure,
+              incentive_earned: (prev.salary_structure.incentive_earned || 0) + amt
+            }
+          }));
+        }
+
+        setManualIncentiveEmp(null);
+        setManualIncentiveAmount('');
+        setManualIncentiveNote('');
+      } else {
+        showToast?.(data.message || 'Failed to award incentive.', 'error');
+      }
+    } catch (err) {
+      console.error('Error awarding manual incentive:', err);
+      showToast?.('Failed to submit manual incentive.', 'error');
+    } finally {
+      setSubmittingIncentive(false);
+    }
+  };
+
   // Open Add Modal
   const handleOpenAdd = () => {
     setEditingEmpId(null);
     setFormData(emptyForm);
     setFormTab('personal');
     setPromoterSearchQuery('');
+    fetchUsersList();
     fetchPromotersList();
     setIsAddEditOpen(true);
   };
 
   // Open Edit Modal
   const handleOpenEdit = (emp) => {
-    setEditingEmpId(emp.id);
+    setEditingEmpId(emp.mongoId || emp.id);
     setFormData({
+      userId: emp.userId || '',
       name: emp.name,
       email: emp.email,
       mobile: emp.mobile,
@@ -223,6 +435,7 @@ export default function Employees({ showToast }) {
     });
     setFormTab('personal');
     setPromoterSearchQuery('');
+    fetchUsersList();
     fetchPromotersList();
     setIsAddEditOpen(true);
   };
@@ -235,6 +448,7 @@ export default function Employees({ showToast }) {
     }
 
     const payload = {
+      user: formData.userId || undefined,
       full_name: formData.name,
       name: formData.name,
       email: formData.email,
@@ -253,7 +467,7 @@ export default function Employees({ showToast }) {
         hra: Number(formData.hra || 0),
         allowances: Number(formData.allowances || 0),
         incentive_pct: Number(formData.incentivePct || 0),
-        incentive_earned: editingEmpId ? (employees.find(e => e.id === editingEmpId)?.salary_structure.incentive_earned || 0) : 0,
+        incentive_earned: editingEmpId ? (employees.find(e => (e.mongoId === editingEmpId || e.id === editingEmpId))?.salary_structure.incentive_earned || 0) : 0,
         promoter_override_pct: Number(formData.promoterOverridePct || 0)
       },
       assigned_promoters: formData.assignedPromoters,
@@ -269,29 +483,45 @@ export default function Employees({ showToast }) {
     };
 
     try {
-      if (editingEmpId) {
+      const token = getAccessToken();
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      };
+
+      const isMongoId = editingEmpId && /^[0-9a-fA-F]{24}$/.test(String(editingEmpId));
+
+      if (isMongoId) {
         // Edit PUT
         const res = await fetch(`/api/employees/${editingEmpId}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify(payload)
         });
-        if (res.ok) {
+        const resData = await res.json();
+        if (res.ok && resData.success) {
           showToast?.(`Employee "${formData.name}" updated successfully.`, "success");
+          setIsAddEditOpen(false);
+          loadData();
+        } else {
+          showToast?.(resData.message || "Failed to update employee record.", "error");
         }
       } else {
         // Create POST
         const res = await fetch('/api/employees', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify(payload)
         });
-        if (res.ok) {
+        const resData = await res.json();
+        if (res.ok && resData.success) {
           showToast?.(`New employee "${formData.name}" added to roster.`, "success");
+          setIsAddEditOpen(false);
+          loadData();
+        } else {
+          showToast?.(resData.message || "Failed to save employee record.", "error");
         }
       }
-      setIsAddEditOpen(false);
-      loadData();
     } catch (err) {
       console.error("Save error:", err);
       showToast?.("Failed to save employee record.", "error");
@@ -310,15 +540,28 @@ export default function Employees({ showToast }) {
     if (!confirmed) return;
 
     try {
-      const res = await fetch(`/api/employees/${emp.id}`, {
+      const token = getAccessToken();
+      const targetId = emp.mongoId || emp.id;
+      const isMongoId = targetId && /^[0-9a-fA-F]{24}$/.test(String(targetId));
+      if (!isMongoId) {
+        // Local mock item update
+        setEmployees(prev => prev.map(e => e.id === emp.id ? { ...e, status: nextStatus } : e));
+        showToast?.(`Status set to ${nextStatus} for ${emp.name}`, "success");
+        return;
+      }
+
+      const res = await fetch(`/api/employees/${targetId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({ status: nextStatus, is_active: nextStatus === 'Active' })
       });
       if (res.ok) {
         showToast?.(`Status set to ${nextStatus} for ${emp.name}`, "success");
-        setEmployees(prev => prev.map(e => e.id === emp.id ? { ...e, status: nextStatus } : e));
-        if (viewingEmployee?.id === emp.id) {
+        setEmployees(prev => prev.map(e => (e.id === emp.id || (e.mongoId && e.mongoId === targetId)) ? { ...e, status: nextStatus } : e));
+        if (viewingEmployee?.id === emp.id || viewingEmployee?.mongoId === targetId) {
           setViewingEmployee(prev => ({ ...prev, status: nextStatus }));
         }
       }
@@ -397,28 +640,53 @@ export default function Employees({ showToast }) {
       )
     },
     {
-      header: "Base Salary",
+      header: "Fixed Base Salary",
       accessor: "salary_structure.basic",
       render: (val, row) => (
         <div>
           <span className="font-bold text-slate-900 font-display">₹{(row.salary_structure.basic || 0).toLocaleString('en-IN')}</span>
-          <span className="text-[10px] text-slate-400 block font-normal">/ month</span>
+          <span className="text-[10px] text-slate-400 block font-normal">
+            +₹{((row.salary_structure.hra || 0) + (row.salary_structure.allowances || 0)).toLocaleString('en-IN')} HRA & Allowances
+          </span>
         </div>
       )
     },
     {
-      header: "Product Incentive",
+      header: "Sales Incentive",
       accessor: "salary_structure.incentive_pct",
       render: (val, row) => (
         <div>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-extrabold bg-amber-50 text-amber-700 border border-amber-200">
-            <Percent className="w-3 h-3" /> {row.salary_structure.incentive_pct}%
-          </span>
-          <span className="text-[11px] font-bold text-emerald-600 block mt-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-black bg-amber-50 text-amber-700 border border-amber-200">
+              <Percent className="w-3 h-3" /> {row.salary_structure.incentive_pct || 0}% POS
+            </span>
+            {Number(row.salary_structure.promoter_override_pct || 0) > 0 && (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                +{row.salary_structure.promoter_override_pct}% Net
+              </span>
+            )}
+          </div>
+          <span className="text-[11px] font-black text-emerald-600 block mt-1">
             +₹{(row.salary_structure.incentive_earned || 0).toLocaleString('en-IN')} earned
           </span>
         </div>
       )
+    },
+    {
+      header: "Total Est. Payout",
+      accessor: "total_payout",
+      render: (_, row) => {
+        const fixed = (row.salary_structure.basic || 0) + (row.salary_structure.hra || 0) + (row.salary_structure.allowances || 0);
+        const inc = row.salary_structure.incentive_earned || 0;
+        return (
+          <div>
+            <span className="font-black text-slate-900 font-display text-sm">₹{(fixed + inc).toLocaleString('en-IN')}</span>
+            <span className="text-[10px] text-slate-500 block">
+              Salary: ₹{fixed.toLocaleString('en-IN')} | Inc: ₹{inc.toLocaleString('en-IN')}
+            </span>
+          </div>
+        );
+      }
     },
     {
       header: "Promoters Supervised",
@@ -533,20 +801,20 @@ export default function Employees({ showToast }) {
 
         <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Base Payroll</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Fixed Base Payroll</span>
             <DollarSign className="w-4 h-4 text-slate-400" />
           </div>
           <span className="text-2xl font-extrabold text-slate-900 mt-2 font-display">₹{totalBasePayroll.toLocaleString('en-IN')}</span>
-          <span className="text-[11px] text-slate-400 font-medium mt-1">Monthly recurring</span>
+          <span className="text-[11px] text-slate-400 font-medium mt-1">Monthly recurring basic</span>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Product Incentives</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sales Incentives Earned</span>
             <Percent className="w-4 h-4 text-amber-500" />
           </div>
-          <span className="text-2xl font-extrabold text-amber-600 mt-2 font-display">₹{totalIncentivesEarned.toLocaleString('en-IN')}</span>
-          <span className="text-[11px] text-amber-700 font-medium mt-1">Product-wise distribution</span>
+          <span className="text-2xl font-extrabold text-amber-600 mt-2 font-display">+₹{totalIncentivesEarned.toLocaleString('en-IN')}</span>
+          <span className="text-[11px] text-amber-700 font-medium mt-1">POS & network distribution</span>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
@@ -674,49 +942,106 @@ export default function Employees({ showToast }) {
                   )}
                 </div>
 
-                {/* 2. Salary & Incentive Structure Card */}
-                <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-4 shadow-xs">
+                {/* 2. Base Monthly Salary Structure Card */}
+                <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-xs">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                      <Percent className="w-3.5 h-3.5 text-amber-500" /> Salary & Incentive Structure
+                    <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <DollarSign className="w-3.5 h-3.5 text-blue-500" /> Base Monthly Rate (Attendance-Linked)
                     </h4>
-                    <span className="text-[11px] font-extrabold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                      Product Incentive: {viewingEmployee.salary_structure.incentive_pct}%
+                    <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                      Prorated on Attendance
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-3 text-xs font-semibold text-slate-700 bg-slate-50 p-3 rounded-lg">
+                  <div className="grid grid-cols-3 gap-2.5 text-xs bg-slate-50 p-3 rounded-lg">
                     <div>
-                      <span className="text-slate-400 font-medium">Basic Salary</span>
-                      <p className="text-base font-extrabold text-slate-900 mt-0.5 font-display">
+                      <span className="text-slate-400 font-medium text-[11px]">Basic Salary</span>
+                      <p className="text-sm font-extrabold text-slate-900 mt-0.5 font-display">
                         ₹{(viewingEmployee.salary_structure.basic || 0).toLocaleString('en-IN')}
                       </p>
                     </div>
                     <div>
-                      <span className="text-slate-400 font-medium">HRA + Allowances</span>
-                      <p className="text-base font-extrabold text-slate-700 mt-0.5 font-display">
-                        ₹{((viewingEmployee.salary_structure.hra || 0) + (viewingEmployee.salary_structure.allowances || 0)).toLocaleString('en-IN')}
+                      <span className="text-slate-400 font-medium text-[11px]">HRA</span>
+                      <p className="text-sm font-extrabold text-slate-700 mt-0.5 font-display">
+                        ₹{(viewingEmployee.salary_structure.hra || 0).toLocaleString('en-IN')}
                       </p>
                     </div>
                     <div>
-                      <span className="text-slate-400 font-medium">Earned Incentive</span>
-                      <p className="text-base font-extrabold text-emerald-600 mt-0.5 font-display">
-                        +₹{(viewingEmployee.salary_structure.incentive_earned || 0).toLocaleString('en-IN')}
+                      <span className="text-slate-400 font-medium text-[11px]">Allowances</span>
+                      <p className="text-sm font-extrabold text-slate-700 mt-0.5 font-display">
+                        ₹{(viewingEmployee.salary_structure.allowances || 0).toLocaleString('en-IN')}
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between text-xs font-semibold p-3 bg-brand-orange/5 border border-brand-orange/20 rounded-lg">
-                    <div>
-                      <span className="text-slate-700 font-bold block">Promoter Network Override:</span>
-                      <span className="text-[11px] text-slate-500">Override on supervised promoters' total sales</span>
-                    </div>
-                    <span className="text-sm font-extrabold text-brand-orange">{viewingEmployee.salary_structure.promoter_override_pct}%</span>
+                  <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100">
+                    <span className="font-semibold text-slate-500">Configured Monthly Rate:</span>
+                    <span className="font-bold text-slate-800">
+                      ₹{(
+                        (viewingEmployee.salary_structure.basic || 0) + 
+                        (viewingEmployee.salary_structure.hra || 0) + 
+                        (viewingEmployee.salary_structure.allowances || 0)
+                      ).toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 italic leading-tight">
+                    * Final payable base is computed each month from logged attendance: (Monthly Rate ÷ 30) × (Present Days + Half Days × 0.5 + Paid Leaves).
+                  </p>
+                </div>
+
+                {/* 3. Variable Sales Incentive Card */}
+                <div className="bg-white border border-amber-200 rounded-xl p-4 space-y-3 shadow-xs bg-amber-50/20">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <Percent className="w-3.5 h-3.5 text-amber-600" /> Variable Sales & POS Incentives
+                    </h4>
+                    <button
+                      onClick={() => {
+                        setManualIncentiveEmp(viewingEmployee);
+                        setManualIncentiveAmount('');
+                        setManualIncentiveNote('');
+                      }}
+                      className="px-2.5 py-1 bg-brand-orange hover:bg-brand-orange-hover text-white text-[10px] font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Award Incentive</span>
+                    </button>
                   </div>
 
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
-                    <span className="font-bold text-slate-600">Total Estimated Monthly Payout:</span>
-                    <span className="text-lg font-black text-slate-900 font-display">
+                  <div className="grid grid-cols-2 gap-3 text-xs bg-white border border-amber-100 p-3 rounded-lg">
+                    <div>
+                      <span className="text-slate-400 font-medium text-[11px]">Direct POS Incentive:</span>
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <span className="text-sm font-black text-amber-600 font-display">
+                          {viewingEmployee.salary_structure.incentive_pct}%
+                        </span>
+                        <span className="text-[10px] text-slate-400">per sale</span>
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 font-medium text-[11px]">Promoter Override:</span>
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <span className="text-sm font-black text-blue-600 font-display">
+                          {viewingEmployee.salary_structure.promoter_override_pct}%
+                        </span>
+                        <span className="text-[10px] text-slate-400">on network</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                    <div>
+                      <span className="text-[11px] font-bold text-emerald-800 block">Total Accrued Performance Incentive:</span>
+                      <span className="text-[10px] text-emerald-600">POS Sales, direct collections & bonuses</span>
+                    </div>
+                    <span className="text-lg font-black text-emerald-600 font-display">
+                      +₹{(viewingEmployee.salary_structure.incentive_earned || 0).toLocaleString('en-IN')}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-amber-200/60 text-xs">
+                    <span className="font-extrabold text-slate-700">Combined Estimated Payout (Salary + Incentive):</span>
+                    <span className="text-base font-black text-slate-900 font-display">
                       ₹{(
                         (viewingEmployee.salary_structure.basic || 0) + 
                         (viewingEmployee.salary_structure.hra || 0) + 
@@ -876,6 +1201,55 @@ export default function Employees({ showToast }) {
           {/* TAB 1: PERSONAL INFO */}
           {formTab === 'personal' && (
             <div className="space-y-3">
+              {/* Existing User Account Dropdown with Add User Button */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-brand-orange" />
+                    <span>Select Existing User</span>
+                  </label>
+                  {formData.userId ? (
+                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      ✓ User Account Linked
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-slate-400 font-medium">
+                      Select or add new user below
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <select
+                      value={formData.userId || ''}
+                      onChange={(e) => handleSelectUser(e.target.value)}
+                      className="w-full text-xs font-semibold border border-slate-200 rounded-lg p-2.5 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-orange/20 cursor-pointer"
+                    >
+                      <option value="">-- Choose Existing User ({usersList.length} Registered) --</option>
+                      {usersList.map(u => (
+                        <option key={u.id || u._id} value={u.id || u._id}>
+                          {u.name} — {u.email || u.mobile} ({u.roleName || u.role?.name || 'User'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsQuickAddUserOpen(true)}
+                    className="flex items-center gap-1 px-3 py-2.5 bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold rounded-lg shadow-xs transition-colors shrink-0 cursor-pointer"
+                    title="Add a brand new user account"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>+ Add User</span>
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  Select an existing user to auto-populate profile details, or click <strong>+ Add User</strong> if not registered.
+                </p>
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Full Name *</label>
                 <input 
@@ -1014,81 +1388,112 @@ export default function Employees({ showToast }) {
 
           {/* TAB 3: SALARY & INCENTIVE */}
           {formTab === 'salary' && (
-            <div className="space-y-4">
-              <div className="p-3 bg-amber-50/60 border border-amber-200 rounded-lg text-xs text-amber-900">
-                <span className="font-bold block">Product Incentive Configuration:</span>
-                Employee will receive a fixed percentage incentive whenever a product sale occurs under their network.
-              </div>
+            <div className="space-y-5">
+              {/* Part 1: Fixed Monthly Salary */}
+              <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
+                  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <DollarSign className="w-3.5 h-3.5 text-blue-600" /> 1. Base Monthly Rate Components
+                  </h4>
+                  <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                    Prorated on Attendance
+                  </span>
+                </div>
 
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Basic Salary (₹) *</label>
-                  <input 
-                    type="number" 
-                    placeholder="45000" 
-                    value={formData.basicSalary ?? ''} 
-                    onChange={(e) => setFormData({...formData, basicSalary: e.target.value === '' ? '' : e.target.value})} 
-                    className="w-full text-sm border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">HRA (₹)</label>
-                  <input 
-                    type="number" 
-                    placeholder="15000" 
-                    value={formData.hra ?? ''} 
-                    onChange={(e) => setFormData({...formData, hra: e.target.value === '' ? '' : e.target.value})} 
-                    className="w-full text-sm border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Allowances (₹)</label>
-                  <input 
-                    type="number" 
-                    placeholder="5000" 
-                    value={formData.allowances ?? ''} 
-                    onChange={(e) => setFormData({...formData, allowances: e.target.value === '' ? '' : e.target.value})} 
-                    className="w-full text-sm border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    Product Sales Incentive % *
-                  </label>
-                  <div className="relative">
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Basic Salary (₹) *</label>
                     <input 
                       type="number" 
-                      step="0.1" 
-                      placeholder="0.0" 
-                      value={formData.incentivePct ?? ''} 
-                      onChange={(e) => setFormData({...formData, incentivePct: e.target.value === '' ? '' : e.target.value})} 
-                      className="w-full text-sm border border-slate-200 rounded-lg p-2.5 pr-8 focus:outline-none focus:ring-2 focus:ring-brand-orange/20 font-bold" 
+                      placeholder="45000" 
+                      value={formData.basicSalary ?? ''} 
+                      onChange={(e) => setFormData({...formData, basicSalary: e.target.value === '' ? '' : e.target.value})} 
+                      className="w-full text-sm font-bold border border-slate-200 rounded-lg p-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
                   </div>
-                  <span className="text-[10px] text-slate-400 mt-1 block">Incentive on product sales price</span>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    Promoter Network Override %
-                  </label>
-                  <div className="relative">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 uppercase mb-1">HRA (₹)</label>
                     <input 
                       type="number" 
-                      step="0.1" 
-                      placeholder="0.0" 
-                      value={formData.promoterOverridePct ?? ''} 
-                      onChange={(e) => setFormData({...formData, promoterOverridePct: e.target.value === '' ? '' : e.target.value})} 
-                      className="w-full text-sm border border-slate-200 rounded-lg p-2.5 pr-8 focus:outline-none focus:ring-2 focus:ring-brand-orange/20 font-bold" 
+                      placeholder="15000" 
+                      value={formData.hra ?? ''} 
+                      onChange={(e) => setFormData({...formData, hra: e.target.value === '' ? '' : e.target.value})} 
+                      className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
                   </div>
-                  <span className="text-[10px] text-slate-400 mt-1 block">Override on assigned promoter sales</span>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Allowances (₹)</label>
+                    <input 
+                      type="number" 
+                      placeholder="5000" 
+                      value={formData.allowances ?? ''} 
+                      onChange={(e) => setFormData({...formData, allowances: e.target.value === '' ? '' : e.target.value})} 
+                      className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
+                    />
+                  </div>
                 </div>
+              </div>
+
+              {/* Part 2: Variable Sales Incentive */}
+              <div className="border border-amber-200 rounded-xl p-4 bg-amber-50/20 space-y-3">
+                <div className="flex items-center justify-between border-b border-amber-200/60 pb-2">
+                  <h4 className="text-xs font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <Percent className="w-3.5 h-3.5 text-amber-600" /> 2. Variable Sales & POS Incentives
+                  </h4>
+                  <span className="text-[10px] font-bold text-amber-700 bg-amber-100/70 px-2 py-0.5 rounded border border-amber-200">
+                    Performance Based
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                      Direct Product Sales Incentive % *
+                    </label>
+                    <div className="relative">
+                      <input 
+                        type="number" 
+                        step="0.1" 
+                        placeholder="5.0" 
+                        value={formData.incentivePct ?? ''} 
+                        onChange={(e) => setFormData({...formData, incentivePct: e.target.value === '' ? '' : e.target.value})} 
+                        className="w-full text-sm font-bold border border-slate-200 rounded-lg p-2.5 pr-8 bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 mt-1 block">Incentive on direct counter/POS sales</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                      Promoter Network Override %
+                    </label>
+                    <div className="relative">
+                      <input 
+                        type="number" 
+                        step="0.1" 
+                        placeholder="1.0" 
+                        value={formData.promoterOverridePct ?? ''} 
+                        onChange={(e) => setFormData({...formData, promoterOverridePct: e.target.value === '' ? '' : e.target.value})} 
+                        className="w-full text-sm font-bold border border-slate-200 rounded-lg p-2.5 pr-8 bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 mt-1 block">Override on assigned promoters' sales</span>
+                  </div>
+                </div>
+
+                {editingEmpId && (
+                  <div className="p-3 bg-white border border-amber-200/80 rounded-lg flex items-center justify-between text-xs">
+                    <div>
+                      <span className="text-slate-500 font-medium block">Current Accrued Incentive Balance:</span>
+                      <span className="font-mono text-xs text-slate-400">Maintained automatically via direct sales & manual awards</span>
+                    </div>
+                    <span className="text-base font-black text-emerald-600 font-display">
+                      +₹{(employees.find(e => e.id === editingEmpId)?.salary_structure?.incentive_earned || 0).toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1308,6 +1713,196 @@ export default function Employees({ showToast }) {
           )}
         </div>
       </Modal>
+
+      {/* Quick Modal: Award Manual Performance Incentive */}
+      {manualIncentiveEmp && (
+        <Modal
+          isOpen={!!manualIncentiveEmp}
+          onClose={() => setManualIncentiveEmp(null)}
+          title={`Award Manual Incentive: ${manualIncentiveEmp.name}`}
+          size="md"
+          footer={
+            <div className="flex gap-2">
+              <button
+                onClick={() => setManualIncentiveEmp(null)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAwardManualIncentive}
+                disabled={submittingIncentive || !manualIncentiveAmount}
+                className="px-4 py-2 text-xs font-bold text-white bg-brand-orange hover:bg-brand-orange-hover rounded-lg cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {submittingIncentive ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Processing...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    <span>Credit Incentive Payout</span>
+                  </>
+                )}
+              </button>
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl text-xs text-amber-900">
+              <span className="font-bold block">Founder Performance Reward:</span>
+              This will directly increment the employee's accrued incentive payout wallet and create an approved commission record in their ledger.
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                Incentive Amount (₹) *
+              </label>
+              <input
+                type="number"
+                placeholder="e.g. 5000"
+                value={manualIncentiveAmount}
+                onChange={(e) => setManualIncentiveAmount(e.target.value)}
+                className="w-full text-base font-bold border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
+                autoFocus
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                Reason / Performance Note
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Monthly sales target achievement & excellent retailer onboarding"
+                value={manualIncentiveNote}
+                onChange={(e) => setManualIncentiveNote(e.target.value)}
+                className="w-full text-xs border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
+              />
+            </div>
+
+            <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs flex justify-between items-center">
+              <div>
+                <span className="text-slate-400 font-medium block">Current Accrued Incentive:</span>
+                <span className="font-bold text-slate-800">₹{(manualIncentiveEmp.salary_structure?.incentive_earned || 0).toLocaleString('en-IN')}</span>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-300" />
+              <div>
+                <span className="text-emerald-600 font-medium block">New Expected Incentive:</span>
+                <span className="font-black text-emerald-600 font-display text-sm">
+                  ₹{((manualIncentiveEmp.salary_structure?.incentive_earned || 0) + Number(manualIncentiveAmount || 0)).toLocaleString('en-IN')}
+                </span>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Quick Modal: Create New User Account */}
+      {isQuickAddUserOpen && (
+        <Modal
+          isOpen={isQuickAddUserOpen}
+          onClose={() => setIsQuickAddUserOpen(false)}
+          title="Add New User Account"
+          size="md"
+          footer={
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setIsQuickAddUserOpen(false)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleQuickCreateUser}
+                disabled={creatingUser || !newUserData.name || !newUserData.email || !newUserData.mobile}
+                className="px-4 py-2 text-xs font-bold text-white bg-brand-orange hover:bg-brand-orange-hover rounded-lg cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {creatingUser ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Creating User...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    <span>Create & Select User</span>
+                  </>
+                )}
+              </button>
+            </div>
+          }
+        >
+          <div className="space-y-3 text-xs">
+            <div className="p-2.5 bg-indigo-50 border border-indigo-200 rounded-lg text-indigo-900 text-[11px]">
+              Create a new user login account. Once created, it will be automatically linked and selected in the dropdown.
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Full Name *</label>
+              <input 
+                type="text" 
+                placeholder="e.g. Ramesh Patel" 
+                value={newUserData.name} 
+                onChange={(e) => setNewUserData({...newUserData, name: e.target.value})} 
+                className="w-full text-xs border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Email Address *</label>
+                <input 
+                  type="email" 
+                  placeholder="ramesh@huddoerp.in" 
+                  value={newUserData.email} 
+                  onChange={(e) => setNewUserData({...newUserData, email: e.target.value})} 
+                  className="w-full text-xs border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Mobile Number *</label>
+                <input 
+                  type="text" 
+                  placeholder="9876543210" 
+                  value={newUserData.mobile} 
+                  onChange={(e) => setNewUserData({...newUserData, mobile: e.target.value})} 
+                  className="w-full text-xs border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">System Role</label>
+                <select 
+                  value={newUserData.roleName} 
+                  onChange={(e) => setNewUserData({...newUserData, roleName: e.target.value})} 
+                  className="w-full text-xs border border-slate-200 rounded-lg p-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
+                >
+                  <option value="TeamMember">TeamMember (Sales / POS)</option>
+                  <option value="SalesExecutive">SalesExecutive</option>
+                  <option value="HR">HR Manager</option>
+                  <option value="Finance">Finance Manager</option>
+                  <option value="Inventory">Inventory Manager</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Default Password</label>
+                <input 
+                  type="text" 
+                  value={newUserData.password} 
+                  onChange={(e) => setNewUserData({...newUserData, password: e.target.value})} 
+                  className="w-full text-xs font-mono border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
+                />
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

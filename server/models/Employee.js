@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import { softDeletePlugin, amountSchemaType } from './plugins.js';
 
 const employeeSchema = new mongoose.Schema({
-  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
+  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', sparse: true },
   employee_code: { type: String, required: true, unique: true },
   full_name: { type: String, required: true },
   mobile: { type: String, required: true },
@@ -12,8 +12,11 @@ const employeeSchema = new mongoose.Schema({
   pan_number: { type: String },
   profile_photo: { type: String },
   department: { type: mongoose.Schema.Types.ObjectId, ref: 'Department' },
+  department_name: { type: String, trim: true },
   designation: { type: mongoose.Schema.Types.ObjectId, ref: 'Designation' },
+  designation_name: { type: String, trim: true },
   reporting_manager: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
+  reporting_manager_name: { type: String, trim: true },
   joining_date: { type: Date },
   salary_structure: {
     basic: amountSchemaType,

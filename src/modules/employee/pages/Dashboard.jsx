@@ -25,6 +25,7 @@ export default function Dashboard({ onNavigate, showToast }) {
   // Dynamic Metrics
   const [dynamicSalesToday, setDynamicSalesToday] = useState({ count: 0, revenue: 0, pairsSold: 0 });
   const [dynamicCommissionEarned, setDynamicCommissionEarned] = useState(0);
+  const [incentivePct, setIncentivePct] = useState(1);
   const [pendingTasksCount, setPendingTasksCount] = useState(0);
   const [leaveBalance, setLeaveBalance] = useState({ total: 33, used: 0, remaining: 33 });
 
@@ -48,8 +49,14 @@ export default function Dashboard({ onNavigate, showToast }) {
             revenue: todayRev,
             pairsSold: pairs
           });
-          // Estimate commission ~5% of sales
-          setDynamicCommissionEarned(Math.round(totalRev * 0.05));
+          
+          // Estimate commission strictly following Founder's configured rate
+          const incRate = Number(data.incentive_pct ?? 1);
+          setIncentivePct(incRate);
+          const earned = data.incentive_earned !== undefined 
+            ? Number(data.incentive_earned) 
+            : Math.round(totalRev * (incRate / 100));
+          setDynamicCommissionEarned(earned);
         }
       })
       .catch(() => {});
@@ -325,7 +332,7 @@ export default function Dashboard({ onNavigate, showToast }) {
               <div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Estimated Incentive</span>
                 <span className="text-xl font-bold text-slate-800 mt-1 block">₹{dynamicCommissionEarned.toLocaleString()}</span>
-                <span className="text-xs text-slate-500 font-medium">{dynamicSalesToday.pairsSold} pairs sold</span>
+                <span className="text-xs text-slate-500 font-medium">{dynamicSalesToday.pairsSold} pairs sold ({incentivePct}% POS)</span>
               </div>
               <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
                 <Percent className="w-5 h-5" />

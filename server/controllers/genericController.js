@@ -1,6 +1,191 @@
 import mongoose from 'mongoose';
 import { DEFAULT_USER_PASSWORD } from '../constants/defaultCredentials.js';
 import { isAdminUser } from '../utils/adminRole.js';
+/**
+ * Automatically resolve and cast Employee payload fields:
+ * - User account link/create
+ * - Department string to ObjectId
+ * - Designation string to ObjectId
+ * - Reporting manager string to ObjectId
+ * - Assigned promoters to ObjectIds
+ * - Employee code generation
+ */
+async function resolveEmployeePayload(body) {
+  const UserModel = mongoose.model('User');
+  const RoleModel = mongoose.model('Role');
+  const DepartmentModel = mongoose.model('Department');
+  const DesignationModel = mongoose.model('Designation');
+  const PromoterModel = mongoose.model('Promoter');
+  const EmployeeModel = mongoose.model('Employee');
+
+  // 1. Resolve User
+  if (!body.user || !mongoose.isValidObjectId(body.user)) {
+    delete body.user;
+    try {
+      const emailLower = body.email ? String(body.email).toLowerCase().trim() : '';
+      const mobileClean = body.mobile ? String(body.mobile).trim() : '';
+      
+      let existingUser = null;
+      if (emailLower || mobileClean) {
+        existingUser = await UserModel.findOne({
+          $or: [
+            ...(emailLower ? [{ email: emailLower }] : []),
+            ...(mobileClean ? [{ mobile: mobileClean }] : [])
+          ],
+          is_deleted: { $ne: true }
+        });
+      }
+
+      if (!existingUser && emailLower && mobileClean) {
+        const roleDoc = await RoleModel.findOne({ name: { $in: ['TeamMember', 'Employee', 'SalesExecutive', 'Staff'] } }) || await RoleModel.findOne();
+        if (roleDoc) {
+          existingUser = new UserModel({
+            name: body.full_name || body.name || 'Employee',
+            email: emailLower,
+            mobile: mobileClean,
+            password: DEFAULT_USER_PASSWORD,
+            role: roleDoc._id,
+            roleName: roleDoc.name || 'TeamMember',
+            designationName: body.designation || 'Sales Executive',
+            is_active: true,
+            approval_status: 'Approved'
+          });
+          await existingUser.save();
+        }
+      }
+
+      if (existingUser) {
+        body.user = existingUser._id;
+      }
+    } catch (userErr) {
+      console.warn("Could not auto-link User for Employee:", userErr.message);
+    }
+  }
+
+  // 2. Resolve Department (strictly remove raw string to prevent BSONError)
+  const rawDept = body.department || body.department_name || 'Sales';
+  delete body.department;
+  body.department_name = typeof rawDept === 'string' ? rawDept.trim() : 'Sales';
+
+  if (mongoose.isValidObjectId(rawDept)) {
+    body.department = new mongoose.Types.ObjectId(rawDept);
+  } else if (rawDept && typeof rawDept === 'string') {
+    try {
+      const deptName = rawDept.trim();
+      let deptDoc = await DepartmentModel.findOne({
+        name: { $regex: new RegExp(`^${deptName}$`, 'i') }
+      });
+      if (!deptDoc) {
+        const validEnums = ['Sales', 'Purchase', 'Inventory', 'Finance', 'HR', 'Marketing'];
+        const matchedEnum = validEnums.find(v => v.toLowerCase() === deptName.toLowerCase()) || 'Sales';
+        deptDoc = await DepartmentModel.findOne({ name: matchedEnum });
+        if (!deptDoc) {
+          deptDoc = await DepartmentModel.create({
+            name: matchedEnum,
+            code: matchedEnum.slice(0, 3).toUpperCase(),
+            is_active: true
+          });
+        }
+      }
+      if (deptDoc) {
+        body.department = deptDoc._id;
+      }
+    } catch (deptErr) {
+      console.warn("Could not resolve Department ObjectId:", deptErr.message);
+    }
+  }
+
+  // 3. Resolve Designation (strictly remove raw string to prevent BSONError)
+  const rawDesig = body.designation || body.designation_name || 'Sales Executive';
+  delete body.designation;
+  body.designation_name = typeof rawDesig === 'string' ? rawDesig.trim() : 'Sales Executive';
+
+  if (mongoose.isValidObjectId(rawDesig)) {
+    body.designation = new mongoose.Types.ObjectId(rawDesig);
+  } else if (rawDesig && typeof rawDesig === 'string') {
+    try {
+      const desigTitle = rawDesig.trim();
+      let desigDoc = await DesignationModel.findOne({
+        title: { $regex: new RegExp(`^${desigTitle}$`, 'i') }
+      });
+      if (!desigDoc && body.department) {
+        try {
+          desigDoc = await DesignationModel.create({
+            title: desigTitle,
+            department: body.department,
+            is_active: true
+          });
+        } catch (e) {
+          desigDoc = await DesignationModel.findOne({ title: { $regex: new RegExp(`^${desigTitle}$`, 'i') } });
+        }
+      }
+      if (desigDoc) {
+        body.designation = desigDoc._id;
+      }
+    } catch (desigErr) {
+      console.warn("Could not resolve Designation ObjectId:", desigErr.message);
+    }
+  }
+
+  // 4. Resolve Reporting Manager (strictly remove raw string to prevent BSONError)
+  const rawManager = body.reporting_manager || body.manager;
+  delete body.manager;
+  delete body.reporting_manager;
+
+  if (mongoose.isValidObjectId(rawManager)) {
+    body.reporting_manager = new mongoose.Types.ObjectId(rawManager);
+  } else if (rawManager && typeof rawManager === 'string') {
+    try {
+      const mgrStr = rawManager.trim();
+      body.reporting_manager_name = mgrStr;
+      const mgrDoc = await EmployeeModel.findOne({
+        $or: [
+          { full_name: { $regex: new RegExp(`^${mgrStr}$`, 'i') } },
+          { name: { $regex: new RegExp(`^${mgrStr}$`, 'i') } }
+        ]
+      });
+      if (mgrDoc) {
+        body.reporting_manager = mgrDoc._id;
+      }
+    } catch (mgrErr) {
+      console.warn("Could not resolve Reporting Manager ObjectId:", mgrErr.message);
+    }
+  }
+
+  // 5. Resolve Assigned Promoters
+  if (Array.isArray(body.assigned_promoters)) {
+    const resolvedIds = [];
+    for (const p of body.assigned_promoters) {
+      if (mongoose.isValidObjectId(p)) {
+        resolvedIds.push(new mongoose.Types.ObjectId(p));
+      } else if (typeof p === 'string' && p.trim()) {
+        try {
+          const promo = await PromoterModel.findOne({
+            $or: [
+              { full_name: { $regex: new RegExp(`^${p.trim()}$`, 'i') } },
+              { name: { $regex: new RegExp(`^${p.trim()}$`, 'i') } },
+              { promoter_code: { $regex: new RegExp(`^${p.trim()}$`, 'i') } }
+            ]
+          });
+          if (promo) resolvedIds.push(promo._id);
+        } catch (promErr) {
+          // ignore invalid promoter
+        }
+      }
+    }
+    body.assigned_promoters = resolvedIds;
+  }
+
+  // 6. Auto-generate employee code if missing
+  if (!body.employee_code) {
+    try {
+      const count = await EmployeeModel.countDocuments();
+      body.employee_code = `EMP-${String(count + 1).padStart(4, '0')}`;
+    } catch (codeErr) {
+      body.employee_code = `EMP-${Date.now().toString().slice(-4)}`;
+    }
+  }
+}
 
 export const genericController = (Model, populateOptions = []) => {
   return {
@@ -97,6 +282,37 @@ export const genericController = (Model, populateOptions = []) => {
 
         const data = await query;
         const total = await Model.countDocuments(criteria);
+
+        if (Model.modelName === 'Employee' && Array.isArray(data)) {
+          const RetailSale = mongoose.model('RetailSale');
+          for (const emp of data) {
+            const userId = emp.user?._id || emp.user;
+            if (userId) {
+              const sales = await RetailSale.find({
+                is_deleted: { $ne: true },
+                $or: [
+                  { seller_user: userId },
+                  { created_by: userId },
+                  { is_team_member_sale: true }
+                ]
+              }).select('grand_total');
+
+              const totalSalesRev = sales.reduce((sum, s) => sum + (s.grand_total || 0), 0);
+              const incPct = Number(emp.salary_structure?.incentive_pct ?? 1);
+              const calcEarned = Math.round(totalSalesRev * (incPct / 100));
+
+              if (!emp.salary_structure) {
+                emp.salary_structure = {};
+              }
+              emp.salary_structure.incentive_earned = calcEarned;
+
+              // Ensure persisted value is up to date
+              await Model.findByIdAndUpdate(emp._id, {
+                $set: { 'salary_structure.incentive_earned': calcEarned }
+              });
+            }
+          }
+        }
 
         res.status(200).json({
           success: true,
@@ -327,6 +543,11 @@ export const genericController = (Model, populateOptions = []) => {
           delete req.body.state_name;
           delete req.body.city_name;
           delete req.body.country_iso;
+        }
+
+        // If creating an Employee, resolve user, department, designation, manager and promoters
+        if (Model.modelName === 'Employee') {
+          await resolveEmployeePayload(req.body);
         }
 
         // If creating a User or Employee, check if we need to auto-link
@@ -618,6 +839,33 @@ export const genericController = (Model, populateOptions = []) => {
           delete req.body.state_name;
           delete req.body.city_name;
           delete req.body.country_iso;
+        }
+
+        if (Model.modelName === 'Employee') {
+          await resolveEmployeePayload(req.body);
+
+          const existingEmp = await Model.findById(id);
+          const userId = existingEmp?.user?._id || existingEmp?.user || req.body.user;
+          const incPct = req.body.salary_structure?.incentive_pct !== undefined
+            ? Number(req.body.salary_structure.incentive_pct)
+            : Number(existingEmp?.salary_structure?.incentive_pct ?? 1);
+
+          if (userId) {
+            const RetailSale = mongoose.model('RetailSale');
+            const sales = await RetailSale.find({
+              is_deleted: { $ne: true },
+              $or: [
+                { seller_user: userId },
+                { created_by: userId },
+                { is_team_member_sale: true }
+              ]
+            }).select('grand_total');
+
+            const totalRev = sales.reduce((sum, s) => sum + (s.grand_total || 0), 0);
+            const recalcIncentive = Math.round(totalRev * (incPct / 100));
+            if (!req.body.salary_structure) req.body.salary_structure = {};
+            req.body.salary_structure.incentive_earned = recalcIncentive;
+          }
         }
 
         const data = await Model.findByIdAndUpdate(

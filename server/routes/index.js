@@ -187,6 +187,11 @@ import {
   lookupCustomerByMobile
 } from '../controllers/retailSaleController.js';
 import { getProductPerformance } from '../controllers/productAnalyticsController.js';
+import {
+  calculateMonthlyPayrolls,
+  generateMonthlyPayrolls,
+  settlePayroll
+} from '../controllers/payrollController.js';
 
 const router = express.Router();
 
@@ -242,6 +247,53 @@ router.get('/reports/:type', verifyJWT, checkPermission('reports', 'view'), getR
 router.post('/orders/:id/approve', verifyJWT, checkPermission('orders', 'approve'), approveOrder);
 router.post('/orders/:id/reject', verifyJWT, checkPermission('orders', 'reject'), rejectOrder);
 router.post('/orders/:id/status', verifyJWT, checkPermission('orders', 'edit'), updateOrderStatus);
+
+// Employee Manual Incentive & Bonus Grant by Founder
+router.post('/employees/:id/manual-incentive', verifyJWT, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const amount = Number(req.body.amount || 0);
+    const note = req.body.note || 'Manual performance incentive awarded by Founder';
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ success: false, message: 'Valid positive incentive amount is required.' });
+    }
+
+    const employee = await Employee.findById(id).populate('user');
+    if (!employee) {
+      return res.status(404).json({ success: false, message: 'Employee record not found.' });
+    }
+
+    employee.salary_structure = employee.salary_structure || {};
+    employee.salary_structure.incentive_earned = (employee.salary_structure.incentive_earned || 0) + amount;
+    await employee.save();
+
+    let record = null;
+    if (employee.user) {
+      record = await CommissionRecord.create({
+        user: employee.user._id,
+        commission_type: 'ManualIncentive',
+        beneficiary_role: 'Employee',
+        manual_incentive_by: req.user?._id,
+        amount: amount,
+        percentage: 0,
+        description: note,
+        status: 'Approved'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Successfully credited ₹${amount.toLocaleString('en-IN')} incentive to ${employee.full_name}.`,
+      data: {
+        employee,
+        commissionRecord: record
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // Hierarchy Revenue & Manager Assignment
 router.get('/hierarchy/state/:id/revenue', verifyJWT, getStateRevenue);
@@ -420,6 +472,13 @@ router.put('/product-categories/:id', verifyJWT, checkPermission('product-catego
 router.delete('/product-categories/:id', verifyJWT, checkPermission('product-categories', 'delete'), deleteProductCategory);
 
 // ==========================================
+// 6.5 DYNAMIC ATTENDANCE & INCENTIVE PAYROLL ROUTES
+// ==========================================
+router.get('/payrolls/calculate', calculateMonthlyPayrolls);
+router.post('/payrolls/generate', generateMonthlyPayrolls);
+router.post('/payrolls/settle', settlePayroll);
+
+// ==========================================
 // 7. DYNAMIC CRUD REGISTRATION FOR ALL MODULES
 // ==========================================
 const modules = [
@@ -437,6 +496,8 @@ const modules = [
       { path: 'state', populate: { path: 'country' } }
     ] },
     { path: 'items.product_variant', populate: { path: 'product', populate: { path: 'category' } } },
+    { path: 'items.product', select: 'name sku category image' },
+    { path: 'seller_user', select: 'name email role' },
     { path: 'status_history.changed_by', select: 'name roleName' },
     'created_by'
   ] },

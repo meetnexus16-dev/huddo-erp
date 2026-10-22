@@ -69,8 +69,8 @@ export default function TeamMemberSales({ showToast }) {
   const [customerName, setCustomerName] = useState('Walk-in Customer');
   const [customerMobile, setCustomerMobile] = useState('');
   const [customerCity, setCustomerCity] = useState('');
+  const [citiesList, setCitiesList] = useState([]);
   const [paymentMode, setPaymentMode] = useState('Cash');
-  const [tenderedAmount, setTenderedAmount] = useState('');
   const [note, setNote] = useState('');
   const [existingCustomerNotice, setExistingCustomerNotice] = useState(null);
   const [isLookingUpCustomer, setIsLookingUpCustomer] = useState(false);
@@ -100,6 +100,30 @@ export default function TeamMemberSales({ showToast }) {
     }
   };
 
+  // Fetch cities configured by Founder
+  const loadCities = async () => {
+    try {
+      const token = getAccessToken();
+      let res = await fetch('/api/employee-self/cities', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      if (!res.ok) {
+        res = await fetch('/api/cities?limit=500', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+      }
+      const data = await res.json();
+      const rows = Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []);
+      const names = Array.from(new Set(rows.map(c => (c.name || '').trim()).filter(Boolean))).sort();
+      setCitiesList(names);
+      if (names.length > 0) {
+        setCustomerCity(prev => prev || names[0]);
+      }
+    } catch (err) {
+      console.warn('Failed to load cities:', err);
+    }
+  };
+
   // Fetch Sales History dynamically
   const loadHistory = async () => {
     setHistoryLoading(true);
@@ -122,6 +146,7 @@ export default function TeamMemberSales({ showToast }) {
   useEffect(() => {
     loadStock();
     loadHistory();
+    loadCities();
   }, []);
 
   // Group variants by Product for clean, interactive display
@@ -302,7 +327,10 @@ export default function TeamMemberSales({ showToast }) {
         if (data.success && data.data) {
           const c = data.data;
           setCustomerName(c.customer_name || customerName);
-          setCustomerCity(c.city || customerCity);
+          if (c.city) {
+            setCustomerCity(c.city);
+            setCitiesList(prev => prev.includes(c.city) ? prev : [...prev, c.city].sort());
+          }
           setExistingCustomerNotice({
             name: c.customer_name,
             totalOrders: c.totalOrders || 0,
@@ -351,8 +379,8 @@ export default function TeamMemberSales({ showToast }) {
     setSubmitting(true);
     try {
       const token = getAccessToken();
-      const tendered = Number(tenderedAmount) || cartTotals.grandTotal;
-      const change = tendered > cartTotals.grandTotal ? (tendered - cartTotals.grandTotal) : 0;
+      const tendered = cartTotals.grandTotal;
+      const change = 0;
 
       const payload = {
         items: cart.map((i) => ({
@@ -387,8 +415,7 @@ export default function TeamMemberSales({ showToast }) {
         setCart([]);
         setCustomerName('Walk-in Customer');
         setCustomerMobile('');
-        setCustomerCity('');
-        setTenderedAmount('');
+        setCustomerCity(citiesList.length > 0 ? citiesList[0] : '');
         setNote('');
         setExistingCustomerNotice(null);
         showToast?.('Sale successfully completed! Stock deducted and incentives credited.', 'success');
@@ -791,41 +818,32 @@ export default function TeamMemberSales({ showToast }) {
               />
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">City / Region</label>
-              <input
-                type="text"
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">City / Region *</label>
+              <select
                 value={customerCity}
                 onChange={(e) => setCustomerCity(e.target.value)}
-                placeholder="e.g. Surat"
-                className="w-full text-xs border border-slate-200 rounded-lg p-2.5 focus:outline-none font-medium"
-              />
+                className="w-full text-xs border border-slate-200 rounded-lg p-2.5 bg-white font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange/20 cursor-pointer"
+              >
+                <option value="">-- Select City --</option>
+                {citiesList.map((cityName) => (
+                  <option key={cityName} value={cityName}>{cityName}</option>
+                ))}
+              </select>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Payment Method</label>
-              <select
-                value={paymentMode}
-                onChange={(e) => setPaymentMode(e.target.value)}
-                className="w-full text-xs border border-slate-200 rounded-lg p-2.5 bg-white font-medium focus:outline-none"
-              >
-                <option value="Cash">Cash</option>
-                <option value="UPI">UPI / QR Payment</option>
-                <option value="Card">Card</option>
-                <option value="NetBanking">Net Banking</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Cash Tendered (₹)</label>
-              <input
-                type="number"
-                value={tenderedAmount}
-                onChange={(e) => setTenderedAmount(e.target.value)}
-                placeholder={cartTotals.grandTotal.toString()}
-                className="w-full text-xs border border-slate-200 rounded-lg p-2.5 focus:outline-none font-medium"
-              />
-            </div>
+          <div>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Payment Method</label>
+            <select
+              value={paymentMode}
+              onChange={(e) => setPaymentMode(e.target.value)}
+              className="w-full text-xs border border-slate-200 rounded-lg p-2.5 bg-white font-medium focus:outline-none focus:ring-2 focus:ring-brand-orange/20 cursor-pointer"
+            >
+              <option value="Cash">Cash</option>
+              <option value="UPI">UPI / QR Payment</option>
+              <option value="Card">Card</option>
+              <option value="NetBanking">Net Banking</option>
+            </select>
           </div>
 
           <div>

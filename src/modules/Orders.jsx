@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ShoppingCart, FileText, CheckCircle2, AlertTriangle, Eye, HelpCircle, X, Settings, RefreshCw } from 'lucide-react';
 import { initialOrders, initialWorkflowConfig } from '../mockData';
 import { DataTable, Modal } from '../components/Common';
+import { getAccessToken } from '../utils/authSession';
 
 // Format a date value as e.g. "08 Jul 2026, 3:14 PM"
 const formatDateTime = (value) => {
@@ -19,76 +20,90 @@ export default function Orders({ showToast }) {
   const [workflowConfig, setWorkflowConfig] = useState(initialWorkflowConfig);
 
   React.useEffect(() => {
-    fetch('/api/orders')
+    const token = getAccessToken();
+    fetch('/api/orders?limit=500&sort=createdAt&order=desc', {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    })
       .then(res => res.json())
       .then(resData => {
         if (resData.success && Array.isArray(resData.data)) {
           const mapped = resData.data.map(o => {
-            const cityName = o.retailer?.city?.name || '';
-            const stateName = o.retailer?.state?.name || o.retailer?.city?.state?.name || '';
+            const isDirect = o.order_type === 'TeamMemberPOS' || o.order_type === 'DirectSale' || !o.retailer;
+            const cityName = o.retailer?.city?.name || o.city_name || o.customer_city || '';
+            const stateName = o.retailer?.state?.name || o.retailer?.city?.state?.name || o.state_name || '';
             const countryName = o.retailer?.state?.country?.name
-              || o.retailer?.city?.state?.country?.name || '';
+              || o.retailer?.city?.state?.country?.name || o.country_name || '';
             const locationParts = [cityName, stateName, countryName].filter(Boolean);
+
+            const displayRetailerName = isDirect
+              ? `POS Customer: ${o.customer_name || 'Walk-in'} (${o.customer_mobile || 'Counter'})`
+              : (o.retailer?.business_name || 'Walk Easy Footwear');
+
             return {
-            id: o.order_number || o._id,
-            mongoId: o._id,
-            retailerName: o.retailer?.business_name || 'Walk Easy Footwear',
-            city: cityName || '—',
-            state: stateName || '—',
-            country: countryName || '—',
-            location: locationParts.length ? locationParts.join(', ') : '—',
-            retailerInfo: {
-              businessName: o.retailer?.business_name || '—',
-              ownerName: o.retailer?.owner_name || '—',
-              mobile: o.retailer?.mobile || '—',
-              email: o.retailer?.email || '—',
-              address: o.retailer?.shop_address || '—',
-              gst: o.retailer?.gst_number || '—',
-              pan: o.retailer?.pan_number || '—',
-              category: o.retailer?.category || '—',
-              creditAmount: o.retailer?.credit_limit?.amount || 0,
-              creditEnabled: o.retailer?.credit_limit?.is_enabled || false,
-              verified: o.retailer?.is_verified || false,
+              id: o.order_number || o._id,
+              mongoId: o._id,
+              orderType: isDirect ? 'Direct POS' : 'Wholesale',
+              retailerName: displayRetailerName,
+              sellerName: o.seller_user?.name || o.created_by?.name || (isDirect ? 'Team Member' : ''),
+              customerName: o.customer_name || '',
+              customerMobile: o.customer_mobile || '',
               city: cityName || '—',
               state: stateName || '—',
-              country: countryName || '—'
-            },
-            productsCount: o.items?.length || 0,
-            amount: o.subtotal,
-            paymentStatus: o.payment_status || 'Pending',
-            utrNo: o.utr_number || '',
-            date: o.createdAt ? new Date(o.createdAt).toISOString().split('T')[0] : '2026-06-08',
-            createdAt: o.createdAt,
-            status: o.status || 'Submitted',
-            history: Array.isArray(o.status_history) && o.status_history.length > 0
-              ? o.status_history.map(h => ({
-                  status: h.status,
-                  at: h.changed_at,
-                  note: h.note || '',
-                  by: h.changed_by?.name || ''
-                }))
-              : [{ status: o.status || 'Submitted', at: o.createdAt, note: 'Order created', by: '' }],
-            items: o.items?.map(item => ({
-              name: item.product_variant?.product?.name || 'Huddo Air Classic',
-              size: item.product_variant?.size || '9',
-              color: item.product_variant?.color || 'Red',
-              qty: item.quantity,
-              price: item.unit_price
-            })) || [],
-            workflow: {
-              cityApproved: o.status === 'Approved' || o.status === 'Processing' || o.status === 'Delivered',
-              stateApproved: o.status === 'Approved' || o.status === 'Processing' || o.status === 'Delivered',
-              countryApproved: o.status === 'Approved' || o.status === 'Delivered',
-              adminApproved: o.status === 'Approved' || o.status === 'Delivered'
-            },
-            proofImage: o.payment_screenshot || '',
-            dispatchDetails: o.dispatch_details ? {
-              transportName: o.dispatch_details.courier || '',
-              trackingId: o.dispatch_details.tracking_number || '',
-              contact: o.dispatch_details.contact || '',
-              dispatchedAt: o.dispatch_details.dispatched_at || null
-            } : null
-          };
+              country: countryName || '—',
+              location: locationParts.length ? locationParts.join(', ') : '—',
+              paymentMode: o.payment_mode || 'Cash',
+              retailerInfo: o.retailer ? {
+                businessName: o.retailer?.business_name || '—',
+                ownerName: o.retailer?.owner_name || '—',
+                mobile: o.retailer?.mobile || '—',
+                email: o.retailer?.email || '—',
+                address: o.retailer?.shop_address || '—',
+                gst: o.retailer?.gst_number || '—',
+                pan: o.retailer?.pan_number || '—',
+                category: o.retailer?.category || '—',
+                creditAmount: o.retailer?.credit_limit?.amount || 0,
+                creditEnabled: o.retailer?.credit_limit?.is_enabled || false,
+                verified: o.retailer?.is_verified || false,
+                city: cityName || '—',
+                state: stateName || '—',
+                country: countryName || '—'
+              } : null,
+              productsCount: o.items?.length || 0,
+              amount: Number(o.grand_total ?? o.subtotal ?? 0),
+              paymentStatus: o.payment_status || (isDirect ? 'Verified' : 'Pending'),
+              utrNo: o.utr_number || '',
+              date: o.createdAt ? new Date(o.createdAt).toISOString().split('T')[0] : '2026-06-08',
+              createdAt: o.createdAt,
+              status: o.status || (isDirect ? 'Delivered' : 'Submitted'),
+              history: Array.isArray(o.status_history) && o.status_history.length > 0
+                ? o.status_history.map(h => ({
+                    status: h.status,
+                    at: h.changed_at,
+                    note: h.note || '',
+                    by: h.changed_by?.name || ''
+                  }))
+                : [{ status: o.status || (isDirect ? 'Delivered' : 'Submitted'), at: o.createdAt, note: 'Order created', by: '' }],
+              items: o.items?.map(item => ({
+                name: item.product_name || item.product?.name || item.product_variant?.product?.name || 'Footwear Item',
+                size: item.size || item.product_variant?.size || 'Standard',
+                color: item.color || item.product_variant?.color || 'Default',
+                qty: item.quantity,
+                price: item.unit_price
+              })) || [],
+              workflow: {
+                cityApproved: o.status === 'Approved' || o.status === 'Processing' || o.status === 'Delivered',
+                stateApproved: o.status === 'Approved' || o.status === 'Processing' || o.status === 'Delivered',
+                countryApproved: o.status === 'Approved' || o.status === 'Delivered',
+                adminApproved: o.status === 'Approved' || o.status === 'Delivered'
+              },
+              proofImage: o.payment_screenshot || '',
+              dispatchDetails: o.dispatch_details ? {
+                transportName: o.dispatch_details.courier || '',
+                trackingId: o.dispatch_details.tracking_number || '',
+                contact: o.dispatch_details.contact || '',
+                dispatchedAt: o.dispatch_details.dispatched_at || null
+              } : null
+            };
           });
           setOrders(mapped);
         } else {
@@ -272,12 +287,40 @@ export default function Orders({ showToast }) {
   // Filter orders
   const filteredOrders = orders.filter(ord => {
     if (activeTab === 'All') return true;
+    if (activeTab === 'Direct POS') return ord.orderType === 'Direct POS';
+    if (activeTab === 'Wholesale') return ord.orderType === 'Wholesale' || !ord.orderType;
     return ord.status === activeTab;
   });
 
   const columns = [
-    { header: "Order ID", accessor: "id", render: (val) => <span className="font-bold text-slate-800 font-mono text-[13px]">{val}</span> },
-    { header: "Retailer Name", accessor: "retailerName", render: (val) => <span className="font-bold text-slate-800 font-display">{val}</span> },
+    { 
+      header: "Order ID", 
+      accessor: "id", 
+      render: (val, row) => (
+        <div>
+          <span className="font-bold text-slate-800 font-mono text-[13px] block">{val}</span>
+          <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-extrabold tracking-wide uppercase mt-0.5 ${
+            row.orderType === 'Direct POS' 
+              ? 'bg-amber-100 text-amber-800 border border-amber-200' 
+              : 'bg-blue-50 text-blue-700 border border-blue-200'
+          }`}>
+            {row.orderType || 'Wholesale'}
+          </span>
+        </div>
+      )
+    },
+    { 
+      header: "Customer / Retailer", 
+      accessor: "retailerName", 
+      render: (val, row) => (
+        <div>
+          <span className="font-bold text-slate-800 font-display block">{val}</span>
+          {row.sellerName && row.orderType === 'Direct POS' && (
+            <span className="text-[10px] text-slate-400 font-medium">Sold by: {row.sellerName}</span>
+          )}
+        </div>
+      )
+    },
     { header: "City", accessor: "city" },
     { header: "Products", accessor: "productsCount", render: (val) => <span>{val} items</span> },
     { header: "Amount (₹)", accessor: "amount", render: (val) => <span className="font-bold text-slate-900">₹{val.toLocaleString('en-IN')}</span> },
@@ -337,7 +380,7 @@ export default function Orders({ showToast }) {
         <>
           {/* Status Tabs */}
           <div className="flex border-b border-slate-200 overflow-x-auto whitespace-nowrap scrollbar-none">
-            {['All', 'Submitted', 'Approved', 'Processing', 'Packed', 'Shipped', 'Delivered', 'Cancelled', 'Returned'].map(tab => (
+            {['All', 'Direct POS', 'Wholesale', 'Submitted', 'Approved', 'Processing', 'Packed', 'Shipped', 'Delivered', 'Cancelled', 'Returned'].map(tab => (
               <button 
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -502,15 +545,29 @@ export default function Orders({ showToast }) {
               {/* Retailer Card & Bank info */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl text-xs relative">
-                  <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">Retailer Outlet</h4>
-                  <button
-                    type="button"
-                    onClick={() => setShowRetailerInfo(v => !v)}
-                    className="font-bold text-slate-800 text-sm font-display text-left hover:text-brand-orange transition-colors underline decoration-dotted underline-offset-2 cursor-pointer"
-                    title="Click to view full retailer details"
-                  >
-                    {viewingOrder.retailerName}
-                  </button>
+                  <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">
+                    {viewingOrder.orderType === 'Direct POS' ? 'Customer Details (Direct POS)' : 'Retailer Outlet'}
+                  </h4>
+                  {viewingOrder.retailerInfo ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowRetailerInfo(v => !v)}
+                      className="font-bold text-slate-800 text-sm font-display text-left hover:text-brand-orange transition-colors underline decoration-dotted underline-offset-2 cursor-pointer"
+                      title="Click to view full retailer details"
+                    >
+                      {viewingOrder.retailerName}
+                    </button>
+                  ) : (
+                    <p className="font-bold text-slate-800 text-sm font-display">
+                      {viewingOrder.customerName || viewingOrder.retailerName}
+                    </p>
+                  )}
+                  {viewingOrder.customerMobile && (
+                    <p className="text-slate-600 font-medium mt-0.5">Mobile: {viewingOrder.customerMobile}</p>
+                  )}
+                  {viewingOrder.sellerName && viewingOrder.orderType === 'Direct POS' && (
+                    <p className="text-slate-600 font-medium mt-0.5">Cashier / Team Member: <span className="font-bold text-slate-800">{viewingOrder.sellerName}</span></p>
+                  )}
                   <p className="text-slate-500 mt-1">Location: {viewingOrder.location}</p>
                   <div className="mt-1 space-y-0.5 text-slate-500">
                     <p>City: <span className="font-semibold text-slate-700">{viewingOrder.city}</span></p>
@@ -549,9 +606,20 @@ export default function Orders({ showToast }) {
                   )}
                 </div>
                 <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl text-xs">
-                  <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">Bank Ledger Match</h4>
-                  <p className="font-semibold text-slate-700">UTR: {viewingOrder.utrNo || "Pending Cheque"}</p>
-                  <p className="text-slate-500 mt-1">Verified status: <strong>{viewingOrder.paymentStatus}</strong></p>
+                  <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">
+                    {viewingOrder.orderType === 'Direct POS' ? 'POS Counter Settlement' : 'Bank Ledger Match'}
+                  </h4>
+                  {viewingOrder.orderType === 'Direct POS' ? (
+                    <>
+                      <p className="font-semibold text-slate-700">Payment Mode: <strong>{viewingOrder.paymentMode || 'Cash'}</strong></p>
+                      <p className="text-slate-500 mt-1">Status: <strong className="text-emerald-600">Immediate POS Settlement (Verified)</strong></p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-semibold text-slate-700">UTR: {viewingOrder.utrNo || "Pending Cheque"}</p>
+                      <p className="text-slate-500 mt-1">Verified status: <strong>{viewingOrder.paymentStatus}</strong></p>
+                    </>
+                  )}
                 </div>
               </div>
 

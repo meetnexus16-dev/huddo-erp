@@ -17,16 +17,16 @@ export default function Sales({ showToast }) {
   const [selectedCity, setSelectedCity] = useState('All');
 
   const loadSalesData = () => {
-    fetch('/api/orders')
+    fetch('/api/orders?limit=500&sort=createdAt&order=desc')
       .then(res => res.json())
       .then(resData => {
         if (resData.success && Array.isArray(resData.data)) {
           setOrders(resData.data.map(o => ({
             id: o.order_number || o._id,
             _id: o._id,
-            retailerName: o.retailer?.business_name || 'Walk Easy Footwear',
+            retailerName: o.retailer?.business_name || (o.customer_name ? `POS Customer: ${o.customer_name}` : 'Direct Sale'),
             retailerId: o.retailer?._id || o.retailer,
-            city: o.retailer?.city?.name || o.retailer?.city || 'Mumbai',
+            city: o.retailer?.city?.name || o.city_name || o.customer_city || 'Mumbai',
             amount: Number(o.grand_total ?? o.subtotal ?? 0),
             paymentStatus: o.payment_status || 'Pending',
             status: o.status || 'Submitted',

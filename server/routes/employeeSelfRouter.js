@@ -16,6 +16,8 @@ import State from '../models/State.js';
 import Country from '../models/Country.js';
 import CommissionRecord from '../models/CommissionRecord.js';
 import Customer from '../models/Customer.js';
+import Order from '../models/Order.js';
+import { calculateSingleEmployeePayroll } from '../controllers/payrollController.js';
 
 const router = express.Router();
 
@@ -774,9 +776,36 @@ router.get('/stock', async (req, res) => {
   }
 });
 
+// Fetch active cities configured by Founder in ERP
+router.get('/cities', async (req, res) => {
+  try {
+    const cities = await City.find({
+      is_deleted: { $ne: true },
+      is_active: { $ne: false }
+    })
+      .populate('state', 'name')
+      .sort({ name: 1 });
+
+    const formatted = cities.map(c => ({
+      _id: c._id,
+      name: c.name,
+      state: c.state?.name || '',
+      state_id: c.state?._id || c.state
+    }));
+
+    return res.json({
+      success: true,
+      data: formatted
+    });
+  } catch (err) {
+    console.error("Error fetching cities for team member:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 router.get('/sales', async (req, res) => {
   try {
-    const { user } = await resolveIdentity(req);
+    const { user, employee } = await resolveIdentity(req);
     const filter = {
       is_deleted: { $ne: true },
       $or: [
@@ -791,12 +820,65 @@ router.get('/sales', async (req, res) => {
       .limit(100)
       .populate('items.product', 'name sku image');
 
+    let empDoc = employee;
+    if (!empDoc && user?._id) {
+      empDoc = await Employee.findOne({ user: user._id, is_deleted: { $ne: true } });
+    }
+    if (!empDoc) {
+      empDoc = await Employee.findOne({ is_deleted: { $ne: true } });
+    }
+
+    const incentivePct = Number(empDoc?.salary_structure?.incentive_pct ?? 1);
+    const totalRev = sales.reduce((acc, s) => acc + (s.grand_total || 0), 0);
+    const calculatedIncentive = Math.round(totalRev * (incentivePct / 100));
+
+    // Ensure database incentive_earned is synchronized with calculated incentive
+    if (empDoc && empDoc._id) {
+      const currentEarned = Number(empDoc.salary_structure?.incentive_earned || 0);
+      if (currentEarned !== calculatedIncentive) {
+        await Employee.findByIdAndUpdate(empDoc._id, {
+          $set: { 'salary_structure.incentive_earned': calculatedIncentive }
+        });
+      }
+    }
+
     return res.json({
       success: true,
-      data: sales
+      data: sales,
+      incentive_pct: incentivePct,
+      incentive_earned: calculatedIncentive,
+      total_revenue: totalRev,
+      pairs_sold: sales.reduce((acc, s) => acc + (s.pairs_sold || 0), 0)
     });
   } catch (err) {
     console.error("Error fetching team member sales:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.get('/commissions', async (req, res) => {
+  try {
+    const { user, employee } = await resolveIdentity(req);
+    let empDoc = employee;
+    if (!empDoc && user?._id) {
+      empDoc = await Employee.findOne({ user: user._id, is_deleted: { $ne: true } });
+    }
+    const incentivePct = Number(empDoc?.salary_structure?.incentive_pct ?? 1);
+
+    const records = await CommissionRecord.find({
+      user: user?._id,
+      is_deleted: { $ne: true }
+    }).sort({ createdAt: -1 });
+
+    const totalEarned = records.reduce((sum, r) => sum + (r.amount || 0), 0);
+
+    return res.json({
+      success: true,
+      data: records,
+      totalEarned,
+      incentive_pct: incentivePct
+    });
+  } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -902,7 +984,7 @@ router.post('/sales', async (req, res) => {
       countryDoc = await Country.findById(seller.country?._id || seller.country).populate('manager');
     }
 
-    // 3. Create RetailSale document
+    // 3a. Create RetailSale document
     const sale = await RetailSale.create({
       sale_number: saleNumber,
       is_team_member_sale: true,
@@ -931,7 +1013,70 @@ router.post('/sales', async (req, res) => {
       note: note || ''
     });
 
+    // 3b. Also create Order document so direct sales appear in Founder / Admin Orders & Sales registers
+    const orderItems = saleItems.map(si => ({
+      product: si.product,
+      product_variant: si.product_variant,
+      product_name: si.product_name,
+      sku: si.sku_variant,
+      size: si.size,
+      color: si.color,
+      quantity: si.quantity,
+      unit_price: si.unit_price,
+      total_price: si.line_total,
+      discount_percent: si.discount_percent,
+      line_discount_amount: si.line_discount_amount
+    }));
+
+    const orderDoc = await Order.create({
+      order_number: saleNumber,
+      order_type: 'TeamMemberPOS',
+      retailer: null,
+      customer_name: customer_name.trim() || 'Walk-in Customer',
+      customer_mobile: customer_mobile.trim(),
+      customer_city: customer_city.trim() || cityDoc?.name || '',
+      seller_user: user?._id || null,
+      city: cityDoc?._id || null,
+      state: stateDoc?._id || null,
+      country: countryDoc?._id || null,
+      city_name: cityDoc?.name || '',
+      state_name: stateDoc?.name || '',
+      country_name: countryDoc?.name || '',
+      counter_number: 'Direct POS',
+      payment_mode: payment_mode || 'Cash',
+      tendered_amount: Number(tendered_amount) || grandTotal,
+      change_due: Number(change_due) || 0,
+      note: note || '',
+      items: orderItems,
+      subtotal,
+      tax_amount: 0,
+      discount_amount: saleItems.reduce((acc, i) => acc + (i.line_discount_amount || 0), 0),
+      grand_total: grandTotal,
+      payment_status: 'Verified',
+      status: 'Delivered',
+      created_by: user?._id || null,
+      commissions_calculated: true,
+      delivered_at: new Date(),
+      status_history: [
+        {
+          status: 'Delivered',
+          note: `Direct POS Counter sale completed by ${user?.name || 'Team Member'}.`,
+          changed_by: user?._id || null,
+          changed_at: new Date()
+        }
+      ]
+    });
+
     // 4. Multi-level manager and team member incentive calculations
+    // Strictly retrieve Founder's configured sales incentive rate for this team member / employee
+    let sellerEmp = null;
+    if (user?._id) {
+      sellerEmp = await Employee.findOne({ user: user._id, is_deleted: { $ne: true } });
+    }
+    const founderConfiguredIncentivePct = sellerEmp?.salary_structure?.incentive_pct !== undefined && sellerEmp.salary_structure.incentive_pct !== null
+      ? Number(sellerEmp.salary_structure.incentive_pct)
+      : null;
+
     const commissionRecords = [];
 
     for (const item of saleItems) {
@@ -941,8 +1086,10 @@ router.post('/sales', async (req, res) => {
 
       const lineTotal = item.line_total || (item.unit_price * item.quantity);
 
-      // (a) Team Member Direct Incentive (e.g. product.employeeIncentive or 5%)
-      const tmIncentivePct = Number(product?.employeeIncentive) || 5;
+      // (a) Team Member Direct Incentive: strictly follow Founder's configured rate on Employee model
+      const tmIncentivePct = founderConfiguredIncentivePct !== null
+        ? founderConfiguredIncentivePct
+        : (Number(product?.employeeIncentive) || 1);
       const tmIncentiveAmount = Math.round((lineTotal * (tmIncentivePct / 100)) * 100) / 100;
       if (user?._id && tmIncentiveAmount > 0) {
         commissionRecords.push({
@@ -1028,7 +1175,23 @@ router.post('/sales', async (req, res) => {
     }
 
     if (commissionRecords.length > 0) {
+      // Link commission records to both retail sale and order
+      commissionRecords.forEach(c => {
+        c.order = orderDoc._id;
+      });
       await CommissionRecord.insertMany(commissionRecords);
+
+      // Accumulate sales incentive into employee's profile
+      const totalTmIncentive = commissionRecords
+        .filter(c => c.beneficiary_role === 'TeamMember' && String(c.user) === String(user?._id))
+        .reduce((sum, c) => sum + (c.amount || 0), 0);
+
+      if (user?._id && totalTmIncentive > 0) {
+        await Employee.findOneAndUpdate(
+          { user: user._id },
+          { $inc: { 'salary_structure.incentive_earned': totalTmIncentive } }
+        );
+      }
     }
 
     // 5. Customer record update
@@ -1062,6 +1225,45 @@ router.post('/sales', async (req, res) => {
     });
   } catch (err) {
     console.error("Error creating team member direct sale:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ==========================================
+// 8. DYNAMIC ATTENDANCE & INCENTIVE PAYROLL
+// ==========================================
+router.get('/payroll', async (req, res) => {
+  try {
+    const { user, employee } = await resolveIdentity(req);
+    const monthQuery = req.query.month || new Date().toISOString().slice(0, 7);
+    const [yearStr, monthStr] = monthQuery.split('-');
+    const year = parseInt(yearStr, 10) || new Date().getFullYear();
+    const month = parseInt(monthStr, 10) || (new Date().getMonth() + 1);
+
+    let targetEmp = employee;
+    if (!targetEmp && user?._id) {
+      targetEmp = await Employee.findOne({ user: user._id, is_deleted: { $ne: true } })
+        .populate('department')
+        .populate('designation')
+        .populate('assigned_promoters');
+    }
+
+    if (!targetEmp) {
+      // Fallback: pick the first active employee for workspace demo preview
+      targetEmp = await Employee.findOne({ is_deleted: { $ne: true } })
+        .populate('department')
+        .populate('designation')
+        .populate('assigned_promoters');
+    }
+
+    if (!targetEmp) {
+      return res.status(404).json({ success: false, message: 'No employee record found.' });
+    }
+
+    const calculated = await calculateSingleEmployeePayroll(targetEmp, year, month);
+    return res.json({ success: true, payroll: calculated });
+  } catch (err) {
+    console.error("Error fetching self payroll:", err);
     return res.status(500).json({ success: false, message: err.message });
   }
 });
