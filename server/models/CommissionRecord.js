@@ -3,16 +3,18 @@ import { softDeletePlugin, amountSchemaType } from './plugins.js';
 
 const commissionRecordSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  order: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true },
+  order: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: false },
+  retail_sale: { type: mongoose.Schema.Types.ObjectId, ref: 'RetailSale' },
   retailer: { type: mongoose.Schema.Types.ObjectId, ref: 'Retailer' },
   product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
   product_category: { type: mongoose.Schema.Types.ObjectId, ref: 'ProductCategory' },
   commission_type: {
     type: String,
-    enum: ['ManagerIncentive', 'PromoterRoyalty', 'PromoterBonus', 'Bonus'],
+    enum: ['ManagerIncentive', 'PromoterRoyalty', 'PromoterBonus', 'Bonus', 'ManualIncentive', 'SalesIncentive'],
     required: true
   },
   beneficiary_role: { type: String },
+  manual_incentive_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   amount: amountSchemaType,
   percentage: { type: Number, required: true },
   base_franchise_points: { type: Number, default: 0 },

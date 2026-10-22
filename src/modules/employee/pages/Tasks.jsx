@@ -6,24 +6,12 @@ import {
 import StatusBadge from '../components/StatusBadge';
 import CustomDataTable from '../components/CustomDataTable';
 import CustomModal from '../components/CustomModal';
+import { getAccessToken } from '../../../utils/authSession';
 
 const STORAGE_KEY = 'huddo_employee_tasks';
 
-const INITIAL_TASKS = [
-  { id: "TSK-001", title: "Compile Q2 Marketing Analytics Sheets", dueDate: "2026-06-18", priority: "Critical", status: "In Progress", notes: "Analyze click-through rates and ROI across Facebook ads campaign." },
-  { id: "TSK-002", title: "Review Summer Catalog print mockups", dueDate: "2026-06-20", priority: "Medium", status: "Not Started", notes: "Verify color compliance with branding guideline docs." },
-  { id: "TSK-003", title: "Schedule onboarding check-ins with new interns", dueDate: "2026-06-15", priority: "Draft", status: "Completed", notes: "Introductory session completed on June 15." }
-];
-
 export default function Tasks({ showToast }) {
-  const [tasks, setTasks] = useState(() => {
-    try {
-      const cached = localStorage.getItem(STORAGE_KEY);
-      if (cached) return JSON.parse(cached);
-    } catch {}
-    return INITIAL_TASKS;
-  });
-
+  const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [taskTitle, setTaskTitle] = useState("");
@@ -32,11 +20,24 @@ export default function Tasks({ showToast }) {
   const [notes, setNotes] = useState("");
   const [filterStatus, setFilterStatus] = useState("All");
 
+  // Purge any stale mock tasks from cache on mount
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem(STORAGE_KEY);
+      if (cached && (cached.includes('TSK-001') || cached.includes('Marketing Analytics'))) {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    } catch {}
+  }, []);
+
   // Fetch dynamic tasks from server
   const fetchTasks = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/employee-self/tasks');
+      const token = getAccessToken();
+      const res = await fetch('/api/employee-self/tasks', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.tasks)) {
@@ -46,10 +47,12 @@ export default function Tasks({ showToast }) {
         }
       }
     } catch (err) {
-      console.warn("Backend tasks fetch fallback:", err);
+      console.warn("Backend tasks fetch error:", err);
     } finally {
       setLoading(false);
     }
+
+    setTasks([]);
   };
 
   useEffect(() => {

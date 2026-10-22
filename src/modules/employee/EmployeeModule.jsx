@@ -42,6 +42,8 @@ import PurchaseApprovals from './pages/PurchaseApprovals';
 import MaterialTracking from './pages/MaterialTracking';
 import ProcurementReports from './pages/ProcurementReports';
 import Tasks from './pages/Tasks';
+import TeamMemberSales from './pages/TeamMemberSales';
+import GPSProtectionGuard from './components/GPSProtectionGuard';
 
 // Import Mock Notifications
 import { mockNotifications as initialNotifications } from './mockData/mockNotifications';
@@ -167,6 +169,7 @@ function EmployeeWorkspace({ userRole, showToast, onSwitchRole }) {
         return [
           ...common,
           { id: "Attendance", label: "My Attendance", icon: Clock },
+          { id: "Direct Sales", label: "Direct Sales (POS)", icon: ShoppingBag },
           { id: "My Tasks", label: "My Tasks", icon: CheckSquare }
         ];
     }
@@ -265,6 +268,8 @@ function EmployeeWorkspace({ userRole, showToast, onSwitchRole }) {
         return <ProcurementReports showToast={showToast} />;
 
       // Team Member
+      case 'Direct Sales':
+        return <TeamMemberSales showToast={showToast} />;
       case 'My Tasks':
         return <Tasks showToast={showToast} />;
 
@@ -273,7 +278,7 @@ function EmployeeWorkspace({ userRole, showToast, onSwitchRole }) {
     }
   };
 
-  return (
+  const layoutContent = (
     <DashboardLayout
       userRole={currentRoleLabel}
       activeTab={currentTab}
@@ -294,6 +299,16 @@ function EmployeeWorkspace({ userRole, showToast, onSwitchRole }) {
       {renderActiveScreen()}
     </DashboardLayout>
   );
+
+  if (activeRole === 'team_member') {
+    return (
+      <GPSProtectionGuard isClockedIn={true}>
+        {layoutContent}
+      </GPSProtectionGuard>
+    );
+  }
+
+  return layoutContent;
 }
 
 export default function EmployeeModule({ userRole = 'Sales Executive', showToast, onSwitchRole }) {

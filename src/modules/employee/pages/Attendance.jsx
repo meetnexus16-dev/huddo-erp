@@ -3,17 +3,21 @@ import {
   Calendar as CalendarIcon, Clock, ArrowDownToLine, 
   ChevronLeft, ChevronRight, Activity, Smile, RefreshCw, CheckCircle2
 } from 'lucide-react';
-import { mockAttendance as initialAttendance } from '../mockData/mockAttendance';
 import StatusBadge from '../components/StatusBadge';
 import CustomDataTable from '../components/CustomDataTable';
+import { getAccessToken } from '../../../utils/authSession';
 
 const STORAGE_PREFIX = 'huddo_employee_attendance_';
 
 export default function Attendance({ showToast }) {
-  // Navigation month state (Defaulting to June 2026 as per design, with full dynamic navigation)
+  // Navigation month state (Defaulting to current date or active month)
+  const now = new Date();
   const [currentYear, setCurrentYear] = useState(2026);
   const [currentMonthIndex, setCurrentMonthIndex] = useState(5); // 0-indexed: 5 = June
   const [loading, setLoading] = useState(false);
+
+  // State for actual logged attendance records
+  const [attendance, setAttendance] = useState([]);
 
   const monthString = useMemo(() => {
     return `${currentYear}-${String(currentMonthIndex + 1).padStart(2, '0')}`;
@@ -24,109 +28,44 @@ export default function Attendance({ showToast }) {
     return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase();
   }, [currentYear, currentMonthIndex]);
 
-  // Generate dynamic records for a given month
-  const generateMonthRecords = (year, monthIdx) => {
-    const daysInMonth = new Date(year, monthIdx + 1, 0).getDate();
-    const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    const records = [];
-
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dateObj = new Date(year, monthIdx, d);
-      const dayOfWeek = dateObj.getDay();
-      const dayName = dayNames[dayOfWeek];
-      const dateStr = `${year}-${String(monthIdx + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-
-      let status = 'Present';
-      let checkIn = '09:15 AM';
-      let checkOut = '06:10 PM';
-      let hours = '8.9';
-
-      if (dayOfWeek === 0 || dayOfWeek === 6) {
-        status = 'Weekend';
-        checkIn = '';
-        checkOut = '';
-        hours = '0';
-      } else if (d === 5) {
-        status = 'Half Day';
-        checkIn = '09:30 AM';
-        checkOut = '03:30 PM';
-        hours = '6.0';
-      } else if (d === 10 || d === 11) {
-        status = 'Leave';
-        checkIn = '';
-        checkOut = '';
-        hours = '0';
-      } else if (d === 17) {
-        status = 'Holiday';
-        checkIn = '';
-        checkOut = '';
-        hours = '0';
-      } else if (d === 18 || d === 19) {
-        status = 'Absent';
-        checkIn = '';
-        checkOut = '';
-        hours = '0';
-      } else {
-        const minsIn = 5 + (d % 25);
-        const minsOut = 5 + ((d * 3) % 25);
-        checkIn = `09:${String(minsIn).padStart(2, '0')} AM`;
-        checkOut = `06:${String(minsOut).padStart(2, '0')} PM`;
-        hours = (8.5 + ((d % 7) * 0.1)).toFixed(1);
-      }
-
-      records.push({
-        date: dateStr,
-        day: dayName,
-        checkIn,
-        checkOut,
-        hours,
-        status
-      });
-    }
-    return records;
-  };
-
-  // State for attendance records of active month
-  const [attendance, setAttendance] = useState(() => {
+  // Purge any stale mock cache on mount
+  useEffect(() => {
     try {
-      const cached = localStorage.getItem(`${STORAGE_PREFIX}2026-06`);
-      if (cached) return JSON.parse(cached);
+      Object.keys(localStorage).forEach(k => {
+        if (k.startsWith(STORAGE_PREFIX)) {
+          const val = localStorage.getItem(k);
+          if (val && (val.includes('09:15 AM') || val.includes('Viral fever'))) {
+            localStorage.removeItem(k);
+          }
+        }
+      });
     } catch {}
-    return initialAttendance;
-  });
+  }, []);
 
-  // Fetch dynamic attendance from server or local storage
+  // Fetch actual attendance from server
   const fetchMonthAttendance = async (year, monthIdx) => {
     const mStr = `${year}-${String(monthIdx + 1).padStart(2, '0')}`;
     setLoading(true);
     try {
-      const res = await fetch(`/api/employee-self/attendance?month=${mStr}`);
+      const token = getAccessToken();
+      const res = await fetch(`/api/employee-self/attendance?month=${mStr}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       if (res.ok) {
         const data = await res.json();
-        if (data.success && Array.isArray(data.records) && data.records.length > 0) {
+        if (data.success && Array.isArray(data.records)) {
           setAttendance(data.records);
           localStorage.setItem(`${STORAGE_PREFIX}${mStr}`, JSON.stringify(data.records));
           return;
         }
       }
     } catch (err) {
-      console.warn("Backend attendance fetch fallback:", err);
+      console.warn("Backend attendance fetch error:", err);
     } finally {
       setLoading(false);
     }
 
-    // Cached or dynamic generated records
-    try {
-      const cached = localStorage.getItem(`${STORAGE_PREFIX}${mStr}`);
-      if (cached) {
-        setAttendance(JSON.parse(cached));
-        return;
-      }
-    } catch {}
-
-    const generated = (mStr === '2026-06') ? initialAttendance : generateMonthRecords(year, monthIdx);
-    setAttendance(generated);
-    localStorage.setItem(`${STORAGE_PREFIX}${mStr}`, JSON.stringify(generated));
+    setAttendance([]);
   };
 
   useEffect(() => {
@@ -152,14 +91,43 @@ export default function Attendance({ showToast }) {
     }
   };
 
-  // Dynamic Calendar stats calculations
+  // Generate calendar tiles for all days of the month
+  const calendarDays = useMemo(() => {
+    const daysInMonth = new Date(currentYear, currentMonthIndex + 1, 0).getDate();
+    const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const days = [];
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateObj = new Date(currentYear, currentMonthIndex, d);
+      const dayOfWeek = dateObj.getDay();
+      const dateStr = `${currentYear}-${String(currentMonthIndex + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const rec = attendance.find(r => r.date === dateStr);
+
+      if (rec) {
+        days.push(rec);
+      } else {
+        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+        days.push({
+          date: dateStr,
+          day: dayNames[dayOfWeek],
+          checkIn: '',
+          checkOut: '',
+          hours: '0',
+          status: isWeekend ? 'Weekend' : 'Unlogged'
+        });
+      }
+    }
+    return days;
+  }, [currentYear, currentMonthIndex, attendance]);
+
+  // Dynamic Calendar stats calculations based ONLY on real records
   const stats = useMemo(() => {
     const present = attendance.filter(r => r.status === 'Present' || r.status === 'Half Day').length;
     const absent = attendance.filter(r => r.status === 'Absent').length;
     const leaves = attendance.filter(r => r.status === 'Leave').length;
     const halfDays = attendance.filter(r => r.status === 'Half Day').length;
     const workingDays = attendance.filter(r => r.status !== 'Weekend' && r.status !== 'Holiday').length;
-    const workingRatio = workingDays > 0 ? Math.round((present / workingDays) * 100) : 100;
+    const workingRatio = workingDays > 0 ? Math.round((present / workingDays) * 100) : (present === 0 && absent === 0 ? 100 : 0);
     return { present, absent, leaves, halfDays, workingRatio };
   }, [attendance]);
 
@@ -191,37 +159,51 @@ export default function Attendance({ showToast }) {
 
   // Quick toggle status for a specific day
   const handleToggleDayStatus = async (targetDate) => {
-    const currentRecord = attendance.find(r => r.date === targetDate);
-    if (!currentRecord) return;
-
-    const statusCycle = ['Present', 'Half Day', 'Leave', 'Absent'];
-    const currentIdx = statusCycle.indexOf(currentRecord.status);
+    const existing = attendance.find(r => r.date === targetDate);
+    const statusCycle = ['Present', 'Half Day', 'Leave', 'Absent', 'Unlogged'];
+    const currentStatus = existing ? existing.status : 'Unlogged';
+    const currentIdx = statusCycle.indexOf(currentStatus);
     const nextStatus = currentIdx === -1 ? 'Present' : statusCycle[(currentIdx + 1) % statusCycle.length];
 
-    const nextHours = nextStatus === 'Present' ? '8.9' : (nextStatus === 'Half Day' ? '6.0' : '0');
-    const nextCheckIn = (nextStatus === 'Present' || nextStatus === 'Half Day') ? '09:15 AM' : '';
-    const nextCheckOut = nextStatus === 'Present' ? '06:10 PM' : (nextStatus === 'Half Day' ? '03:30 PM' : '');
-
-    const updated = attendance.map(r => 
-      r.date === targetDate
-        ? { ...r, status: nextStatus, checkIn: nextCheckIn, checkOut: nextCheckOut, hours: nextHours }
-        : r
-    );
+    let updated;
+    if (nextStatus === 'Unlogged') {
+      updated = attendance.filter(r => r.date !== targetDate);
+    } else {
+      const nextHours = nextStatus === 'Present' ? '8.9' : (nextStatus === 'Half Day' ? '6.0' : '0');
+      const nextCheckIn = (nextStatus === 'Present' || nextStatus === 'Half Day') ? '09:15 AM' : '';
+      const nextCheckOut = nextStatus === 'Present' ? '06:10 PM' : (nextStatus === 'Half Day' ? '03:30 PM' : '');
+      const dObj = new Date(targetDate);
+      const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      const newRec = {
+        date: targetDate,
+        day: dayNames[dObj.getDay()],
+        checkIn: nextCheckIn,
+        checkOut: nextCheckOut,
+        hours: nextHours,
+        status: nextStatus
+      };
+      if (existing) {
+        updated = attendance.map(r => r.date === targetDate ? newRec : r);
+      } else {
+        updated = [...attendance, newRec];
+      }
+    }
 
     setAttendance(updated);
     localStorage.setItem(`${STORAGE_PREFIX}${monthString}`, JSON.stringify(updated));
 
     // Sync to backend
     try {
+      const token = getAccessToken();
       await fetch('/api/employee-self/attendance/log', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({
           date: targetDate,
-          status: nextStatus,
-          checkIn: nextCheckIn,
-          checkOut: nextCheckOut,
-          hours: nextHours
+          status: nextStatus
         })
       });
     } catch {}
@@ -236,10 +218,11 @@ export default function Attendance({ showToast }) {
       case 'Absent': return 'bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100/70';
       case 'Half Day': return 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100/70';
       case 'Leave': return 'bg-purple-50 text-purple-800 border-purple-200 hover:bg-purple-100/70';
-      case 'Holiday':
-      case 'Weekend':
+      case 'Weekend': return 'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100/70';
+      case 'Holiday': return 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100/70';
+      case 'Unlogged':
       default:
-        return 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100/70';
+        return 'bg-white text-slate-400 border-slate-200 hover:border-slate-350 hover:bg-slate-50';
     }
   };
 
@@ -333,7 +316,7 @@ export default function Attendance({ showToast }) {
         {/* Monthly day tiles grid */}
         <div className="grid grid-cols-7 gap-2">
           {/* Day tiles */}
-          {attendance.map((rec) => {
+          {calendarDays.map((rec) => {
             const dayNum = parseInt(rec.date.split('-')[2], 10);
             return (
               <div 

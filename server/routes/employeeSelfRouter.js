@@ -1,15 +1,37 @@
 import express from 'express';
+import mongoose from 'mongoose';
+import jwt from 'jsonwebtoken';
 import LeaveRequest from '../models/LeaveRequest.js';
 import Attendance from '../models/Attendance.js';
 import Task from '../models/Task.js';
 import Employee from '../models/Employee.js';
 import User from '../models/User.js';
+import SystemSetting from '../models/SystemSetting.js';
+import GPSLog from '../models/GPSLog.js';
+import RetailSale from '../models/RetailSale.js';
+import ProductVariant from '../models/ProductVariant.js';
+import Product from '../models/Product.js';
+import City from '../models/City.js';
+import State from '../models/State.js';
+import Country from '../models/Country.js';
+import CommissionRecord from '../models/CommissionRecord.js';
+import Customer from '../models/Customer.js';
 
 const router = express.Router();
 
 // Helper to resolve employee/user identity
 async function resolveIdentity(req) {
   let user = req.user;
+  if (!user && req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+    try {
+      const token = req.headers.authorization.split(' ')[1];
+      const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET || 'your_jwt_access_secret_key_change_me_in_production');
+      if (decoded?.id) {
+        user = await User.findById(decoded.id).populate('role');
+      }
+    } catch {}
+  }
+
   let employee = null;
 
   if (user && user._id) {
@@ -104,15 +126,7 @@ router.get('/leave-requests', async (req, res) => {
 
     let records = await LeaveRequest.find(query).sort({ createdAt: -1 });
 
-    // Seed initial records if empty
-    if (records.length === 0) {
-      const toInsert = INITIAL_SEED_LEAVES.map(item => ({
-        ...item,
-        employee: employee?._id || null,
-        user: user?._id || null
-      }));
-      records = await LeaveRequest.insertMany(toInsert);
-    }
+    // Return actual database records without auto-seeding mock data
 
     const formatted = records.map(r => ({
       _id: r._id,
@@ -352,9 +366,6 @@ router.get('/attendance', async (req, res) => {
         hours: r.working_hours || '0',
         status: r.status === 'HalfDay' ? 'Half Day' : r.status
       }));
-    } else {
-      // Dynamic fallback schedule for the requested month
-      records = generateScheduleForMonth(year, month);
     }
 
     // Calculate dynamic stats
@@ -440,15 +451,7 @@ router.get('/tasks', async (req, res) => {
     
     let tasks = await Task.find({ is_deleted: { $ne: true } }).sort({ createdAt: -1 });
 
-    // Seed if empty
-    if (tasks.length === 0) {
-      const toInsert = INITIAL_SEED_TASKS.map(t => ({
-        ...t,
-        assigned_to: user?._id || null,
-        created_by: user?._id || null
-      }));
-      tasks = await Task.insertMany(toInsert);
-    }
+    // Return actual database tasks without auto-seeding mock data
 
     const formatted = tasks.map(t => ({
       _id: t._id,
@@ -549,6 +552,516 @@ router.patch('/tasks/:id/status', async (req, res) => {
     });
   } catch (err) {
     console.error("Error updating task status:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ==========================================
+// 4. DATA CLEANUP (TEAM MEMBERS)
+// ==========================================
+router.post('/cleanup-data', async (req, res) => {
+  try {
+    const { user } = await resolveIdentity(req);
+    
+    // Purge test / activity records
+    const [tasksRes, attendRes, leavesRes, gpsRes, commsRes] = await Promise.all([
+      Task.deleteMany({}),
+      Attendance.deleteMany({}),
+      LeaveRequest.deleteMany({}),
+      GPSLog.deleteMany({}),
+      CommissionRecord.deleteMany({
+        commission_type: { $in: ['Bonus', 'ManualIncentive', 'SalesIncentive'] }
+      })
+    ]);
+
+    return res.json({
+      success: true,
+      message: 'All team member activity records and caches successfully cleared.',
+      cleared: {
+        tasks: tasksRes.deletedCount,
+        attendance: attendRes.deletedCount,
+        leaves: leavesRes.deletedCount,
+        gpsLogs: gpsRes.deletedCount,
+        commissions: commsRes.deletedCount
+      }
+    });
+  } catch (err) {
+    console.error("Error cleaning team member data:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ==========================================
+// 5. GPS LOCATION TRACKING & DYNAMIC INTERVAL
+// ==========================================
+router.get('/tracking-interval', async (req, res) => {
+  try {
+    let setting = await SystemSetting.findOne({ key: 'employee_tracking_interval_minutes' });
+    if (!setting) {
+      setting = await SystemSetting.create({
+        key: 'employee_tracking_interval_minutes',
+        value: 5,
+        description: 'Periodic GPS location tracking interval in minutes for clocked-in team members'
+      });
+    }
+    return res.json({
+      success: true,
+      intervalMinutes: Number(setting.value) || 5
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.put('/tracking-interval', async (req, res) => {
+  try {
+    const { intervalMinutes } = req.body;
+    const mins = Math.max(1, Math.min(60, Number(intervalMinutes) || 5));
+
+    const setting = await SystemSetting.findOneAndUpdate(
+      { key: 'employee_tracking_interval_minutes' },
+      { value: mins, description: 'Periodic GPS location tracking interval in minutes for clocked-in team members' },
+      { upsert: true, new: true }
+    );
+
+    return res.json({
+      success: true,
+      intervalMinutes: setting.value,
+      message: `Tracking interval set to ${setting.value} minutes.`
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.post('/gps-ping', async (req, res) => {
+  try {
+    const { user } = await resolveIdentity(req);
+    const { lat, lng, battery_level } = req.body;
+
+    if (lat === undefined || lng === undefined) {
+      return res.status(400).json({ success: false, message: 'Valid latitude and longitude coordinates are required.' });
+    }
+
+    const log = await GPSLog.create({
+      user: user?._id,
+      location: { lat: Number(lat), lng: Number(lng) },
+      battery_level: battery_level !== undefined ? Number(battery_level) : undefined,
+      recorded_at: new Date()
+    });
+
+    return res.json({
+      success: true,
+      message: 'GPS location ping recorded successfully.',
+      logId: log._id
+    });
+  } catch (err) {
+    console.error("Error recording GPS ping:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.get('/gps-status', async (req, res) => {
+  try {
+    const { user } = await resolveIdentity(req);
+    const latest = user?._id 
+      ? await GPSLog.findOne({ user: user._id }).sort({ recorded_at: -1 })
+      : null;
+
+    return res.json({
+      success: true,
+      latestLog: latest,
+      isGpsRequired: true
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ==========================================
+// 6. FOUNDER MANUAL INCENTIVE
+// ==========================================
+router.post('/manual-incentive', async (req, res) => {
+  try {
+    const { user: founderUser } = await resolveIdentity(req);
+    const { userId, amount, description, date } = req.body;
+
+    if (!userId || !amount || Number(amount) <= 0) {
+      return res.status(400).json({ success: false, message: 'Recipient employee and a valid positive amount are required.' });
+    }
+
+    const recipient = await User.findById(userId);
+    if (!recipient) {
+      return res.status(404).json({ success: false, message: 'Recipient user not found.' });
+    }
+
+    const record = await CommissionRecord.create({
+      user: recipient._id,
+      commission_type: 'ManualIncentive',
+      beneficiary_role: recipient.roleName || 'TeamMember',
+      amount: Number(amount),
+      percentage: 100,
+      description: description?.trim() || 'Manual performance incentive awarded by Founder',
+      manual_incentive_by: founderUser?._id,
+      status: 'Approved',
+      settlement_date: date ? new Date(date) : new Date()
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: `Manual incentive of ₹${amount} awarded to ${recipient.name}.`,
+      record
+    });
+  } catch (err) {
+    console.error("Error awarding manual incentive:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ==========================================
+// 7. TEAM MEMBER CENTRAL INVENTORY & SALES
+// ==========================================
+router.get('/customers/lookup', async (req, res) => {
+  try {
+    const mobile = String(req.query.mobile || '').replace(/\D/g, '').trim();
+    if (!mobile || mobile.length < 5) {
+      return res.status(200).json({ success: true, data: null });
+    }
+    const customer = await Customer.findOne({ mobile: { $regex: mobile + '$' } });
+    return res.status(200).json({ success: true, data: customer });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.get('/stock', async (req, res) => {
+  try {
+    // Return available stock from Founder's central inventory (ProductVariant)
+    const variants = await ProductVariant.find({ 
+      is_active: true, 
+      is_deleted: { $ne: true },
+      stock_quantity: { $gt: 0 }
+    }).populate({
+      path: 'product',
+      populate: { path: 'category' }
+    });
+
+    const data = variants.map(v => ({
+      _id: v._id,
+      variant_id: v._id,
+      product_id: v.product?._id,
+      product_name: v.product?.name || 'Huddo Product',
+      sku: v.sku_variant || v.product?.sku,
+      category: v.product?.category?.name || 'Footwear',
+      size: v.size,
+      color: v.color,
+      mrp: v.mrp || v.selling_price || 0,
+      selling_price: v.selling_price || v.mrp || 0,
+      cost_price: v.cost_price || 0,
+      available_qty: v.stock_quantity || 0,
+      image: (v.images && v.images[0]) || v.product?.image || null
+    }));
+
+    return res.json({
+      success: true,
+      data,
+      total_items: data.length,
+      total_quantity: data.reduce((sum, item) => sum + item.available_qty, 0)
+    });
+  } catch (err) {
+    console.error("Error fetching central stock for team member:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.get('/sales', async (req, res) => {
+  try {
+    const { user } = await resolveIdentity(req);
+    const filter = {
+      is_deleted: { $ne: true },
+      $or: [
+        { seller_user: user?._id },
+        { created_by: user?._id },
+        { is_team_member_sale: true }
+      ]
+    };
+
+    const sales = await RetailSale.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .populate('items.product', 'name sku image');
+
+    return res.json({
+      success: true,
+      data: sales
+    });
+  } catch (err) {
+    console.error("Error fetching team member sales:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.post('/sales', async (req, res) => {
+  try {
+    const { user } = await resolveIdentity(req);
+    const {
+      items = [],
+      customer_name = 'Walk-in Customer',
+      customer_mobile = '',
+      customer_city = '',
+      payment_mode = 'Cash',
+      tendered_amount = 0,
+      change_due = 0,
+      note = ''
+    } = req.body;
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ success: false, message: 'Please select at least one item to complete the sale.' });
+    }
+
+    // 1. Verify central inventory stock for each variant
+    const variantIds = items.map(i => i.product_variant || i.variant_id);
+    const variants = await ProductVariant.find({ _id: { $in: variantIds } }).populate({
+      path: 'product',
+      populate: { path: 'category' }
+    });
+
+    const variantMap = new Map(variants.map(v => [v._id.toString(), v]));
+
+    for (const item of items) {
+      const vid = (item.product_variant || item.variant_id).toString();
+      const variant = variantMap.get(vid);
+      if (!variant) {
+        return res.status(404).json({ success: false, message: `Product variant not found: ${vid}` });
+      }
+      const requestedQty = Number(item.quantity) || 1;
+      if (variant.stock_quantity < requestedQty) {
+        return res.status(400).json({
+          success: false,
+          message: `Insufficient inventory in Founder stock for ${variant.product?.name || 'Product'} (${variant.size}/${variant.color}). Available: ${variant.stock_quantity}, requested: ${requestedQty}.`
+        });
+      }
+    }
+
+    // 2. Build line items and deduct from Founder's central inventory
+    let subtotal = 0;
+    const saleItems = [];
+
+    for (const item of items) {
+      const vid = (item.product_variant || item.variant_id).toString();
+      const variant = variantMap.get(vid);
+      const qty = Number(item.quantity) || 1;
+      const unitPrice = Number(item.unit_price) || Number(variant.selling_price) || Number(variant.mrp) || 0;
+      const discountPct = Number(item.discount_percent) || 0;
+      const lineSubtotal = unitPrice * qty;
+      const lineDiscount = lineSubtotal * (discountPct / 100);
+      const lineTotal = lineSubtotal - lineDiscount;
+
+      subtotal += lineTotal;
+
+      saleItems.push({
+        product: variant.product?._id || variant.product,
+        product_variant: variant._id,
+        product_name: variant.product?.name || '',
+        sku_variant: variant.sku_variant,
+        size: variant.size,
+        color: variant.color,
+        quantity: qty,
+        unit_price: unitPrice,
+        discount_percent: discountPct,
+        line_subtotal: lineSubtotal,
+        line_discount_amount: lineDiscount,
+        line_total: lineTotal
+      });
+
+      // Deduct stock from Founder central inventory
+      await ProductVariant.findByIdAndUpdate(variant._id, {
+        $inc: { stock_quantity: -qty }
+      });
+    }
+
+    const grandTotal = Math.round(subtotal);
+    const saleNumber = `SL-TM-${Date.now().toString().slice(-6)}`;
+
+    // Resolve geographic managers hierarchy for the selling team member
+    const seller = user?._id 
+      ? await User.findById(user._id).populate('city').populate('state').populate('country')
+      : null;
+
+    let cityDoc = null;
+    let stateDoc = null;
+    let countryDoc = null;
+
+    if (seller?.city) {
+      cityDoc = await City.findById(seller.city?._id || seller.city).populate('manager');
+    }
+    if (seller?.state) {
+      stateDoc = await State.findById(seller.state?._id || seller.state).populate('manager');
+    }
+    if (seller?.country) {
+      countryDoc = await Country.findById(seller.country?._id || seller.country).populate('manager');
+    }
+
+    // 3. Create RetailSale document
+    const sale = await RetailSale.create({
+      sale_number: saleNumber,
+      is_team_member_sale: true,
+      seller_user: user?._id || null,
+      items: saleItems,
+      discount_mode: 'line',
+      subtotal,
+      discount_amount: saleItems.reduce((acc, i) => acc + (i.line_discount_amount || 0), 0),
+      grand_total: grandTotal,
+      city: cityDoc?._id || null,
+      state: stateDoc?._id || null,
+      country: countryDoc?._id || null,
+      city_name: cityDoc?.name || '',
+      state_name: stateDoc?.name || '',
+      country_name: countryDoc?.name || '',
+      created_by: user?._id || null,
+      pairs_sold: saleItems.reduce((acc, i) => acc + i.quantity, 0),
+      customer_name: customer_name.trim(),
+      customer_mobile: customer_mobile.trim(),
+      customer_id: customer_mobile ? `CUST-${customer_mobile.slice(-4)}` : 'WALKIN',
+      payment_mode: payment_mode || 'Cash',
+      tendered_amount: Number(tendered_amount) || grandTotal,
+      change_due: Number(change_due) || 0,
+      counter_number: 'Direct POS',
+      cashier_name: user?.name || 'Team Member',
+      note: note || ''
+    });
+
+    // 4. Multi-level manager and team member incentive calculations
+    const commissionRecords = [];
+
+    for (const item of saleItems) {
+      const variant = variantMap.get(item.product_variant.toString());
+      const product = variant?.product;
+      const category = product?.category;
+
+      const lineTotal = item.line_total || (item.unit_price * item.quantity);
+
+      // (a) Team Member Direct Incentive (e.g. product.employeeIncentive or 5%)
+      const tmIncentivePct = Number(product?.employeeIncentive) || 5;
+      const tmIncentiveAmount = Math.round((lineTotal * (tmIncentivePct / 100)) * 100) / 100;
+      if (user?._id && tmIncentiveAmount > 0) {
+        commissionRecords.push({
+          user: user._id,
+          retail_sale: sale._id,
+          product: product?._id,
+          product_category: category?._id,
+          commission_type: 'SalesIncentive',
+          beneficiary_role: 'TeamMember',
+          amount: tmIncentiveAmount,
+          percentage: tmIncentivePct,
+          quantity: item.quantity,
+          description: `Team Member direct sales incentive (${tmIncentivePct}%) on ${product?.name} (${item.quantity} pairs)`,
+          status: 'Approved'
+        });
+      }
+
+      // (b) City Manager Incentive (product.cityManagerIncentive or category.commissions.cityManager or 2%)
+      const cityManagerUser = cityDoc?.manager;
+      if (cityManagerUser?._id) {
+        const cmIncentivePct = Number(product?.cityManagerIncentive) || Number(category?.commissions?.cityManager) || 2;
+        const cmAmount = Math.round((lineTotal * (cmIncentivePct / 100)) * 100) / 100;
+        if (cmAmount > 0) {
+          commissionRecords.push({
+            user: cityManagerUser._id,
+            retail_sale: sale._id,
+            product: product?._id,
+            product_category: category?._id,
+            commission_type: 'ManagerIncentive',
+            beneficiary_role: 'CityManager',
+            amount: cmAmount,
+            percentage: cmIncentivePct,
+            quantity: item.quantity,
+            description: `City Manager incentive (${cmIncentivePct}%) on ${product?.name} from ${cityDoc.name}`,
+            status: 'Approved'
+          });
+        }
+      }
+
+      // (c) State Manager Incentive (product.stateManagerIncentive or category.commissions.stateManager or 1%)
+      const stateManagerUser = stateDoc?.manager;
+      if (stateManagerUser?._id) {
+        const smIncentivePct = Number(product?.stateManagerIncentive) || Number(category?.commissions?.stateManager) || 1;
+        const smAmount = Math.round((lineTotal * (smIncentivePct / 100)) * 100) / 100;
+        if (smAmount > 0) {
+          commissionRecords.push({
+            user: stateManagerUser._id,
+            retail_sale: sale._id,
+            product: product?._id,
+            product_category: category?._id,
+            commission_type: 'ManagerIncentive',
+            beneficiary_role: 'StateManager',
+            amount: smAmount,
+            percentage: smIncentivePct,
+            quantity: item.quantity,
+            description: `State Manager incentive (${smIncentivePct}%) on ${product?.name} from ${stateDoc.name}`,
+            status: 'Approved'
+          });
+        }
+      }
+
+      // (d) Country Manager Incentive (category.commissions.countryManager or 0.5%)
+      const countryManagerUser = countryDoc?.manager;
+      if (countryManagerUser?._id) {
+        const ctryIncentivePct = Number(category?.commissions?.countryManager) || 0.5;
+        const ctryAmount = Math.round((lineTotal * (ctryIncentivePct / 100)) * 100) / 100;
+        if (ctryAmount > 0) {
+          commissionRecords.push({
+            user: countryManagerUser._id,
+            retail_sale: sale._id,
+            product: product?._id,
+            product_category: category?._id,
+            commission_type: 'ManagerIncentive',
+            beneficiary_role: 'CountryManager',
+            amount: ctryAmount,
+            percentage: ctryIncentivePct,
+            quantity: item.quantity,
+            description: `Country Manager incentive (${ctryIncentivePct}%) on ${product?.name} from ${countryDoc.name}`,
+            status: 'Approved'
+          });
+        }
+      }
+    }
+
+    if (commissionRecords.length > 0) {
+      await CommissionRecord.insertMany(commissionRecords);
+    }
+
+    // 5. Customer record update
+    if (customer_mobile) {
+      try {
+        await Customer.findOneAndUpdate(
+          { mobile: customer_mobile },
+          {
+            $set: {
+              customer_name: customer_name.trim(),
+              city: customer_city || cityDoc?.name || '',
+              lastOrderDate: new Date().toISOString().split('T')[0]
+            },
+            $inc: {
+              totalOrders: 1,
+              totalSpend: grandTotal
+            }
+          },
+          { upsert: true, new: true }
+        );
+      } catch (custErr) {
+        console.warn("Customer update error:", custErr);
+      }
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: 'Sale successfully completed, inventory deducted from central stock, and incentives distributed across hierarchy.',
+      sale,
+      commissionsGenerated: commissionRecords.length
+    });
+  } catch (err) {
+    console.error("Error creating team member direct sale:", err);
     return res.status(500).json({ success: false, message: err.message });
   }
 });

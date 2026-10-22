@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Percent, Save, Plus, Trash2, CheckCircle, Calculator, Info } from 'lucide-react';
+import { Percent, Save, Plus, Trash2, CheckCircle, Calculator, Info, Clock, Award, MapPin } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell } from 'recharts';
 import PromoterBonusStructures from './PromoterBonusStructures';
 import NetworkWorkspace from './network/NetworkWorkspace';
+import { Modal } from '../components/Common';
 
 export default function Commissions({ showToast }) {
   const [categories, setCategories] = useState([]);
@@ -209,8 +210,87 @@ export default function Commissions({ showToast }) {
       .catch(err => console.error("Error loading orders:", err));
   };
 
+  // GPS Tracking interval & Manual incentive states
+  const [trackingInterval, setTrackingInterval] = useState(5);
+  const [savingInterval, setSavingInterval] = useState(false);
+  const [isManualIncentiveOpen, setIsManualIncentiveOpen] = useState(false);
+  const [manualEmpId, setManualEmpId] = useState('');
+  const [manualAmount, setManualAmount] = useState('');
+  const [manualReason, setManualReason] = useState('');
+  const [manualDate, setManualDate] = useState(new Date().toISOString().split('T')[0]);
+  const [submittingIncentive, setSubmittingIncentive] = useState(false);
+
+  const loadTrackingInterval = () => {
+    fetch('/api/employee-self/tracking-interval')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.intervalMinutes) {
+          setTrackingInterval(data.intervalMinutes);
+        }
+      })
+      .catch(() => {});
+  };
+
+  const handleSaveTrackingInterval = async () => {
+    setSavingInterval(true);
+    try {
+      const res = await fetch('/api/employee-self/tracking-interval', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intervalMinutes: Number(trackingInterval) })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast?.(`GPS tracking interval saved to ${data.intervalMinutes} minutes.`, 'success');
+      } else {
+        showToast?.(data.message || 'Failed to save interval.', 'error');
+      }
+    } catch {
+      showToast?.('Error saving tracking interval.', 'error');
+    } finally {
+      setSavingInterval(false);
+    }
+  };
+
+  const handleAwardManualIncentive = async () => {
+    if (!manualEmpId || !manualAmount || Number(manualAmount) <= 0) {
+      showToast?.('Please select an employee and enter a valid positive incentive amount.', 'error');
+      return;
+    }
+
+    setSubmittingIncentive(true);
+    try {
+      const res = await fetch('/api/employee-self/manual-incentive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: manualEmpId,
+          amount: Number(manualAmount),
+          description: manualReason,
+          date: manualDate
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast?.(data.message || 'Manual incentive successfully awarded.', 'success');
+        setIsManualIncentiveOpen(false);
+        setManualAmount('');
+        setManualReason('');
+        loadData();
+      } else {
+        showToast?.(data.message || 'Failed to award manual incentive.', 'error');
+      }
+    } catch {
+      showToast?.('Error submitting manual incentive.', 'error');
+    } finally {
+      setSubmittingIncentive(false);
+    }
+  };
+
   useEffect(() => {
     loadData();
+    loadTrackingInterval();
   }, []);
 
   const handleUpdateCategoryCommission = (id, roleKey, newPct) => {
@@ -397,10 +477,42 @@ export default function Commissions({ showToast }) {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 font-display">Commission & Incentives</h1>
           <p className="text-sm text-slate-500">Configure category-level trade margins and incentives. All products in a category inherit these rates automatically.</p>
+        </div>
+
+        {/* Founder Controls: GPS Dynamic Interval + Manual Incentive */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 bg-white px-3 py-1.5 border border-slate-200 rounded-lg shadow-2xs text-xs">
+            <Clock className="w-4 h-4 text-brand-orange shrink-0" />
+            <span className="font-semibold text-slate-600">GPS Ping:</span>
+            <input
+              type="number"
+              min="1"
+              max="60"
+              value={trackingInterval}
+              onChange={(e) => setTrackingInterval(e.target.value)}
+              className="w-12 border border-slate-200 rounded px-1.5 py-0.5 text-center font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-brand-orange"
+            />
+            <span className="text-slate-400 font-medium">mins</span>
+            <button
+              onClick={handleSaveTrackingInterval}
+              disabled={savingInterval}
+              className="ml-1 px-2 py-0.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded text-[11px] transition-colors cursor-pointer"
+            >
+              {savingInterval ? 'Saving...' : 'Set'}
+            </button>
+          </div>
+
+          <button
+            onClick={() => setIsManualIncentiveOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors shadow-sm cursor-pointer"
+          >
+            <Award className="w-4 h-4" />
+            <span>Award Manual Incentive</span>
+          </button>
         </div>
       </div>
 
@@ -779,6 +891,73 @@ export default function Commissions({ showToast }) {
           </ResponsiveContainer>
         </div>
       </div>
+
+      {/* Manual Incentive Modal */}
+      {isManualIncentiveOpen && (
+        <Modal
+          isOpen={isManualIncentiveOpen}
+          onClose={() => setIsManualIncentiveOpen(false)}
+          title="Award Manual Employee Incentive"
+          onConfirm={handleAwardManualIncentive}
+          confirmText={submittingIncentive ? "Awarding..." : "Award Incentive"}
+        >
+          <div className="space-y-4 text-xs font-medium">
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Select Employee / Team Member *</label>
+              <select
+                value={manualEmpId}
+                onChange={(e) => setManualEmpId(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg p-2.5 bg-white font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
+              >
+                <option value="">-- Choose Employee --</option>
+                {employees.map(emp => (
+                  <option key={emp._id} value={emp.user?._id || emp.user || emp._id}>
+                    {emp.full_name || emp.name} ({emp.designation?.title || emp.designation || 'Team Member'})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Incentive Amount (₹) *</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={manualAmount}
+                  onChange={(e) => setManualAmount(e.target.value)}
+                  placeholder="e.g. 5000"
+                  className="w-full border border-slate-200 rounded-lg p-2.5 font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-orange/20"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Effective Date</label>
+                <input
+                  type="date"
+                  value={manualDate}
+                  onChange={(e) => setManualDate(e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg p-2.5 font-medium text-slate-700 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Reason / Note</label>
+              <textarea
+                rows="2"
+                value={manualReason}
+                onChange={(e) => setManualReason(e.target.value)}
+                placeholder="e.g. Exceptional quarterly sales performance and mentorship bonus..."
+                className="w-full border border-slate-200 rounded-lg p-2.5 text-slate-700 resize-none focus:outline-none font-medium"
+              />
+            </div>
+
+            <p className="text-[10px] text-slate-400 italic">
+              Note: This will immediately credit an Approved bonus record into the employee's commission ledger and payroll calculation.
+            </p>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

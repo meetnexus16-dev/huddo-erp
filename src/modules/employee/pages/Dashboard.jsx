@@ -1,37 +1,114 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   User, CheckCircle, Clock, Calendar, CheckSquare, 
   ArrowRight, Landmark, ShoppingBag, Percent, Users, 
-  AlertTriangle, CreditCard, ClipboardList, Briefcase, Plus
+  AlertTriangle, CreditCard, ClipboardList, Briefcase, Plus, MapPin
 } from 'lucide-react';
 import { useEmployeeAuth } from '../context/EmployeeAuthContext';
 import StatusBadge from '../components/StatusBadge';
+import { getAccessToken } from '../../../utils/authSession';
 
 export default function Dashboard({ onNavigate, showToast }) {
   const { currentEmployee, activeRole } = useEmployeeAuth();
   
-  // Local state for simulated check-in
-  const [isCheckedIn, setIsCheckedIn] = useState(false);
-  const [checkInTime, setCheckInTime] = useState("");
-  const [checkOutTime, setCheckOutTime] = useState("");
+  // Real check-in state
+  const [isCheckedIn, setIsCheckedIn] = useState(() => {
+    return localStorage.getItem('huddo_duty_checked_in') === 'true';
+  });
+  const [checkInTime, setCheckInTime] = useState(() => {
+    return localStorage.getItem('huddo_duty_checkin_time') || '';
+  });
+  const [checkOutTime, setCheckOutTime] = useState(() => {
+    return localStorage.getItem('huddo_duty_checkout_time') || '';
+  });
+
+  // Dynamic Metrics
+  const [dynamicSalesToday, setDynamicSalesToday] = useState({ count: 0, revenue: 0, pairsSold: 0 });
+  const [dynamicCommissionEarned, setDynamicCommissionEarned] = useState(0);
+  const [pendingTasksCount, setPendingTasksCount] = useState(0);
+  const [leaveBalance, setLeaveBalance] = useState({ total: 33, used: 0, remaining: 33 });
+
+  // Load live sales & commission data
+  useEffect(() => {
+    const token = getAccessToken();
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+    fetch('/api/employee-self/sales', { headers })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.data)) {
+          const todayStr = new Date().toISOString().split('T')[0];
+          const todaySales = data.data.filter(s => s.createdAt && s.createdAt.startsWith(todayStr));
+          const todayRev = todaySales.reduce((acc, s) => acc + (s.grand_total || 0), 0);
+          const pairs = data.data.reduce((acc, s) => acc + (s.pairs_sold || 0), 0);
+          const totalRev = data.data.reduce((acc, s) => acc + (s.grand_total || 0), 0);
+          
+          setDynamicSalesToday({
+            count: todaySales.length,
+            revenue: todayRev,
+            pairsSold: pairs
+          });
+          // Estimate commission ~5% of sales
+          setDynamicCommissionEarned(Math.round(totalRev * 0.05));
+        }
+      })
+      .catch(() => {});
+
+    // Load live tasks
+    fetch('/api/employee-self/tasks', { headers })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.tasks)) {
+          const pending = data.tasks.filter(t => t.status !== 'Completed').length;
+          setPendingTasksCount(pending);
+        }
+      })
+      .catch(() => {});
+
+    // Load live leaves
+    fetch('/api/employee-self/leave-requests', { headers })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.balances) {
+          const b = data.balances;
+          const total = (b.casual?.total || 0) + (b.sick?.total || 0) + (b.earned?.total || 0);
+          const used = (b.casual?.used || 0) + (b.sick?.used || 0) + (b.earned?.used || 0);
+          const remaining = (b.casual?.remaining || 0) + (b.sick?.remaining || 0) + (b.earned?.remaining || 0);
+          setLeaveBalance({ total, used, remaining });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleCheckInToggle = () => {
     if (!isCheckedIn) {
       const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       setCheckInTime(now);
       setIsCheckedIn(true);
-      showToast("Successfully Checked In for the day!", "success");
+      localStorage.setItem('huddo_duty_checked_in', 'true');
+      localStorage.setItem('huddo_duty_checkin_time', now);
+      showToast("Successfully Checked In for the day! GPS live tracking started.", "success");
+      
+      // Send immediate GPS ping
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition((pos) => {
+          fetch('/api/employee-self/gps-ping', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+          }).catch(() => {});
+        }, () => {});
+      }
     } else {
       const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       setCheckOutTime(now);
       setIsCheckedIn(false);
+      localStorage.setItem('huddo_duty_checked_in', 'false');
+      localStorage.setItem('huddo_duty_checkout_time', now);
       showToast("Successfully Checked Out. Work hours logged.", "success");
     }
   };
 
-  // Mock constants
-  const pendingTasksCount = 5;
-  const leaveBalance = { total: 33, used: 11, remaining: 22 };
   const upcomingHolidays = [
     { name: "Bakri Id / Eid al-Adha", date: "2026-06-17", day: "Wednesday" },
     { name: "Muharram", date: "2026-07-17", day: "Friday" }
@@ -229,8 +306,46 @@ export default function Dashboard({ onNavigate, showToast }) {
           </div>
         );
 
+      case 'team_member':
       default:
-        return null;
+        return (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Today's Direct Sales</span>
+                <span className="text-xl font-bold text-slate-800 mt-1 block">{dynamicSalesToday.count} Orders</span>
+                <span className="text-xs text-emerald-600 font-bold">Revenue: ₹{dynamicSalesToday.revenue.toLocaleString()}</span>
+              </div>
+              <div className="w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center text-brand-orange">
+                <ShoppingBag className="w-5 h-5" />
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Estimated Incentive</span>
+                <span className="text-xl font-bold text-slate-800 mt-1 block">₹{dynamicCommissionEarned.toLocaleString()}</span>
+                <span className="text-xs text-slate-500 font-medium">{dynamicSalesToday.pairsSold} pairs sold</span>
+              </div>
+              <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
+                <Percent className="w-5 h-5" />
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Duty & GPS Status</span>
+                <span className="text-xl font-bold text-emerald-600 mt-1 block">
+                  {isCheckedIn ? "Active Duty" : "Standby"}
+                </span>
+                <span className="text-xs text-slate-500 font-medium">Auto-Tracking Ready</span>
+              </div>
+              <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600">
+                <CheckCircle className="w-5 h-5" />
+              </div>
+            </div>
+          </div>
+        );
     }
   };
 
@@ -281,6 +396,7 @@ export default function Dashboard({ onNavigate, showToast }) {
       case 'team_member':
       default:
         return [
+          { label: "Direct Sales (POS)", tab: "Direct Sales" },
           { label: "My Tasks", tab: "My Tasks" },
           { label: "My Profile", tab: "Profile" },
           { label: "My Attendance", tab: "Attendance" }

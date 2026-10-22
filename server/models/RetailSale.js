@@ -19,7 +19,9 @@ const saleItemSchema = new mongoose.Schema({
 
 const retailSaleSchema = new mongoose.Schema({
   sale_number: { type: String, unique: true },
-  retailer: { type: mongoose.Schema.Types.ObjectId, ref: 'Retailer', required: true },
+  retailer: { type: mongoose.Schema.Types.ObjectId, ref: 'Retailer', required: false },
+  is_team_member_sale: { type: Boolean, default: false },
+  seller_user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   items: { type: [saleItemSchema], validate: [(v) => Array.isArray(v) && v.length > 0, 'At least one item is required'] },
   /** none | line (per-product %) | bill (whole-bill %) */
   discount_mode: {

@@ -172,7 +172,8 @@ export const EMPLOYEE_ROUTES = {
   'Purchase Approvals': 'purchase-approvals',
   'Material Tracking': 'material-tracking',
   'Procurement Reports': 'procurement-reports',
-  'My Tasks': 'my-tasks'
+  'My Tasks': 'my-tasks',
+  'Direct Sales': 'direct-sales'
 };
 
 export function buildPath(base, tabId, routeMap) {

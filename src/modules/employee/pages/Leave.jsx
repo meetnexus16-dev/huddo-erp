@@ -2,22 +2,24 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Calendar, FileText, Send, XCircle, AlertCircle, RefreshCw
 } from 'lucide-react';
-import { mockLeaves as initialLeaves } from '../mockData/mockLeaves';
 import StatusBadge from '../components/StatusBadge';
 import CustomDataTable from '../components/CustomDataTable';
 import { authFetch } from '../../../utils/authFetch';
+import { getAccessToken } from '../../../utils/authSession';
 
 const STORAGE_KEY = 'huddo_employee_leaves';
 
-export default function Leave({ showToast }) {
-  const [leavesData, setLeavesData] = useState(() => {
-    try {
-      const cached = localStorage.getItem(STORAGE_KEY);
-      if (cached) return JSON.parse(cached);
-    } catch {}
-    return initialLeaves;
-  });
+const CLEAN_LEAVES = {
+  balances: {
+    casual: { total: 12, used: 0, remaining: 12 },
+    sick: { total: 6, used: 0, remaining: 6 },
+    earned: { total: 15, used: 0, remaining: 15 }
+  },
+  requests: []
+};
 
+export default function Leave({ showToast }) {
+  const [leavesData, setLeavesData] = useState(CLEAN_LEAVES);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [leaveType, setLeaveType] = useState("Casual Leave");
@@ -25,6 +27,16 @@ export default function Leave({ showToast }) {
   const [toDate, setToDate] = useState("");
   const [reason, setReason] = useState("");
   const [fileAttached, setFileAttached] = useState(null);
+
+  // Purge any stale mock leaves cache on mount
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem(STORAGE_KEY);
+      if (cached && (cached.includes('LR-101') || cached.includes('Viral fever'))) {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    } catch {}
+  }, []);
 
   // Dynamic balance calculator helper
   const computeBalances = (requests) => {
@@ -52,7 +64,10 @@ export default function Leave({ showToast }) {
   const fetchLeaves = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/employee-self/leave-requests');
+      const token = getAccessToken();
+      const res = await fetch('/api/employee-self/leave-requests', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.requests)) {
@@ -66,10 +81,12 @@ export default function Leave({ showToast }) {
         }
       }
     } catch (err) {
-      console.warn("Backend leave fetch fallback to cache:", err);
+      console.warn("Backend leave fetch error:", err);
     } finally {
       setLoading(false);
     }
+
+    setLeavesData(CLEAN_LEAVES);
   };
 
   useEffect(() => {

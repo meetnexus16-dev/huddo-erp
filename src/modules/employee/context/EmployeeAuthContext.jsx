@@ -11,18 +11,43 @@ export function EmployeeAuthProvider({ children, initialRole = 'sales_executive'
     return mockEmployees[cleaned] ? cleaned : 'sales_executive';
   });
 
+  const getDynamicUser = (roleKey) => {
+    try {
+      const raw = localStorage.getItem('huddo_user');
+      if (raw) {
+        const u = JSON.parse(raw);
+        if (u && (u.name || u.email)) {
+          return {
+            id: u._id || u.id,
+            name: u.name || 'Team Member',
+            email: u.email || '',
+            mobile: u.mobile || '',
+            department: u.departmentName || u.department?.name || 'Sales',
+            designation: u.designationName || u.designation?.title || 'Team Member',
+            role: u.roleName || u.role?.name || 'Team Member',
+            city: u.city?.name || u.city || 'Surat',
+            state: u.state?.name || u.state || 'Gujarat',
+            country: u.country?.name || u.country || 'India',
+            avatar: u.profile_photo || null
+          };
+        }
+      }
+    } catch {}
+    return mockEmployees[roleKey] || mockEmployees.team_member || mockEmployees.sales_executive;
+  };
+
   const [currentEmployee, setCurrentEmployee] = useState(() => {
-    return mockEmployees[activeRole] || mockEmployees.sales_executive;
+    return getDynamicUser(activeRole);
   });
 
-  // Sync state if initialRole changes from parent App.jsx
+  // Sync state if initialRole or localStorage user changes
   useEffect(() => {
     if (initialRole) {
       const cleaned = initialRole.toLowerCase().replace(' ', '_');
-      if (mockEmployees[cleaned] && cleaned !== activeRole) {
+      if (cleaned !== activeRole) {
         setActiveRoleState(cleaned);
-        setCurrentEmployee(mockEmployees[cleaned]);
       }
+      setCurrentEmployee(getDynamicUser(cleaned));
     }
   }, [initialRole]);
 
