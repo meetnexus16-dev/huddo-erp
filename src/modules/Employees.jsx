@@ -3,15 +3,17 @@ import {
   Users, Plus, Eye, Edit2, CheckCircle, XCircle, AlertCircle, FileText, 
   ChevronRight, X, PhoneCall, CreditCard, Percent, Award, Briefcase, 
   DollarSign, Building2, Shield, Calendar, Search, ArrowUpRight, RefreshCw,
-  User, UserPlus
+  User, UserPlus, Landmark
 } from 'lucide-react';
 import { initialEmployees, initialPromoters } from '../mockData';
 import { DataTable, Modal } from '../components/Common';
 import { useConfirm } from '../context/ConfirmContext';
 import { getAccessToken } from '../utils/authSession';
+import Payroll from './employee/pages/Payroll';
 
 export default function Employees({ showToast }) {
   const { confirm } = useConfirm();
+  const [activeModuleTab, setActiveModuleTab] = useState('directory'); // 'directory' | 'payroll'
   const [employees, setEmployees] = useState([]);
   const [promotersList, setPromotersList] = useState([]);
   const [usersList, setUsersList] = useState([]);
@@ -768,16 +770,56 @@ export default function Employees({ showToast }) {
           </p>
         </div>
         
-        <div className="flex items-center gap-2 self-start sm:self-auto">
-          <button 
-            onClick={handleOpenAdd}
-            className="flex items-center gap-2 px-4 py-2 bg-brand-orange hover:bg-brand-orange-hover text-white text-sm font-semibold rounded-lg shadow-sm transition-colors cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Employee</span>
-          </button>
-        </div>
+        {activeModuleTab === 'directory' && (
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <button 
+              onClick={handleOpenAdd}
+              className="flex items-center gap-2 px-4 py-2 bg-brand-orange hover:bg-brand-orange-hover text-white text-sm font-semibold rounded-lg shadow-sm transition-colors cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Employee</span>
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* Top Module Level View Switcher (Separate Register / Directory from Dynamic Payroll) */}
+      <div className="flex items-center gap-3 border-b border-slate-200">
+        <button
+          onClick={() => setActiveModuleTab('directory')}
+          className={`pb-3 px-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
+            activeModuleTab === 'directory'
+              ? 'border-brand-orange text-brand-orange'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>Employee Directory</span>
+          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">
+            {employees.length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveModuleTab('payroll')}
+          className={`pb-3 px-3 text-sm font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
+            activeModuleTab === 'payroll'
+              ? 'border-brand-orange text-brand-orange'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Landmark className="w-4 h-4" />
+          <span>Team Member Monthly Payroll</span>
+          <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+            Attendance + Incentive
+          </span>
+        </button>
+      </div>
+
+      {activeModuleTab === 'payroll' ? (
+        <Payroll showToast={showToast} isSelfView={false} />
+      ) : (
+        <>
 
       {/* Top KPI Cards (Like Retailers module) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
@@ -1902,6 +1944,8 @@ export default function Employees({ showToast }) {
             </div>
           </div>
         </Modal>
+      )}
+        </>
       )}
     </div>
   );

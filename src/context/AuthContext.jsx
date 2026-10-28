@@ -18,6 +18,7 @@ const NAV_MODULE_MAP = {
   Hierarchy: 'hierarchy',
   Departments: 'departments',
   Employees: 'employees',
+  Payroll: 'payrolls',
   Teams: 'teams',
   Promoters: 'promoters',
   CountryManagers: 'countries',

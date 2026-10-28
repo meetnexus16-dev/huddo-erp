@@ -3,7 +3,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import {
   Home, GitBranch, LayoutGrid, Users, UsersRound, Award, Store, Package,
   ShoppingCart, CreditCard, Percent, TrendingUp, Target, MapPin, CheckSquare,
-  Archive, Shield, Bell, BarChart3, Lock, Settings, ShoppingBag, Layers
+  Archive, Shield, Bell, BarChart3, Lock, Settings, ShoppingBag, Layers, Landmark
 } from 'lucide-react';
 import { Toast } from '../components/Common';
 import { DashboardLayout } from '../components/DesignSystem';
@@ -15,6 +15,7 @@ import Dashboard from '../modules/Dashboard';
 import UserRoleManagement from '../modules/UserRoleManagement';
 import Hierarchy from '../modules/Hierarchy';
 import Employees from '../modules/Employees';
+import Payroll from '../modules/employee/pages/Payroll';
 import Teams from '../modules/Teams';
 import Departments from '../modules/Departments';
 import PromoterModule from '../modules/promoter/PromoterModule';
@@ -59,6 +60,7 @@ const NAV_MENU = [
     section: 'PEOPLE',
     items: [
       { id: 'Employees', label: 'Employees', icon: Users, component: Employees },
+      { id: 'Payroll', label: 'Team Member Payroll', icon: Landmark, component: (props) => <Payroll {...props} isSelfView={false} /> },
       // { id: 'Teams', label: 'Teams', icon: UsersRound, component: Teams },
       { id: 'Promoters', label: 'Promoters', icon: Award, component: PromoterModule },
       { id: 'CountryManagers', label: 'Country Managers', icon: Users, component: CountryManagerModule },

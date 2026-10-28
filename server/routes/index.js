@@ -190,6 +190,7 @@ import { getProductPerformance } from '../controllers/productAnalyticsController
 import {
   calculateMonthlyPayrolls,
   generateMonthlyPayrolls,
+  batchSettlePayrolls,
   settlePayroll
 } from '../controllers/payrollController.js';
 
@@ -476,6 +477,7 @@ router.delete('/product-categories/:id', verifyJWT, checkPermission('product-cat
 // ==========================================
 router.get('/payrolls/calculate', calculateMonthlyPayrolls);
 router.post('/payrolls/generate', generateMonthlyPayrolls);
+router.post('/payrolls/batch-settle', batchSettlePayrolls);
 router.post('/payrolls/settle', settlePayroll);
 
 // ==========================================

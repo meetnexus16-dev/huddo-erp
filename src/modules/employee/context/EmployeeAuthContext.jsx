@@ -1,7 +1,7 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { mockEmployees } from '../mockData/mockEmployee';
 
-const EmployeeAuthContext = createContext();
+export const EmployeeAuthContext = createContext();
 
 export function EmployeeAuthProvider({ children, initialRole = 'sales_executive', onRoleChange }) {
   // Try to load cached role, or default to initialRole
@@ -82,8 +82,5 @@ export function EmployeeAuthProvider({ children, initialRole = 'sales_executive'
 
 export function useEmployeeAuth() {
   const context = useContext(EmployeeAuthContext);
-  if (!context) {
-    throw new Error('useEmployeeAuth must be used within an EmployeeAuthProvider');
-  }
-  return context;
+  return context || {};
 }

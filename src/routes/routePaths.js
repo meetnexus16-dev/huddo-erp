@@ -28,6 +28,7 @@ export const ADMIN_ROUTES = {
   Hierarchy: 'hierarchy',
   Departments: 'departments',
   Employees: 'employees',
+  Payroll: 'payroll',
   Teams: 'teams',
   Promoters: 'promoters',
   CountryManagers: 'country-managers',
