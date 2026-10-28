@@ -32,6 +32,12 @@ const retailSaleSchema = new mongoose.Schema({
   bill_discount_percent: { type: Number, default: 0, min: 0, max: 100 },
   subtotal: amountSchemaType,
   discount_amount: amountSchemaType,
+  taxable_amount: amountSchemaType,
+  gst_rate: { type: Number, default: 12 },
+  tax_amount: amountSchemaType,
+  cgst: amountSchemaType,
+  sgst: amountSchemaType,
+  igst: amountSchemaType,
   grand_total: amountSchemaType,
   /** Snapshot of retailer location for geo analytics */
   city: { type: mongoose.Schema.Types.ObjectId, ref: 'City' },

@@ -3,7 +3,7 @@ import {
   Users, Plus, Eye, Edit2, CheckCircle, XCircle, AlertCircle, FileText, 
   ChevronRight, X, PhoneCall, CreditCard, Percent, Award, Briefcase, 
   DollarSign, Building2, Shield, Calendar, Search, ArrowUpRight, RefreshCw,
-  User, UserPlus, Landmark
+  User, UserPlus, Landmark, Upload, CheckCircle2, Sparkles, Download, Trash2
 } from 'lucide-react';
 import { initialEmployees, initialPromoters } from '../mockData';
 import { DataTable, Modal } from '../components/Common';
@@ -58,6 +58,10 @@ export default function Employees({ showToast }) {
     address: '',
     aadhaar: '',
     pan: '',
+    aadhaarFile: null,
+    panFile: null,
+    aadhaarFileName: '',
+    panFileName: '',
     department: 'Sales',
     designation: 'Sales Executive',
     manager: 'Sanjay Joshi',
@@ -67,8 +71,15 @@ export default function Employees({ showToast }) {
     basicSalary: '',
     hra: '',
     allowances: '',
-    incentivePct: '', // % incentive per product sale
-    promoterOverridePct: '', // % override on supervised promoters' sales
+    tdsPct: '5',
+    incentiveMode: 'slab_per_pair', // 'slab_per_pair' | 'percentage'
+    incentiveSlabs: [
+      { min_qty: 2, max_qty: 4, incentive_per_pair: 200 },
+      { min_qty: 5, max_qty: 9, incentive_per_pair: 300 },
+      { min_qty: 10, max_qty: '', incentive_per_pair: 500 }
+    ],
+    incentivePct: '5.0', // % incentive per product sale (when in percentage mode)
+    promoterOverridePct: '1.0', // % override on supervised promoters' sales
     // Bank Details
     bankName: '',
     accountNo: '',
@@ -81,6 +92,26 @@ export default function Employees({ showToast }) {
   };
 
   const [formData, setFormData] = useState(emptyForm);
+
+  // File Upload Helper to Base64 Data URL for Aadhaar & PAN Card attachments
+  const handleFileUpload = (e, fileField, nameField) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      showToast?.('File size exceeds 5MB limit.', 'error');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setFormData(prev => ({
+        ...prev,
+        [fileField]: reader.result,
+        [nameField]: file.name
+      }));
+      showToast?.(`${file.name} uploaded successfully!`, 'success');
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Dynamic fetch users list from database for user account linking
   const fetchUsersList = async () => {
@@ -307,11 +338,22 @@ export default function Employees({ showToast }) {
         aadhaar: personal.aadhaar || emp.aadhaar_number || '',
         pan: personal.pan || emp.pan_number || ''
       },
+      aadhaar_card_file: emp.aadhaar_card_file || null,
+      pan_card_file: emp.pan_card_file || null,
       salary_structure: {
         basic: isNaN(basic) ? 45000 : basic,
         hra: isNaN(hra) ? 15000 : hra,
         allowances: isNaN(allowances) ? 5000 : allowances,
         deductions: isNaN(deductions) ? 0 : deductions,
+        tds_pct: salary.tds_pct !== undefined ? Number(salary.tds_pct) : 5,
+        incentive_mode: salary.incentive_mode || 'slab_per_pair',
+        incentive_slabs: Array.isArray(salary.incentive_slabs) && salary.incentive_slabs.length > 0
+          ? salary.incentive_slabs
+          : [
+              { min_qty: 2, max_qty: 4, incentive_per_pair: 200 },
+              { min_qty: 5, max_qty: 9, incentive_per_pair: 300 },
+              { min_qty: 10, max_qty: null, incentive_per_pair: 500 }
+            ],
         incentive_pct: isNaN(incentivePct) ? 5.0 : incentivePct,
         incentive_earned: isNaN(incentiveEarned) ? 0 : incentiveEarned,
         promoter_override_pct: isNaN(promoterOverridePct) ? 1.0 : promoterOverridePct
@@ -417,6 +459,10 @@ export default function Employees({ showToast }) {
       address: emp.personalInfo.address,
       aadhaar: emp.personalInfo.aadhaar,
       pan: emp.personalInfo.pan,
+      aadhaarFile: emp.aadhaar_card_file || null,
+      panFile: emp.pan_card_file || null,
+      aadhaarFileName: emp.aadhaar_card_file ? 'Aadhaar Document Attached' : '',
+      panFileName: emp.pan_card_file ? 'PAN Document Attached' : '',
       department: emp.department,
       designation: emp.designation,
       manager: emp.manager,
@@ -425,6 +471,15 @@ export default function Employees({ showToast }) {
       basicSalary: emp.salary_structure.basic,
       hra: emp.salary_structure.hra,
       allowances: emp.salary_structure.allowances,
+      tdsPct: emp.salary_structure.tds_pct !== undefined ? emp.salary_structure.tds_pct : 5,
+      incentiveMode: emp.salary_structure.incentive_mode || 'slab_per_pair',
+      incentiveSlabs: Array.isArray(emp.salary_structure.incentive_slabs) && emp.salary_structure.incentive_slabs.length > 0
+        ? emp.salary_structure.incentive_slabs.map(s => ({ ...s, max_qty: s.max_qty === null ? '' : s.max_qty }))
+        : [
+            { min_qty: 2, max_qty: 4, incentive_per_pair: 200 },
+            { min_qty: 5, max_qty: 9, incentive_per_pair: 300 },
+            { min_qty: 10, max_qty: '', incentive_per_pair: 500 }
+          ],
       incentivePct: emp.salary_structure.incentive_pct,
       promoterOverridePct: emp.salary_structure.promoter_override_pct,
       bankName: emp.bank_details.bank_name,
@@ -464,10 +519,19 @@ export default function Employees({ showToast }) {
       residential_address: formData.address,
       aadhaar_number: formData.aadhaar,
       pan_number: formData.pan,
+      aadhaar_card_file: formData.aadhaarFile,
+      pan_card_file: formData.panFile,
       salary_structure: {
         basic: Number(formData.basicSalary || 0),
         hra: Number(formData.hra || 0),
         allowances: Number(formData.allowances || 0),
+        tds_pct: Number(formData.tdsPct || 0),
+        incentive_mode: formData.incentiveMode,
+        incentive_slabs: (formData.incentiveSlabs || []).map(s => ({
+          min_qty: Number(s.min_qty),
+          max_qty: (s.max_qty !== null && s.max_qty !== undefined && s.max_qty !== '') ? Number(s.max_qty) : null,
+          incentive_per_pair: Number(s.incentive_per_pair)
+        })),
         incentive_pct: Number(formData.incentivePct || 0),
         incentive_earned: editingEmpId ? (employees.find(e => (e.mongoId === editingEmpId || e.id === editingEmpId))?.salary_structure.incentive_earned || 0) : 0,
         promoter_override_pct: Number(formData.promoterOverridePct || 0)
@@ -969,11 +1033,33 @@ export default function Employees({ showToast }) {
                     </div>
                     <div>
                       <span className="text-slate-400 font-medium">Aadhaar Card:</span>
-                      <p className="font-mono text-slate-800">{viewingEmployee.personalInfo?.aadhaar || 'Not uploaded'}</p>
+                      <p className="font-mono text-slate-800">{viewingEmployee.personalInfo?.aadhaar || 'Not provided'}</p>
+                      {viewingEmployee.aadhaar_card_file && (
+                        <a 
+                          href={viewingEmployee.aadhaar_card_file} 
+                          target="_blank" 
+                          rel="noreferrer" 
+                          download="AadhaarCard"
+                          className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold text-brand-orange hover:underline"
+                        >
+                          <FileText className="w-3 h-3" /> View Attachment
+                        </a>
+                      )}
                     </div>
                     <div>
                       <span className="text-slate-400 font-medium">PAN Card:</span>
-                      <p className="font-mono text-slate-800">{viewingEmployee.personalInfo?.pan || 'Not uploaded'}</p>
+                      <p className="font-mono text-slate-800">{viewingEmployee.personalInfo?.pan || 'Not provided'}</p>
+                      {viewingEmployee.pan_card_file && (
+                        <a 
+                          href={viewingEmployee.pan_card_file} 
+                          target="_blank" 
+                          rel="noreferrer" 
+                          download="PANCard"
+                          className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold text-brand-orange hover:underline"
+                        >
+                          <FileText className="w-3 h-3" /> View Attachment
+                        </a>
+                      )}
                     </div>
                   </div>
                   {viewingEmployee.personalInfo?.address && (
@@ -1338,8 +1424,8 @@ export default function Employees({ showToast }) {
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Aadhaar Card No</label>
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-500 uppercase">Aadhaar Card No</label>
                   <input 
                     type="text" 
                     placeholder="4567-8912-3456" 
@@ -1347,16 +1433,79 @@ export default function Employees({ showToast }) {
                     onChange={(e) => setFormData({...formData, aadhaar: e.target.value})} 
                     className="w-full text-sm border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
                   />
+                  {/* Aadhaar Card Document Attachment */}
+                  <div className="pt-1">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
+                      Aadhaar Card Document Attachment
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <label className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 cursor-pointer flex items-center gap-1.5 transition-colors">
+                        <Upload className="w-3.5 h-3.5 text-slate-500" />
+                        <span>{formData.aadhaarFile ? 'Change File' : 'Upload Aadhaar'}</span>
+                        <input 
+                          type="file" 
+                          accept="image/*,.pdf" 
+                          onChange={(e) => handleFileUpload(e, 'aadhaarFile', 'aadhaarFileName')} 
+                          className="hidden" 
+                        />
+                      </label>
+                      {formData.aadhaarFile && (
+                        <div className="flex items-center gap-1 bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2 py-1 rounded border border-emerald-200 max-w-[180px] truncate">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                          <span className="truncate">{formData.aadhaarFileName || 'Aadhaar Attached'}</span>
+                          <button
+                            type="button"
+                            onClick={() => setFormData(p => ({ ...p, aadhaarFile: null, aadhaarFileName: '' }))}
+                            className="text-slate-400 hover:text-rose-600 ml-1 cursor-pointer"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">PAN Card No</label>
+
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-500 uppercase">PAN Card No</label>
                   <input 
                     type="text" 
                     placeholder="ABCDE1234F" 
                     value={formData.pan} 
-                    onChange={(e) => setFormData({...formData, pan: e.target.value})} 
-                    className="w-full text-sm border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
+                    onChange={(e) => setFormData({...formData, pan: e.target.value.toUpperCase()})} 
+                    className="w-full text-sm border border-slate-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-brand-orange/20 uppercase" 
                   />
+                  {/* PAN Card Document Attachment */}
+                  <div className="pt-1">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
+                      PAN Card Document Attachment
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <label className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 cursor-pointer flex items-center gap-1.5 transition-colors">
+                        <Upload className="w-3.5 h-3.5 text-slate-500" />
+                        <span>{formData.panFile ? 'Change File' : 'Upload PAN'}</span>
+                        <input 
+                          type="file" 
+                          accept="image/*,.pdf" 
+                          onChange={(e) => handleFileUpload(e, 'panFile', 'panFileName')} 
+                          className="hidden" 
+                        />
+                      </label>
+                      {formData.panFile && (
+                        <div className="flex items-center gap-1 bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2 py-1 rounded border border-emerald-200 max-w-[180px] truncate">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                          <span className="truncate">{formData.panFileName || 'PAN Attached'}</span>
+                          <button
+                            type="button"
+                            onClick={() => setFormData(p => ({ ...p, panFile: null, panFileName: '' }))}
+                            className="text-slate-400 hover:text-rose-600 ml-1 cursor-pointer"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1442,7 +1591,7 @@ export default function Employees({ showToast }) {
                   </span>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-4 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Basic Salary (₹) *</label>
                     <input 
@@ -1473,6 +1622,21 @@ export default function Employees({ showToast }) {
                       className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
                     />
                   </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 uppercase mb-1">TDS Rate %</label>
+                    <div className="relative">
+                      <input 
+                        type="number" 
+                        step="0.1" 
+                        placeholder="5.0" 
+                        value={formData.tdsPct ?? ''} 
+                        onChange={(e) => setFormData({...formData, tdsPct: e.target.value === '' ? '' : e.target.value})} 
+                        className="w-full text-sm font-bold border border-slate-200 rounded-lg p-2.5 pr-8 bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 mt-1 block">Deducted from monthly slip</span>
+                  </div>
                 </div>
               </div>
 
@@ -1480,14 +1644,172 @@ export default function Employees({ showToast }) {
               <div className="border border-amber-200 rounded-xl p-4 bg-amber-50/20 space-y-3">
                 <div className="flex items-center justify-between border-b border-amber-200/60 pb-2">
                   <h4 className="text-xs font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1.5">
-                    <Percent className="w-3.5 h-3.5 text-amber-600" /> 2. Variable Sales & POS Incentives
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600" /> 2. Variable Sales & POS Incentives
                   </h4>
                   <span className="text-[10px] font-bold text-amber-700 bg-amber-100/70 px-2 py-0.5 rounded border border-amber-200">
                     Performance Based
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                {/* Incentive Calculation Mode Selector */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">
+                    POS Incentive Calculation Model:
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFormData({...formData, incentiveMode: 'slab_per_pair'})}
+                      className={`p-2.5 rounded-lg border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                        formData.incentiveMode === 'slab_per_pair'
+                          ? 'bg-amber-100 border-amber-400 text-amber-900 shadow-xs'
+                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Tiered Slabs Per Pair/Product (Dynamic Rule)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({...formData, incentiveMode: 'percentage'})}
+                      className={`p-2.5 rounded-lg border text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                        formData.incentiveMode === 'percentage'
+                          ? 'bg-amber-100 border-amber-400 text-amber-900 shadow-xs'
+                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      <Percent className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Flat Percentage of Sales Volume</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Slabs Mode: Dynamic Configurable Table */}
+                {formData.incentiveMode === 'slab_per_pair' ? (
+                  <div className="bg-white border border-amber-200 rounded-xl p-3.5 space-y-3 overflow-hidden">
+                    <div className="flex items-center justify-between text-xs font-bold text-amber-900 border-b border-amber-100 pb-2">
+                      <div className="flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                        <span>Sales Volume Slab (Per Day Pairs)</span>
+                      </div>
+                      <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-semibold flex-shrink-0">
+                        Calculated Daily
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      {formData.incentiveSlabs.map((slab, sIdx) => (
+                        <div key={sIdx} className="flex items-center justify-between gap-1.5 bg-amber-50/40 hover:bg-amber-50/70 p-2 rounded-lg border border-amber-100 text-xs transition-colors">
+                          <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                            <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">Tier {sIdx + 1}:</span>
+                            <input
+                              type="number"
+                              min="1"
+                              value={slab.min_qty}
+                              placeholder="Min"
+                              onChange={(e) => {
+                                const val = Number(e.target.value) || 0;
+                                setFormData(prev => ({
+                                  ...prev,
+                                  incentiveSlabs: prev.incentiveSlabs.map((s, idx) => idx === sIdx ? { ...s, min_qty: val } : s)
+                                }));
+                              }}
+                              className="w-14 text-xs font-bold border border-slate-300 rounded p-1 bg-white text-center focus:ring-1 focus:ring-brand-orange"
+                            />
+                            <span className="text-[11px] font-bold text-slate-400 whitespace-nowrap">to</span>
+                            <input
+                              type="number"
+                              min="1"
+                              value={slab.max_qty ?? ''}
+                              placeholder="+"
+                              onChange={(e) => {
+                                const val = e.target.value === '' ? '' : Number(e.target.value);
+                                setFormData(prev => ({
+                                  ...prev,
+                                  incentiveSlabs: prev.incentiveSlabs.map((s, idx) => idx === sIdx ? { ...s, max_qty: val } : s)
+                                }));
+                              }}
+                              className="w-14 text-xs font-bold border border-slate-300 rounded p-1 bg-white text-center focus:ring-1 focus:ring-brand-orange"
+                              title="Leave empty for unlimited (+)"
+                            />
+                            <span className="text-[11px] font-semibold text-slate-600 whitespace-nowrap">prs/day</span>
+                          </div>
+
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <span className="font-bold text-slate-400 text-xs">₹</span>
+                            <input
+                              type="number"
+                              min="0"
+                              value={slab.incentive_per_pair}
+                              onChange={(e) => {
+                                const val = Number(e.target.value) || 0;
+                                setFormData(prev => ({
+                                  ...prev,
+                                  incentiveSlabs: prev.incentiveSlabs.map((s, idx) => idx === sIdx ? { ...s, incentive_per_pair: val } : s)
+                                }));
+                              }}
+                              className="w-16 text-xs font-black border border-slate-300 rounded p-1 bg-white text-right focus:ring-1 focus:ring-brand-orange"
+                            />
+                            <span className="text-[10px] text-slate-500 font-bold whitespace-nowrap">/pr</span>
+                          </div>
+
+                          <div className="w-6 flex items-center justify-center flex-shrink-0">
+                            {formData.incentiveSlabs.length > 1 ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFormData(prev => ({
+                                    ...prev,
+                                    incentiveSlabs: prev.incentiveSlabs.filter((_, idx) => idx !== sIdx)
+                                  }));
+                                }}
+                                className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors cursor-pointer"
+                                title="Remove slab tier"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            ) : (
+                              <span className="w-3.5" />
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* + Add New Entry Button */}
+                    <div className="pt-1 flex items-center justify-between border-t border-amber-100">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormData(prev => {
+                            const lastSlab = prev.incentiveSlabs[prev.incentiveSlabs.length - 1];
+                            const newMin = lastSlab ? (Number(lastSlab.max_qty || lastSlab.min_qty) + 1) : 1;
+                            return {
+                              ...prev,
+                              incentiveSlabs: [
+                                ...prev.incentiveSlabs,
+                                { min_qty: newMin, max_qty: '', incentive_per_pair: 600 }
+                              ]
+                            };
+                          });
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Add New Slab Entry</span>
+                      </button>
+
+                      <span className="text-[10px] text-slate-400 font-medium italic">
+                        Empty "to" = "or more"
+                      </span>
+                    </div>
+
+                    <p className="text-[10px] text-slate-500 italic mt-1 leading-relaxed bg-amber-50/50 p-2 rounded border border-amber-200/50">
+                      * <strong>Per Day Incentive Rule:</strong> Calculates sales pairs achieved by the employee on each calendar day. 
+                      E.g. If on Day 1 they sell 4 pairs (2-4 slab) → 4 × ₹200 = ₹800. If on Day 2 they sell 7 pairs (5-9 slab) → 7 × ₹300 = ₹2,100.
+                    </p>
+                  </div>
+                ) : (
                   <div>
                     <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
                       Direct Product Sales Incentive % *
@@ -1505,24 +1827,24 @@ export default function Employees({ showToast }) {
                     </div>
                     <span className="text-[10px] text-slate-500 mt-1 block">Incentive on direct counter/POS sales</span>
                   </div>
+                )}
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                      Promoter Network Override %
-                    </label>
-                    <div className="relative">
-                      <input 
-                        type="number" 
-                        step="0.1" 
-                        placeholder="1.0" 
-                        value={formData.promoterOverridePct ?? ''} 
-                        onChange={(e) => setFormData({...formData, promoterOverridePct: e.target.value === '' ? '' : e.target.value})} 
-                        className="w-full text-sm font-bold border border-slate-200 rounded-lg p-2.5 pr-8 bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
-                    </div>
-                    <span className="text-[10px] text-slate-500 mt-1 block">Override on assigned promoters' sales</span>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                    Promoter Network Override %
+                  </label>
+                  <div className="relative">
+                    <input 
+                      type="number" 
+                      step="0.1" 
+                      placeholder="1.0" 
+                      value={formData.promoterOverridePct ?? ''} 
+                      onChange={(e) => setFormData({...formData, promoterOverridePct: e.target.value === '' ? '' : e.target.value})} 
+                      className="w-full text-sm font-bold border border-slate-200 rounded-lg p-2.5 pr-8 bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange/20" 
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
                   </div>
+                  <span className="text-[10px] text-slate-500 mt-1 block">Override on assigned promoters' sales</span>
                 </div>
 
                 {editingEmpId && (

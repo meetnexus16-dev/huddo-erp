@@ -26,6 +26,7 @@ const productSchema = new mongoose.Schema({
   employeeIncentive: { type: Number, default: 5 }, // Product sales incentive % for employee
   trainerRoyalty: { type: Number, default: 2 }, // Training royalty % for trainer
   hsn_code: { type: String },
+  gst_rate: { type: Number, default: 12 }, // Dynamic GST % (e.g. 5, 12, 18, 28)
   franchise_points: { type: Number },
   colorConfigs: { type: mongoose.Schema.Types.Mixed }
 }, { timestamps: true });

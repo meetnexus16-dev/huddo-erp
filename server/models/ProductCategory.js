@@ -55,6 +55,7 @@ const productCategorySchema = new mongoose.Schema({
     name: { type: String, trim: true },
     hex: { type: String, trim: true }
   }],
+  gst_rate: { type: Number, default: 12 }, // Dynamic Category GST %
   is_active: { type: Boolean, default: true }
 }, { timestamps: true });
 

@@ -299,11 +299,20 @@ export default function CreateSale({ showToast }) {
         ? Math.round(((afterLine * (Number(billDiscountPercent) || 0)) / 100) * 100) / 100
         : 0;
     const discount = discountMode === 'bill' ? billDisc : lineDiscount;
+    const grand = Math.round((afterLine - billDisc) * 100) / 100;
+    // Dynamic GST reverse deduction (prices are inclusive of GST)
+    const gstRate = 12; // Standard footwear category GST %
+    const taxableBase = Math.round((grand / (1 + gstRate / 100)) * 100) / 100;
+    const gstAmount = Math.round((grand - taxableBase) * 100) / 100;
+
     return {
       pairs: cart.reduce((s, i) => s + i.quantity, 0),
       subtotal: gross,
       discount,
-      grand: Math.round((afterLine - billDisc) * 100) / 100
+      grand,
+      taxableBase,
+      gstRate,
+      gstAmount
     };
   }, [cart, discountMode, billDiscountPercent]);
 
@@ -885,8 +894,16 @@ export default function CreateSale({ showToast }) {
                       <span className="font-bold">−{formatINR(cartTotals.discount)}</span>
                     </div>
                   )}
+                  <div className="flex justify-between text-slate-500 text-[11px] pt-0.5">
+                    <span>Taxable Base (Pre-GST)</span>
+                    <span className="font-semibold text-slate-700">{formatINR(cartTotals.taxableBase)}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-500 text-[11px]">
+                    <span>GST ({cartTotals.gstRate}% Included)</span>
+                    <span className="font-semibold text-slate-700">{formatINR(cartTotals.gstAmount)}</span>
+                  </div>
                   <div className="flex justify-between text-slate-900 pt-1 border-t border-slate-100">
-                    <span className="font-bold">Grand Total</span>
+                    <span className="font-bold">Grand Total (Incl. GST)</span>
                     <span className="text-base font-extrabold text-brand-orange">{formatINR(cartTotals.grand)}</span>
                   </div>
                 </div>

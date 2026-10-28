@@ -1,6 +1,7 @@
 import Employee from '../models/Employee.js';
 import Attendance from '../models/Attendance.js';
 import Order from '../models/Order.js';
+import RetailSale from '../models/RetailSale.js';
 import Payroll from '../models/Payroll.js';
 import Promoter from '../models/Promoter.js';
 import CommissionRecord from '../models/CommissionRecord.js';
@@ -158,10 +159,15 @@ export async function calculateSingleEmployeePayroll(employee, year, month) {
   }
   let directSalesVolume = 0;
   let salesIncentive = 0;
+  let directPairsSold = 0;
+  let activeSalesDays = 0;
+  const incentiveMode = employee.salary_structure?.incentive_mode || 'slab_per_pair';
+  const customSlabs = Array.isArray(employee.salary_structure?.incentive_slabs) && employee.salary_structure.incentive_slabs.length > 0
+    ? employee.salary_structure.incentive_slabs
+    : null;
 
   if (userRef) {
-    // Note: Do NOT use .lean() here because Order grand_total uses amountSchemaType (stored in paise).
-    // Using Mongoose document execution runs getters to properly convert paise to Rupees.
+    // 1. Fetch direct orders (executed with Mongoose getters for rupee amounts)
     const directSalesOrders = await Order.find({
       $or: [
         { seller_user: userRef },
@@ -171,11 +177,100 @@ export async function calculateSingleEmployeePayroll(employee, year, month) {
       status: { $nin: ['Cancelled', 'Draft'] }
     });
 
-    directSalesVolume = directSalesOrders.reduce((sum, ord) => {
-      return sum + Number(ord.grand_total || ord.subtotal || 0);
-    }, 0);
+    // 2. Fetch direct retail POS sales
+    const directRetailSales = await RetailSale.find({
+      $or: [
+        { seller_user: userRef },
+        { created_by: userRef }
+      ],
+      createdAt: { $gte: startDate, $lte: endDate }
+    });
 
-    salesIncentive = Math.round((directSalesVolume * directIncentivePct) / 100);
+    // Map sales by date (YYYY-MM-DD) for Per-Day calculation
+    const dailySalesMap = {};
+
+    for (const ord of directSalesOrders) {
+      const vol = Number(ord.grand_total || ord.subtotal || 0);
+      directSalesVolume += vol;
+
+      let pairs = 0;
+      if (Array.isArray(ord.items) && ord.items.length > 0) {
+        pairs = ord.items.reduce((s, itm) => s + (Number(itm.quantity) || 1), 0);
+      } else {
+        pairs = Number(ord.pairs_sold) || 1;
+      }
+      directPairsSold += pairs;
+
+      const dateKey = new Date(ord.createdAt).toISOString().split('T')[0];
+      if (!dailySalesMap[dateKey]) {
+        dailySalesMap[dateKey] = { date: dateKey, pairs: 0, volume: 0 };
+      }
+      dailySalesMap[dateKey].pairs += pairs;
+      dailySalesMap[dateKey].volume += vol;
+    }
+
+    for (const sale of directRetailSales) {
+      const vol = Number(sale.grand_total || sale.subtotal || 0);
+      directSalesVolume += vol;
+
+      let pairs = 0;
+      if (Array.isArray(sale.items) && sale.items.length > 0) {
+        pairs = sale.items.reduce((s, itm) => s + (Number(itm.quantity) || 1), 0);
+      } else {
+        pairs = Number(sale.pairs_sold) || 1;
+      }
+      directPairsSold += pairs;
+
+      const dateKey = new Date(sale.createdAt).toISOString().split('T')[0];
+      if (!dailySalesMap[dateKey]) {
+        dailySalesMap[dateKey] = { date: dateKey, pairs: 0, volume: 0 };
+      }
+      dailySalesMap[dateKey].pairs += pairs;
+      dailySalesMap[dateKey].volume += vol;
+    }
+
+    const dayKeys = Object.keys(dailySalesMap);
+    activeSalesDays = dayKeys.length;
+
+    if (incentiveMode === 'slab_per_pair') {
+      // Per-Day Tiered Slab Incentive:
+      // Evaluates total pairs sold by the employee on each respective day
+      for (const dayKey of dayKeys) {
+        const dayPairs = dailySalesMap[dayKey].pairs;
+        let ratePerPair = 0;
+
+        if (customSlabs) {
+          const matched = customSlabs.find(sl => {
+            const min = Number(sl.min_qty) || 0;
+            const max = (sl.max_qty !== null && sl.max_qty !== undefined && sl.max_qty !== '') ? Number(sl.max_qty) : Infinity;
+            return dayPairs >= min && dayPairs <= max;
+          });
+          if (matched) {
+            ratePerPair = Number(matched.incentive_per_pair || 0);
+          }
+        } else {
+          // Dynamic default rule per day:
+          // 10 or more pairs / day -> 500 per pair
+          // 5 to 9 pairs / day -> 300 per pair
+          // 2 to 4 pairs / day -> 200 per pair
+          // 1 pair / day -> 0
+          if (dayPairs >= 10) {
+            ratePerPair = 500;
+          } else if (dayPairs >= 5) {
+            ratePerPair = 300;
+          } else if (dayPairs >= 2) {
+            ratePerPair = 200;
+          } else {
+            ratePerPair = 0;
+          }
+        }
+
+        salesIncentive += (dayPairs * ratePerPair);
+      }
+    } else {
+      // Percentage mode
+      salesIncentive = Math.round((directSalesVolume * directIncentivePct) / 100);
+    }
   }
 
   // Supervised Promoters Override Incentive
@@ -209,14 +304,23 @@ export async function calculateSingleEmployeePayroll(employee, year, month) {
 
   const totalIncentive = salesIncentive + promoterOverrideIncentive + manualIncentive;
 
-  // 4. Statutory Deductions
+  // 4. Gross & Statutory Deductions
+  const gross = earnedBasic + totalIncentive;
   const pfDeduction = Math.round(earnedBasic * 0.06);
-  const taxableGross = earnedBasic + totalIncentive;
-  const tdsDeduction = taxableGross > 50000 ? Math.round(taxableGross * 0.05) : 0;
+  
+  // Dynamic TDS calculation:
+  // Strictly calculated using the configured TDS % in employee salary structure (0 if not configured)
+  let tdsDeduction = 0;
+  const rawTdsPct = employee.salary_structure?.tds_pct;
+  const configuredTdsPct = (rawTdsPct !== undefined && rawTdsPct !== null && rawTdsPct !== '' && !isNaN(Number(rawTdsPct)))
+    ? Number(rawTdsPct)
+    : 0;
+  if (configuredTdsPct > 0) {
+    tdsDeduction = Math.round(gross * (configuredTdsPct / 100));
+  }
   const totalDeductions = pfDeduction + tdsDeduction;
 
   // 5. Net Payable
-  const gross = earnedBasic + totalIncentive;
   const netSalary = Math.max(0, gross - totalDeductions);
 
   return {
@@ -230,6 +334,10 @@ export async function calculateSingleEmployeePayroll(employee, year, month) {
     bank: employee.bank_details?.bank_name 
       ? `${employee.bank_details.bank_name} - XXXX${String(employee.bank_details.account_no || '').slice(-4)}`
       : 'HDFC Bank - XXXX5544',
+    panNumber: employee.pan_number || 'N/A',
+    aadhaarNumber: employee.aadhaar_number || 'N/A',
+    aadhaarCardFile: employee.aadhaar_card_file || null,
+    panCardFile: employee.pan_card_file || null,
     month: monthNum,
     year: yearNum,
     monthLabel: new Date(yearNum, monthNum - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
@@ -253,6 +361,9 @@ export async function calculateSingleEmployeePayroll(employee, year, month) {
 
     // Performance Incentives
     directSalesVolume,
+    directPairsSold,
+    activeSalesDays,
+    incentiveMode,
     salesIncentive,
     promoterSalesVolume,
     promoterOverrideIncentive,
@@ -262,6 +373,7 @@ export async function calculateSingleEmployeePayroll(employee, year, month) {
     // Deductions & Totals
     pfDeduction,
     tdsDeduction,
+    tdsPct: configuredTdsPct,
     totalDeductions,
     gross,
     netSalary,

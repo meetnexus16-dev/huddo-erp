@@ -77,10 +77,13 @@ export function buildRetailInvoicePdfDoc(sale, retailer = {}) {
   const discount = Number(sale.discount_amount) || 0;
   const grandTotal = Number(sale.grand_total) || subtotal - discount;
 
-  // 5% Footwear GST breakdown
-  const taxableVal = Math.round((grandTotal / 1.05) * 100) / 100;
-  const cgstVal = Math.round(((grandTotal - taxableVal) / 2) * 100) / 100;
-  const sgstVal = Math.round((grandTotal - taxableVal - cgstVal) * 100) / 100;
+  // Dynamic GST reverse calculation (price is inclusive of GST)
+  const gstRate = Number(sale.gst_rate || (items[0]?.product?.gst_rate) || 12);
+  const taxableVal = Number(sale.taxable_amount) || Math.round((grandTotal / (1 + gstRate / 100)) * 100) / 100;
+  const totalGst = Math.round((grandTotal - taxableVal) * 100) / 100;
+  const halfGstRate = gstRate / 2;
+  const cgstVal = Number(sale.cgst) || Math.round((totalGst / 2) * 100) / 100;
+  const sgstVal = Number(sale.sgst) || Math.round((totalGst - cgstVal) * 100) / 100;
 
   const pMode = (sale.payment_mode || 'Cash').toUpperCase();
   const tendered = Number(sale.tendered_amount) || grandTotal;
@@ -252,10 +255,10 @@ export function buildRetailInvoicePdfDoc(sale, retailer = {}) {
   doc.text(`Rs. ${discount.toFixed(2)}`, rightX - 1.5, y, { align: 'right' });
   y += 4.2;
 
-  // 5% GST Breakdown info
+  // Dynamic GST Breakdown info (Price inclusive of GST)
   doc.setFontSize(7.2);
   doc.setTextColor(100, 116, 139);
-  doc.text(`GST Included (CGST 2.5%: Rs. ${cgstVal.toFixed(2)}  |  SGST 2.5%: Rs. ${sgstVal.toFixed(2)})`, innerX + 1.5, y);
+  doc.text(`Taxable Base: Rs. ${taxableVal.toFixed(2)}  |  GST ${gstRate}% Included (CGST ${halfGstRate}%: Rs. ${cgstVal.toFixed(2)}  |  SGST ${halfGstRate}%: Rs. ${sgstVal.toFixed(2)})`, innerX + 1.5, y);
   y += 5;
 
   // Total Invoice Amount Box
@@ -357,9 +360,13 @@ export function printRetailInvoice(sale, retailer = {}) {
   const discount = Number(sale.discount_amount) || 0;
   const grandTotal = Number(sale.grand_total) || subtotal - discount;
 
-  const taxableVal = Math.round((grandTotal / 1.05) * 100) / 100;
-  const cgstVal = Math.round(((grandTotal - taxableVal) / 2) * 100) / 100;
-  const sgstVal = Math.round((grandTotal - taxableVal - cgstVal) * 100) / 100;
+  // Dynamic GST reverse calculation (price is inclusive of GST)
+  const gstRate = Number(sale.gst_rate || (items[0]?.product?.gst_rate) || 12);
+  const taxableVal = Number(sale.taxable_amount) || Math.round((grandTotal / (1 + gstRate / 100)) * 100) / 100;
+  const totalGst = Math.round((grandTotal - taxableVal) * 100) / 100;
+  const halfGstRate = gstRate / 2;
+  const cgstVal = Number(sale.cgst) || Math.round((totalGst / 2) * 100) / 100;
+  const sgstVal = Number(sale.sgst) || Math.round((totalGst - cgstVal) * 100) / 100;
 
   const pMode = (sale.payment_mode || 'Cash').toUpperCase();
   const tendered = Number(sale.tendered_amount) || grandTotal;
@@ -560,7 +567,11 @@ export function printRetailInvoice(sale, retailer = {}) {
             <span>Rs. ${discount.toFixed(2)}</span>
           </div>
           <div class="totals-row" style="font-size: 10.5px; color: #64748b;">
-            <span>GST Included (CGST 2.5% + SGST 2.5%):</span>
+            <span>Taxable Value (Base):</span>
+            <span>Rs. ${taxableVal.toFixed(2)}</span>
+          </div>
+          <div class="totals-row" style="font-size: 10.5px; color: #64748b;">
+            <span>GST ${gstRate}% Included (CGST ${halfGstRate}% + SGST ${halfGstRate}%):</span>
             <span>Rs. ${(cgstVal + sgstVal).toFixed(2)}</span>
           </div>
 

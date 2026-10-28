@@ -138,6 +138,12 @@ export default function Purchase({ showToast }) {
               <span>ART: ${item.article_no || "N/A"}</span>
               <span>COLOUR: ${item.colour || "N/A"}</span>
             </div>
+            <div style="font-size: 13px; font-weight: 800; margin-top: 5px; color: #0f172a;">
+              M.R.P. RS. ${(item.mrp || 1499).toLocaleString('en-IN')}
+            </div>
+            <div style="font-size: 7.5px; font-weight: 700; color: #64748b; letter-spacing: 0.5px;">
+              (INCL. OF ALL TAXES / GST INCLUDED)
+            </div>
             <svg id="barcode"></svg>
             <div class="date">PRINT DATE: ${new Date().toLocaleDateString()}</div>
           </div>

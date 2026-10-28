@@ -135,10 +135,10 @@ function buildLabelHtml(batch, barcodeDataUrl, logoDataUrl) {
           <rect width="1" height="1" fill="#111111"/>
         </svg>
         <div style="position:relative;z-index:1;">
-          <div style="font-size:11px;font-weight:700;line-height:1.15;">M.R.P.</div>
-          <div style="font-size:7px;font-weight:400;letter-spacing:.3px;line-height:1.2;margin-top:2px;">including gst</div>
+          <div style="font-size:10px;font-weight:800;line-height:1.15;">M.R.P. (INCL. GST)</div>
+          <div style="font-size:6.5px;font-weight:700;letter-spacing:.3px;line-height:1.2;margin-top:2px;text-transform:uppercase;">INCL. OF ALL TAXES</div>
         </div>
-        <span style="position:relative;z-index:1;font-size:11px;font-weight:700;">${money(batch.mrp)}</span>
+        <span style="position:relative;z-index:1;font-size:11.5px;font-weight:800;">${money(batch.mrp)}</span>
       </div>
     </div>
   </div>`;
@@ -450,10 +450,10 @@ function drawPdfLabel(pdf, batch, barcodeDataUrl, x, y, w, h, logo) {
   pdf.rect(rightX, ry, rightW, mrpStripH, 'F');
   pdf.setTextColor(255, 255, 255);
   pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(8);
-  pdf.text('M.R.P.', rightX + 3, ry + 7);
-  pdf.text(money(batch.mrp), rightX + rightW - 3, ry + 7, { align: 'right' });
+  pdf.setFontSize(7.5);
+  pdf.text('M.R.P. (INCL. GST)', rightX + 3, ry + 6);
+  pdf.text(money(batch.mrp), rightX + rightW - 3, ry + 6, { align: 'right' });
   pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(5);
-  pdf.text('including gst', rightX + 3, ry + 12);
+  pdf.setFontSize(4.5);
+  pdf.text('INCL. OF ALL TAXES / GST INCLUDED', rightX + 3, ry + 11);
 }

@@ -473,7 +473,7 @@ export default function Payroll({ showToast, isSelfView = false }) {
           </span>
           {(row.salesIncentive > 0 || row.promoterOverrideIncentive > 0 || row.manualIncentive > 0) && (
             <span className="text-[9px] text-amber-800 block mt-0.5 font-medium">
-              POS ₹{row.salesIncentive || 0} | PRO ₹{row.promoterOverrideIncentive || 0}
+              POS ₹{row.salesIncentive || 0}{row.directPairsSold > 0 ? ` (${row.directPairsSold} prs)` : ''} | PRO ₹{row.promoterOverrideIncentive || 0}
               {row.manualIncentive > 0 ? ` | Bonus ₹${row.manualIncentive}` : ''}
             </span>
           )}
@@ -483,10 +483,15 @@ export default function Payroll({ showToast, isSelfView = false }) {
     { 
       header: "Deductions", 
       accessor: "totalDeductions", 
-      render: (val) => (
-        <span className="text-slate-500 font-semibold text-xs">
-          -₹{(val || 0).toLocaleString('en-IN')}
-        </span>
+      render: (val, row) => (
+        <div>
+          <span className="text-slate-700 font-bold text-xs block">
+            -₹{(val || 0).toLocaleString('en-IN')}
+          </span>
+          <span className="text-[9px] text-slate-400 block font-medium">
+            PF: ₹{row.pfDeduction || 0} | TDS: ₹{row.tdsDeduction || 0}
+          </span>
+        </div>
       ) 
     },
     { 
@@ -1015,6 +1020,14 @@ export default function Payroll({ showToast, isSelfView = false }) {
                       <span className="font-mono font-bold text-slate-800">{viewingPayslip.bank}</span>
                     </div>
                     <div className="flex justify-between">
+                      <span className="text-slate-400 font-bold uppercase text-[9px]">PAN Card:</span>
+                      <span className="font-mono font-bold text-slate-800">{viewingPayslip.panNumber || 'N/A'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400 font-bold uppercase text-[9px]">Aadhaar No:</span>
+                      <span className="font-mono font-bold text-slate-800">{viewingPayslip.aadhaarNumber || 'N/A'}</span>
+                    </div>
+                    <div className="flex justify-between">
                       <span className="text-slate-400 font-bold uppercase text-[9px]">Payment Mode:</span>
                       <span className="font-medium text-slate-800">{viewingPayslip.paymentMode || 'Bank Transfer'}</span>
                     </div>
@@ -1112,8 +1125,15 @@ export default function Payroll({ showToast, isSelfView = false }) {
                         <span>-₹{(viewingPayslip.pfDeduction || 0).toLocaleString('en-IN')}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-500 font-medium">Income Tax (TDS):</span>
-                        <span>-₹{(viewingPayslip.tdsDeduction || 0).toLocaleString('en-IN')}</span>
+                        <div>
+                          <span className="text-slate-500 font-medium block">
+                            Income Tax (TDS{viewingPayslip.tdsPct ? ` @ ${viewingPayslip.tdsPct}%` : ''}):
+                          </span>
+                          {viewingPayslip.panNumber && (
+                            <span className="text-[9px] text-slate-400 font-mono">PAN: {viewingPayslip.panNumber}</span>
+                          )}
+                        </div>
+                        <span className="font-bold text-rose-600">-₹{(viewingPayslip.tdsDeduction || 0).toLocaleString('en-IN')}</span>
                       </div>
                       <div className="flex justify-between pt-1 border-t border-slate-100 text-slate-900 font-bold">
                         <span>Total Deductions:</span>
@@ -1139,7 +1159,13 @@ export default function Payroll({ showToast, isSelfView = false }) {
                     <div className="flex items-center justify-between bg-white p-2 rounded-lg border border-amber-100">
                       <div>
                         <span className="font-bold text-slate-800 block">Direct Counter / POS Sales Incentive</span>
-                        <span className="text-[10px] text-slate-400">Total Sales Volume: ₹{(viewingPayslip.directSalesVolume || 0).toLocaleString('en-IN')}</span>
+                        <span className="text-[10px] text-slate-500 block">
+                          {viewingPayslip.incentiveMode === 'slab_per_pair' ? (
+                            <span>Daily Tiered Slab: <strong>{viewingPayslip.directPairsSold || 0} pairs sold</strong>{viewingPayslip.activeSalesDays ? ` across ${viewingPayslip.activeSalesDays} selling days` : ''} (Vol: ₹{(viewingPayslip.directSalesVolume || 0).toLocaleString('en-IN')})</span>
+                          ) : (
+                            <span>Percentage Model · Vol: ₹{(viewingPayslip.directSalesVolume || 0).toLocaleString('en-IN')}</span>
+                          )}
+                        </span>
                       </div>
                       <span className="font-black text-amber-700 text-sm">
                         +₹{(viewingPayslip.salesIncentive || 0).toLocaleString('en-IN')}
@@ -1290,10 +1316,11 @@ export default function Payroll({ showToast, isSelfView = false }) {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 text-[11px] bg-slate-50 p-2.5 rounded-lg">
+                  <div className="grid grid-cols-4 gap-2 text-[11px] bg-slate-50 p-2.5 rounded-lg">
                     <div>Attendance: <strong>{emp.payableDays}/{emp.totalDays} Days</strong></div>
                     <div>Earned Base: <strong>₹{(emp.earnedBasic || 0).toLocaleString('en-IN')}</strong></div>
-                    <div>Company Incentive: <strong className="text-amber-700">+₹{(emp.totalIncentive || 0).toLocaleString('en-IN')}</strong></div>
+                    <div>Incentive: <strong className="text-amber-700">+₹{(emp.totalIncentive || 0).toLocaleString('en-IN')}</strong></div>
+                    <div>Deductions: <strong className="text-rose-600">-₹{(emp.totalDeductions || 0).toLocaleString('en-IN')}{emp.tdsDeduction > 0 ? ` (TDS: ₹${emp.tdsDeduction})` : ''}</strong></div>
                   </div>
                 </div>
               ))}

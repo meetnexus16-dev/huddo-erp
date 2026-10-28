@@ -253,6 +253,15 @@ export const createSale = async (req, res, next) => {
       ? billDiscountAmount
       : roundMoney(saleItems.reduce((s, i) => s + (Number(i.line_discount_amount) || 0), 0));
 
+    // Dynamic Reverse GST calculation (MRP is Inclusive of GST)
+    const gstRate = Number(req.body?.gst_rate || variants[0]?.product?.gst_rate || 12);
+    const taxableAmount = roundMoney(grandTotal / (1 + gstRate / 100));
+    const totalTax = roundMoney(grandTotal - taxableAmount);
+    const isInterState = Boolean(req.body?.is_inter_state);
+    const cgst = isInterState ? 0 : roundMoney(totalTax / 2);
+    const sgst = isInterState ? 0 : roundMoney(totalTax - cgst);
+    const igst = isInterState ? totalTax : 0;
+
     const customerName = String(req.body?.customer_name || 'Walk-in Customer').trim();
     const customerMobile = String(req.body?.customer_mobile || '').trim();
     const customerId = String(req.body?.customer_id || (customerMobile ? `CUST-${customerMobile.slice(-4)}` : 'WALKIN')).trim();
@@ -276,6 +285,12 @@ export const createSale = async (req, res, next) => {
       bill_discount_percent: billDiscountPercent,
       subtotal,
       discount_amount: totalDiscount,
+      taxable_amount: taxableAmount,
+      gst_rate: gstRate,
+      tax_amount: totalTax,
+      cgst,
+      sgst,
+      igst,
       grand_total: grandTotal,
       city: cityDoc?._id || cityDoc || null,
       state: stateDoc?._id || stateDoc || null,

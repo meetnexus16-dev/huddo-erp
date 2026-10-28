@@ -18,11 +18,24 @@ const employeeSchema = new mongoose.Schema({
   reporting_manager: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
   reporting_manager_name: { type: String, trim: true },
   joining_date: { type: Date },
+  aadhaar_card_file: { type: String },
+  pan_card_file: { type: String },
   salary_structure: {
     basic: amountSchemaType,
     hra: amountSchemaType,
     allowances: amountSchemaType,
     deductions: amountSchemaType,
+    tds_pct: { type: Number, default: 0 },
+    incentive_mode: { 
+      type: String, 
+      enum: ['slab_per_pair', 'percentage'], 
+      default: 'slab_per_pair' 
+    },
+    incentive_slabs: [{
+      min_qty: { type: Number, required: true },
+      max_qty: { type: Number },
+      incentive_per_pair: { type: Number, required: true }
+    }],
     incentive_pct: { type: Number, default: 5 },
     incentive_earned: amountSchemaType,
     promoter_override_pct: { type: Number, default: 1 }
