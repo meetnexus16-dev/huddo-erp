@@ -174,7 +174,8 @@ export const EMPLOYEE_ROUTES = {
   'Material Tracking': 'material-tracking',
   'Procurement Reports': 'procurement-reports',
   'My Tasks': 'my-tasks',
-  'Direct Sales': 'direct-sales'
+  'Direct Sales': 'direct-sales',
+  'My Payslip': 'payslip'
 };
 
 export function buildPath(base, tabId, routeMap) {

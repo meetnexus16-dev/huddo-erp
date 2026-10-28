@@ -19,6 +19,7 @@ import Customer from '../models/Customer.js';
 import ProductCategory from '../models/ProductCategory.js';
 import { resolveCommissionsFromCategory } from '../utils/promoterBonus.js';
 import Order from '../models/Order.js';
+import Payroll from '../models/Payroll.js';
 import { calculateSingleEmployeePayroll } from '../controllers/payrollController.js';
 
 const router = express.Router();
@@ -1310,6 +1311,7 @@ router.get('/payroll', async (req, res) => {
     let targetEmp = employee;
     if (!targetEmp && user?._id) {
       targetEmp = await Employee.findOne({ user: user._id, is_deleted: { $ne: true } })
+        .populate({ path: 'user', populate: 'role' })
         .populate('department')
         .populate('designation')
         .populate('assigned_promoters');
@@ -1318,6 +1320,7 @@ router.get('/payroll', async (req, res) => {
     if (!targetEmp) {
       // Fallback: pick the first active employee for workspace demo preview
       targetEmp = await Employee.findOne({ is_deleted: { $ne: true } })
+        .populate({ path: 'user', populate: 'role' })
         .populate('department')
         .populate('designation')
         .populate('assigned_promoters');
@@ -1328,6 +1331,23 @@ router.get('/payroll', async (req, res) => {
     }
 
     const calculated = await calculateSingleEmployeePayroll(targetEmp, year, month);
+
+    // Look up any official recorded/settled status from Payroll collection
+    const saved = await Payroll.findOne({
+      employee: targetEmp._id,
+      month,
+      year,
+      is_deleted: { $ne: true }
+    }).lean();
+
+    if (saved) {
+      calculated.payrollId = saved._id;
+      calculated.status = saved.status || 'Paid';
+      calculated.paidAt = saved.paid_at;
+      calculated.paymentMode = saved.payment_mode || 'Bank Transfer';
+      calculated.paymentNotes = saved.notes || '';
+    }
+
     return res.json({ success: true, payroll: calculated });
   } catch (err) {
     console.error("Error fetching self payroll:", err);

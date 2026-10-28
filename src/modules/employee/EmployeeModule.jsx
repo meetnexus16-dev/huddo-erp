@@ -102,7 +102,8 @@ function EmployeeWorkspace({ userRole, showToast, onSwitchRole }) {
     const common = [
       { id: "Dashboard", label: "Dashboard", icon: Home },
       { id: "Profile", label: "Profile", icon: User },
-      { id: "Leave", label: "Leave Management", icon: Calendar }
+      { id: "Leave", label: "Leave Management", icon: Calendar },
+      { id: "My Payslip", label: "My Payslip & Incentive", icon: Landmark }
     ];
 
     switch (activeRole) {
@@ -128,6 +129,8 @@ function EmployeeWorkspace({ userRole, showToast, onSwitchRole }) {
         return [
           { id: "Dashboard", label: "Dashboard", icon: Home },
           { id: "Profile", label: "Profile", icon: User },
+          { id: "Leave", label: "Leave Management", icon: Calendar },
+          { id: "My Payslip", label: "My Payslip & Incentive", icon: Landmark },
           { id: "Employee Directory", label: "Employee Directory", icon: Users },
           { id: "Attendance HR", label: "Attendance (HR)", icon: Clock },
           { id: "Leave Approvals", label: "Leave Approvals", icon: Calendar },
@@ -170,8 +173,7 @@ function EmployeeWorkspace({ userRole, showToast, onSwitchRole }) {
           ...common,
           { id: "Attendance", label: "My Attendance", icon: Clock },
           { id: "Direct Sales", label: "Direct Sales (POS)", icon: ShoppingBag },
-          { id: "My Tasks", label: "My Tasks", icon: CheckSquare },
-          { id: "My Payslip", label: "My Payslip & Incentive", icon: Landmark }
+          { id: "My Tasks", label: "My Tasks", icon: CheckSquare }
         ];
     }
   };

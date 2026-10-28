@@ -190,6 +190,8 @@ import { getProductPerformance } from '../controllers/productAnalyticsController
 import {
   calculateMonthlyPayrolls,
   generateMonthlyPayrolls,
+  calculateAndProcessMonthPayroll,
+  resetPayrollStatus,
   batchSettlePayrolls,
   settlePayroll
 } from '../controllers/payrollController.js';
@@ -476,9 +478,11 @@ router.delete('/product-categories/:id', verifyJWT, checkPermission('product-cat
 // 6.5 DYNAMIC ATTENDANCE & INCENTIVE PAYROLL ROUTES
 // ==========================================
 router.get('/payrolls/calculate', calculateMonthlyPayrolls);
+router.post('/payrolls/calculate-month', calculateAndProcessMonthPayroll);
 router.post('/payrolls/generate', generateMonthlyPayrolls);
 router.post('/payrolls/batch-settle', batchSettlePayrolls);
 router.post('/payrolls/settle', settlePayroll);
+router.post('/payrolls/reset-status', resetPayrollStatus);
 
 // ==========================================
 // 7. DYNAMIC CRUD REGISTRATION FOR ALL MODULES

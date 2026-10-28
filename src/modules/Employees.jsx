@@ -794,7 +794,7 @@ export default function Employees({ showToast }) {
           }`}
         >
           <Users className="w-4 h-4" />
-          <span>Employee Directory</span>
+          <span>Employee Register</span>
           <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">
             {employees.length}
           </span>
@@ -809,7 +809,7 @@ export default function Employees({ showToast }) {
           }`}
         >
           <Landmark className="w-4 h-4" />
-          <span>Team Member Monthly Payroll</span>
+          <span>Salary Register (Payroll)</span>
           <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
             Attendance + Incentive
           </span>

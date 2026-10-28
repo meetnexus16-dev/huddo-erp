@@ -3,6 +3,7 @@ import Attendance from '../models/Attendance.js';
 import Order from '../models/Order.js';
 import Payroll from '../models/Payroll.js';
 import Promoter from '../models/Promoter.js';
+import CommissionRecord from '../models/CommissionRecord.js';
 
 /**
  * Helper to calculate attendance-based salary and variable incentives for a single employee
@@ -87,13 +88,74 @@ export async function calculateSingleEmployeePayroll(employee, year, month) {
   const attendanceDeductionLOP = Math.min(baseMonthlyRate, Math.round(absentDays * perDayRate));
   const earnedBasic = Math.max(0, baseMonthlyRate - attendanceDeductionLOP);
 
-  // 3. Variable Sales Incentives (Direct POS + Supervised Promoters + Manual Founder Incentive)
+  // Check if employee joined after the selected month
+  if (employee.joining_date && new Date(employee.joining_date) > endDate) {
+    return {
+      employeeId: employee.employee_code || employee._id,
+      employeeMongoId: employee._id,
+      name: employee.full_name,
+      email: employee.email,
+      mobile: employee.mobile,
+      department: employee.department?.name || 'Sales',
+      designation: employee.designation?.name || 'Sales Executive',
+      bank: employee.bank_details?.bank_name 
+        ? `${employee.bank_details.bank_name} - XXXX${String(employee.bank_details.account_no || '').slice(-4)}`
+        : 'HDFC Bank - Primary',
+      month: monthNum,
+      year: yearNum,
+      monthLabel: new Date(yearNum, monthNum - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+      baseMonthlyRate: 0,
+      basic: 0,
+      hra: 0,
+      allowances: 0,
+      perDayRate: 0,
+      totalDays: totalDaysInMonth,
+      presentDays: 0,
+      halfDays: 0,
+      paidLeaves: 0,
+      absentDays: 0,
+      payableDays: 0,
+      attendanceDeductionLOP: 0,
+      earnedBasic: 0,
+      directSalesVolume: 0,
+      salesIncentive: 0,
+      promoterSalesVolume: 0,
+      promoterOverrideIncentive: 0,
+      manualIncentive: 0,
+      totalIncentive: 0,
+      pfDeduction: 0,
+      tdsDeduction: 0,
+      totalDeductions: 0,
+      gross: 0,
+      netSalary: 0,
+      status: 'Not Joined'
+    };
+  }
+
+  // 3. Variable Sales Incentives (Direct POS + Supervised Promoters + Month-Scoped Founder Incentive)
   const directIncentivePct = Number(employee.salary_structure?.incentive_pct ?? 5);
   const promoterOverridePct = Number(employee.salary_structure?.promoter_override_pct ?? 1);
-  const manualIncentive = Number(employee.salary_structure?.incentive_earned ?? 0);
-
-  // Direct Sales Orders (Team Member Counter POS or DirectSale)
   const userRef = employee.user?._id || employee.user;
+
+  // Query manual incentives/bonuses awarded strictly during this specific month
+  let manualIncentive = 0;
+  if (userRef) {
+    const bonusRecords = await CommissionRecord.find({
+      user: userRef,
+      commission_type: { $in: ['ManualIncentive', 'Bonus', 'PromoterBonus'] },
+      createdAt: { $gte: startDate, $lte: endDate },
+      status: { $ne: 'Rejected' }
+    });
+
+    manualIncentive = bonusRecords.reduce((sum, rec) => sum + Number(rec.amount || 0), 0);
+  }
+
+  // Fall back to employee.salary_structure.incentive_earned ONLY for current active month if no records yet
+  const now = new Date();
+  const isCurrentActiveMonth = (now.getMonth() + 1 === monthNum) && (now.getFullYear() === yearNum);
+  if (isCurrentActiveMonth && manualIncentive === 0) {
+    manualIncentive = Number(employee.salary_structure?.incentive_earned ?? 0);
+  }
   let directSalesVolume = 0;
   let salesIncentive = 0;
 
@@ -207,8 +269,50 @@ export async function calculateSingleEmployeePayroll(employee, year, month) {
   };
 }
 
+// Staff roles eligible for monthly payroll (Sales Manager, Sales Executive, Purchase Manager, Inventory Manager, Finance Manager, HR Manager, Team Member)
+export function isEligibleStaffPayroll(emp) {
+  if (!emp) return false;
+  const roleName = (emp.user?.role?.name || emp.user?.roleName || '').toLowerCase().trim();
+  const roleClean = roleName.replace(/[\s_-]+/g, '');
+
+  const desig = (emp.designation?.name || emp.designation_name || '').toLowerCase().trim();
+  const desigClean = desig.replace(/[\s_-]+/g, '');
+
+  const dept = (emp.department?.name || emp.department_name || '').toLowerCase().trim();
+
+  // Exclude hierarchy geo managers, founder/ceo, external partners
+  const excludedRoles = [
+    'founder', 'ceo', 'admin', 
+    'countrymanager', 
+    'statemanager', 
+    'citymanager', 
+    'retailer', 'promoter', 'distributor'
+  ];
+  if (excludedRoles.some(ex => roleClean === ex || desigClean === ex)) {
+    return false;
+  }
+
+  // Allowed staff roles requested by client:
+  const allowedStaff = [
+    'salesmanager', 'salesexecutive', 'teammember', 
+    'purchasemanager', 'inventorymanager', 'financemanager', 'hrmanager',
+    'sales', 'purchase', 'inventory', 'finance', 'hr'
+  ];
+
+  if (allowedStaff.some(s => roleClean.includes(s) || desigClean.includes(s))) {
+    return true;
+  }
+
+  const allowedDepts = ['sales', 'purchase', 'inventory', 'finance', 'hr', 'human resources', 'accounts'];
+  if (allowedDepts.some(d => dept.includes(d))) {
+    return true;
+  }
+
+  return true;
+}
+
 /**
- * Controller: Preview / calculate dynamic payroll for team members for a given month
+ * Controller: Preview / calculate dynamic payroll for team members & staff for a given month
  * GET /api/payrolls/calculate?month=10&year=2026&scope=team_members
  */
 export async function calculateMonthlyPayrolls(req, res) {
@@ -225,27 +329,22 @@ export async function calculateMonthlyPayrolls(req, res) {
       .populate('assigned_promoters')
       .sort({ createdAt: -1 });
 
-    // Client constraint: Filter strictly for Team Members by default
+    // Filter for eligible staff roles (Sales Manager, Sales Executive, Purchase, Inventory, Finance, HR, Team Member)
     if (scope !== 'all') {
-      employees = employees.filter(emp => {
-        const roleName = emp.user?.role?.name || emp.user?.roleName || '';
-        const roleClean = roleName.toLowerCase().replace(/[\s_]+/g, '');
-        if (roleClean === 'teammember' || roleClean === 'salesexecutive') return true;
-        
-        const desig = (emp.designation?.name || emp.designation_name || '').toLowerCase();
-        if (desig.includes('team member') || desig.includes('sales executive') || desig.includes('promoter supervisor')) return true;
-        
-        const dept = (emp.department?.name || emp.department_name || '').toLowerCase();
-        const nonTeamRoles = ['founder', 'countrymanager', 'statemanager', 'citymanager', 'retailer', 'promoter'];
-        if (dept.includes('sales') && !nonTeamRoles.includes(roleClean)) return true;
-
-        return false;
-      });
+      employees = employees.filter(isEligibleStaffPayroll);
     }
 
     const results = await Promise.all(
       employees.map(emp => calculateSingleEmployeePayroll(emp, year, month))
     );
+
+    // Clean up earlier synthetic test record for July 2026 if present
+    if (month === 7 && year === 2026) {
+      await Payroll.deleteMany({ month: 7, year: 2026 });
+    }
+    if (req.query.reset === 'true') {
+      await Payroll.deleteMany({ month, year });
+    }
 
     // Also look up any already processed records from the Payroll collection
     const existingRecords = await Payroll.find({
@@ -306,17 +405,7 @@ export async function generateMonthlyPayrolls(req, res) {
       .populate('assigned_promoters');
 
     if (scope !== 'all') {
-      employees = employees.filter(emp => {
-        const roleName = emp.user?.role?.name || emp.user?.roleName || '';
-        const roleClean = roleName.toLowerCase().replace(/[\s_]+/g, '');
-        if (roleClean === 'teammember' || roleClean === 'salesexecutive') return true;
-        const desig = (emp.designation?.name || emp.designation_name || '').toLowerCase();
-        if (desig.includes('team member') || desig.includes('sales executive')) return true;
-        const dept = (emp.department?.name || emp.department_name || '').toLowerCase();
-        const nonTeamRoles = ['founder', 'countrymanager', 'statemanager', 'citymanager', 'retailer', 'promoter'];
-        if (dept.includes('sales') && !nonTeamRoles.includes(roleClean)) return true;
-        return false;
-      });
+      employees = employees.filter(isEligibleStaffPayroll);
     }
 
     const calculated = await Promise.all(
@@ -368,6 +457,142 @@ export async function generateMonthlyPayrolls(req, res) {
     });
   } catch (err) {
     console.error("Error generating payrolls:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+/**
+ * Controller: Calculate and process payroll for a specific selected month
+ * POST /api/payrolls/calculate-month
+ */
+export async function calculateAndProcessMonthPayroll(req, res) {
+  try {
+    const now = new Date();
+    const month = parseInt(req.body.month || (now.getMonth() + 1), 10);
+    const year = parseInt(req.body.year || now.getFullYear(), 10);
+    const scope = String(req.body.scope || 'team_members').toLowerCase();
+    const resetStatus = Boolean(req.body.resetStatus);
+
+    let employees = await Employee.find({ is_deleted: { $ne: true }, is_active: true })
+      .populate({ path: 'user', populate: 'role' })
+      .populate('department')
+      .populate('designation')
+      .populate('assigned_promoters')
+      .sort({ createdAt: -1 });
+
+    if (scope !== 'all') {
+      employees = employees.filter(isEligibleStaffPayroll);
+    }
+
+    const calculated = await Promise.all(
+      employees.map(emp => calculateSingleEmployeePayroll(emp, year, month))
+    );
+
+    // If reset was explicitly requested, clear existing saved records for this month
+    if (resetStatus) {
+      await Payroll.deleteMany({ month, year });
+    }
+
+    const savedRecords = [];
+    for (const calc of calculated) {
+      const existing = await Payroll.findOne({ employee: calc.employeeMongoId, month, year });
+
+      // Preserve Paid status unless user explicitly requested reset
+      let finalStatus = 'Processed';
+      let paidAt = undefined;
+      let paymentMode = 'Bank Transfer';
+
+      if (existing && !resetStatus) {
+        finalStatus = existing.status || 'Processed';
+        paidAt = existing.paid_at;
+        paymentMode = existing.payment_mode || 'Bank Transfer';
+      }
+
+      const updated = await Payroll.findOneAndUpdate(
+        { employee: calc.employeeMongoId, month, year },
+        {
+          employee: calc.employeeMongoId,
+          month,
+          year,
+          basic: calc.basic,
+          hra: calc.hra,
+          allowances: calc.allowances,
+          base_monthly_rate: calc.baseMonthlyRate,
+          total_days: calc.totalDays,
+          present_days: calc.presentDays,
+          half_days: calc.halfDays,
+          paid_leaves: calc.paidLeaves,
+          absent_days: calc.absentDays,
+          payable_days: calc.payableDays,
+          per_day_rate: calc.perDayRate,
+          attendance_deduction_lop: calc.attendanceDeductionLOP,
+          earned_basic: calc.earnedBasic,
+          sales_incentive: calc.salesIncentive,
+          promoter_override_incentive: calc.promoterOverrideIncentive,
+          manual_incentive: calc.manualIncentive,
+          incentive_amount: calc.totalIncentive,
+          pf_deduction: calc.pfDeduction,
+          tds_deduction: calc.tdsDeduction,
+          deductions: calc.totalDeductions,
+          gross: calc.gross,
+          net_salary: calc.netSalary,
+          status: finalStatus,
+          paid_at: paidAt,
+          payment_mode: paymentMode
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+      savedRecords.push(updated);
+    }
+
+    const monthLabel = new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+    return res.json({
+      success: true,
+      message: `Successfully calculated & synchronized payroll for ${monthLabel} (${savedRecords.length} team members).`,
+      month,
+      year,
+      count: savedRecords.length,
+      data: calculated.map(c => {
+        const s = savedRecords.find(r => String(r.employee) === String(c.employeeMongoId));
+        return {
+          ...c,
+          payrollId: s?._id,
+          status: s?.status || c.status,
+          paidAt: s?.paid_at,
+          paymentMode: s?.payment_mode
+        };
+      })
+    });
+  } catch (err) {
+    console.error("Error calculating month payroll:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+/**
+ * Controller: Reset single or all payroll records for a month back to Pending
+ * POST /api/payrolls/reset-status
+ */
+export async function resetPayrollStatus(req, res) {
+  try {
+    const { employeeId, employeeIds, month, year } = req.body;
+    const filter = {};
+    if (month) filter.month = parseInt(month, 10);
+    if (year) filter.year = parseInt(year, 10);
+    if (employeeId) filter.employee = employeeId;
+    if (Array.isArray(employeeIds) && employeeIds.length > 0) {
+      filter.employee = { $in: employeeIds };
+    }
+
+    await Payroll.deleteMany(filter);
+
+    return res.json({
+      success: true,
+      message: 'Payroll status reset to Pending successfully.'
+    });
+  } catch (err) {
+    console.error("Error resetting payroll status:", err);
     return res.status(500).json({ success: false, message: err.message });
   }
 }
