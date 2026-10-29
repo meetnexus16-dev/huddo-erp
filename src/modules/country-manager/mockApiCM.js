@@ -581,11 +581,7 @@ export async function handleCountryManagerApi(pathname, method, body, params) {
   const smMatch = pathname.match(/^\/api\/country-managers\/([^/]+)\/state-managers$/);
   if (smMatch && method === 'GET') {
     // Read state managers
-    const managers = [
-      { state_manager_id: "U3", name: "Preeti Verma", mobile: "9988776655", email: "preeti@huddoerp.in", assigned_state: "Delhi", status: "Active", performance: { revenue: 3200000, orders: 60, retailers: 10, target_pct: 80.0 } },
-      { state_manager_id: "U4-mgr", name: "Anil Deshmukh", mobile: "9560412211", email: "anil@huddoerp.in", assigned_state: "Maharashtra", status: "Active", performance: { revenue: 4500000, orders: 85, retailers: 15, target_pct: 90.0 } }
-    ];
-    return jsonResponse({ state_managers: managers, total: managers.length });
+    return jsonResponse({ state_managers: [], total: 0 });
   }
 
   // 14. POST /api/country-managers/:id/state-managers/review

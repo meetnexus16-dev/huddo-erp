@@ -40,14 +40,6 @@ export default function StateManagers({ showToast, onNavigate }) {
         const data = await res.json();
         const list = Array.isArray(data?.state_managers) ? data.state_managers : (Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []));
         setStateManagers(list);
-      } else {
-        const fallbackRes = await fetch('/api/country-managers/1/state-managers', {
-          headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
-        });
-        if (fallbackRes.ok) {
-          const fallbackData = await fallbackRes.json();
-          setStateManagers(fallbackData.state_managers || fallbackData.data || []);
-        }
       }
     } catch (err) {
       console.warn("Failed to fetch state managers:", err);

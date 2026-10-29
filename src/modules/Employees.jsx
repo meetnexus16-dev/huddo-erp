@@ -1295,6 +1295,7 @@ export default function Employees({ showToast }) {
         title={editingEmpId ? `Edit Employee - ${formData.name}` : "Add New Employee"}
         onConfirm={handleSaveEmployee}
         confirmText={editingEmpId ? "Update Employee" : "Register Employee"}
+        maxWidth="max-w-2xl"
       >
         <div className="space-y-4">
           {/* Sub-tabs inside modal */}
@@ -1686,98 +1687,105 @@ export default function Employees({ showToast }) {
 
                 {/* Slabs Mode: Dynamic Configurable Table */}
                 {formData.incentiveMode === 'slab_per_pair' ? (
-                  <div className="bg-white border border-amber-200 rounded-xl p-3.5 space-y-3 overflow-hidden">
-                    <div className="flex items-center justify-between text-xs font-bold text-amber-900 border-b border-amber-100 pb-2">
-                      <div className="flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                  <div className="bg-[#fffdfa] border border-amber-200/90 rounded-2xl p-4 sm:p-5 space-y-3.5 shadow-2xs">
+                    {/* Header: Exact match to design */}
+                    <div className="flex items-center justify-between text-xs sm:text-sm font-bold text-amber-950 px-1">
+                      <div className="flex items-center gap-2">
                         <span>Sales Volume Slab (Per Day Pairs)</span>
+                        <span className="text-[10px] font-bold text-amber-800 bg-amber-100/90 px-2 py-0.5 rounded-md border border-amber-300/80">
+                          Calculated Daily
+                        </span>
                       </div>
-                      <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-semibold flex-shrink-0">
-                        Calculated Daily
-                      </span>
+                      <span className="font-bold text-amber-950">Incentive Amount (₹ Per Pair)</span>
                     </div>
 
-                    <div className="space-y-1.5">
-                      {formData.incentiveSlabs.map((slab, sIdx) => (
-                        <div key={sIdx} className="flex items-center justify-between gap-1.5 bg-amber-50/40 hover:bg-amber-50/70 p-2 rounded-lg border border-amber-100 text-xs transition-colors">
-                          <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                            <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">Tier {sIdx + 1}:</span>
-                            <input
-                              type="number"
-                              min="1"
-                              value={slab.min_qty}
-                              placeholder="Min"
-                              onChange={(e) => {
-                                const val = Number(e.target.value) || 0;
-                                setFormData(prev => ({
-                                  ...prev,
-                                  incentiveSlabs: prev.incentiveSlabs.map((s, idx) => idx === sIdx ? { ...s, min_qty: val } : s)
-                                }));
-                              }}
-                              className="w-14 text-xs font-bold border border-slate-300 rounded p-1 bg-white text-center focus:ring-1 focus:ring-brand-orange"
-                            />
-                            <span className="text-[11px] font-bold text-slate-400 whitespace-nowrap">to</span>
-                            <input
-                              type="number"
-                              min="1"
-                              value={slab.max_qty ?? ''}
-                              placeholder="+"
-                              onChange={(e) => {
-                                const val = e.target.value === '' ? '' : Number(e.target.value);
-                                setFormData(prev => ({
-                                  ...prev,
-                                  incentiveSlabs: prev.incentiveSlabs.map((s, idx) => idx === sIdx ? { ...s, max_qty: val } : s)
-                                }));
-                              }}
-                              className="w-14 text-xs font-bold border border-slate-300 rounded p-1 bg-white text-center focus:ring-1 focus:ring-brand-orange"
-                              title="Leave empty for unlimited (+)"
-                            />
-                            <span className="text-[11px] font-semibold text-slate-600 whitespace-nowrap">prs/day</span>
-                          </div>
-
-                          <div className="flex items-center gap-1 flex-shrink-0">
-                            <span className="font-bold text-slate-400 text-xs">₹</span>
-                            <input
-                              type="number"
-                              min="0"
-                              value={slab.incentive_per_pair}
-                              onChange={(e) => {
-                                const val = Number(e.target.value) || 0;
-                                setFormData(prev => ({
-                                  ...prev,
-                                  incentiveSlabs: prev.incentiveSlabs.map((s, idx) => idx === sIdx ? { ...s, incentive_per_pair: val } : s)
-                                }));
-                              }}
-                              className="w-16 text-xs font-black border border-slate-300 rounded p-1 bg-white text-right focus:ring-1 focus:ring-brand-orange"
-                            />
-                            <span className="text-[10px] text-slate-500 font-bold whitespace-nowrap">/pr</span>
-                          </div>
-
-                          <div className="w-6 flex items-center justify-center flex-shrink-0">
-                            {formData.incentiveSlabs.length > 1 ? (
-                              <button
-                                type="button"
-                                onClick={() => {
+                    {/* Slabs List */}
+                    <div className="space-y-2.5">
+                      {formData.incentiveSlabs.map((slab, sIdx) => {
+                        const isUnlimited = slab.max_qty === '' || slab.max_qty === null || slab.max_qty === undefined;
+                        return (
+                          <div 
+                            key={sIdx} 
+                            className="bg-amber-50/30 hover:bg-amber-50/60 border border-amber-200/70 rounded-xl p-3 sm:px-4 sm:py-3.5 flex items-center justify-between gap-3 transition-all"
+                          >
+                            {/* Left: Range input & text */}
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <input
+                                type="number"
+                                min="1"
+                                value={slab.min_qty}
+                                placeholder="Min"
+                                onChange={(e) => {
+                                  const val = Number(e.target.value) || 0;
                                   setFormData(prev => ({
                                     ...prev,
-                                    incentiveSlabs: prev.incentiveSlabs.filter((_, idx) => idx !== sIdx)
+                                    incentiveSlabs: prev.incentiveSlabs.map((s, idx) => idx === sIdx ? { ...s, min_qty: val } : s)
                                   }));
                                 }}
-                                className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors cursor-pointer"
-                                title="Remove slab tier"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            ) : (
-                              <span className="w-3.5" />
-                            )}
+                                className="w-14 text-center font-black text-slate-800 bg-white border border-slate-300 hover:border-amber-400 focus:border-amber-500 rounded-lg py-1.5 px-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500/20 shadow-2xs"
+                              />
+                              <span className="text-xs font-semibold text-slate-400">to</span>
+                              <input
+                                type="number"
+                                min="1"
+                                value={slab.max_qty ?? ''}
+                                placeholder="+"
+                                onChange={(e) => {
+                                  const val = e.target.value === '' ? '' : Number(e.target.value);
+                                  setFormData(prev => ({
+                                    ...prev,
+                                    incentiveSlabs: prev.incentiveSlabs.map((s, idx) => idx === sIdx ? { ...s, max_qty: val } : s)
+                                  }));
+                                }}
+                                className="w-14 text-center font-black text-slate-800 bg-white border border-slate-300 hover:border-amber-400 focus:border-amber-500 rounded-lg py-1.5 px-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500/20 shadow-2xs"
+                                title="Leave empty for unlimited (+)"
+                              />
+                              <span className="text-xs sm:text-sm font-bold text-amber-950">
+                                {!isUnlimited ? 'Sales / Pairs:' : 'or more Sales / Pairs:'}
+                              </span>
+                            </div>
+
+                            {/* Right: Price & Delete */}
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-slate-400 font-bold text-xs">₹</span>
+                              <input
+                                type="number"
+                                min="0"
+                                value={slab.incentive_per_pair}
+                                onChange={(e) => {
+                                  const val = Number(e.target.value) || 0;
+                                  setFormData(prev => ({
+                                    ...prev,
+                                    incentiveSlabs: prev.incentiveSlabs.map((s, idx) => idx === sIdx ? { ...s, incentive_per_pair: val } : s)
+                                  }));
+                                }}
+                                className="w-20 sm:w-24 text-center font-black text-slate-800 bg-white border border-slate-300 hover:border-amber-400 focus:border-amber-500 rounded-lg py-1.5 px-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 shadow-2xs"
+                              />
+                              <span className="text-xs font-semibold text-slate-500">/pair</span>
+
+                              {formData.incentiveSlabs.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      incentiveSlabs: prev.incentiveSlabs.filter((_, idx) => idx !== sIdx)
+                                    }));
+                                  }}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer ml-1"
+                                  title="Remove this slab"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
 
                     {/* + Add New Entry Button */}
-                    <div className="pt-1 flex items-center justify-between border-t border-amber-100">
+                    <div className="pt-2 flex items-center justify-between border-t border-amber-200/60">
                       <button
                         type="button"
                         onClick={() => {
@@ -1793,20 +1801,23 @@ export default function Employees({ showToast }) {
                             };
                           });
                         }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 active:scale-98 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
                       >
-                        <Plus className="w-4 h-4" />
+                        <Plus className="w-3.5 h-3.5" />
                         <span>Add New Slab Entry</span>
                       </button>
 
-                      <span className="text-[10px] text-slate-400 font-medium italic">
+                      <span className="text-[11px] text-amber-800/70 font-medium italic">
                         Empty "to" = "or more"
                       </span>
                     </div>
 
-                    <p className="text-[10px] text-slate-500 italic mt-1 leading-relaxed bg-amber-50/50 p-2 rounded border border-amber-200/50">
-                      * <strong>Per Day Incentive Rule:</strong> Calculates sales pairs achieved by the employee on each calendar day. 
-                      E.g. If on Day 1 they sell 4 pairs (2-4 slab) → 4 × ₹200 = ₹800. If on Day 2 they sell 7 pairs (5-9 slab) → 7 × ₹300 = ₹2,100.
+                    {/* Dynamic Footnote rule matching exact design */}
+                    <p className="text-[11px] text-slate-500 italic mt-1 leading-relaxed">
+                      * Automatic dynamic calculation rule (per day): {formData.incentiveSlabs.map(s => {
+                        const isLast = s.max_qty === '' || s.max_qty === null || s.max_qty === undefined;
+                        return `${s.min_qty}${!isLast ? `-${s.max_qty}` : '+'} pairs = ₹${s.incentive_per_pair}/pair`;
+                      }).join(', ')} (e.g. 6 pairs order/day = 6 × ₹300 = ₹1,800).
                     </p>
                   </div>
                 ) : (
